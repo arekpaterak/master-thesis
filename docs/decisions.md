@@ -1,0 +1,2 @@
+- W&B: Online vs offline mode?
+  - Decision: For exploratory runs, I will use online mode to track real-time train metrics. For final heavy runs, I might use offline mode and sync later.

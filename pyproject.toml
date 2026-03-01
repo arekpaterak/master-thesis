@@ -1,0 +1,66 @@
+[project]
+name = "master-thesis-code"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+authors = [
+    { name = "Arkadiusz Paterak" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "iprogress>=0.4",
+    "ipykernel>=7.2.0",
+    "ipython>=9.10.0",
+    "ipywidgets>=8.1.8",
+    "notebook>=7.5.4",
+    "rl4co>=0.6.0",
+    "tabulate>=0.9.0",
+    "torch>=2.9.0",
+    "torch-geometric>=2.7.0",
+    "tqdm>=4.67.3",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.0",
+    "pytest>=9.0.2",
+    "ruff>=0.15.4",
+    "scipy-stubs>=1.17.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core"]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+extend-select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "SIM",
+]
+
+[tool.ruff.format]
+quote-style = "double"  # Use double quotes for strings
+indent-style = "space"  # Indent with spaces
+skip-magic-trailing-comma = false  # Respect magic trailing commas
+line-ending = "auto"  # Automatically detect line ending
+docstring-code-format = true  # Format code blocks in docstrings

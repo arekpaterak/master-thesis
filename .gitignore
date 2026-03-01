@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environment
+.venv
+
+# .env files
+.env
+
+# JetBrains IDE files
+.idea/
+
+# Project related
+experiments/results/
