@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
 
 import torch
 
 from core.problems.tsp import TSPConfig
 
-T = TypeVar("T")
 
-
-class TSPSampler(ABC, Generic[T]):
+class TSPSampler[T](ABC):
     @abstractmethod
     def __call__(self, batch_size: int) -> T: ...
 

@@ -44,6 +44,7 @@ class TSPSolution:
         min_coordinate: float | None = None,
         max_coordinate: float | None = None,
         ax: Axes | None = None,
+        with_problem_size: bool = True,
         with_objective: bool = True,
     ) -> None:
         if ax is None:
@@ -102,5 +103,12 @@ class TSPSolution:
         ax.set_ylim(min_coordinate - 0.1, max_coordinate + 0.1)
         ax.set_aspect("equal", adjustable="box")
 
-        ax.set_title(f"TSP({self.instance.num_locations}) obj={self.tour_length:.4f}")
+        title = ""
+        if with_problem_size:
+            title += f"TSP({self.instance.num_locations}) | "
+
+        if with_objective:
+            title += f"distance = {self.tour_length:.4f}"
+
+        ax.set_title(title)
         ax.grid(True, linestyle="--", alpha=0.4)

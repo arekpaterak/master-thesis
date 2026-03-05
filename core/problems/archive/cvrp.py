@@ -1,25 +1,15 @@
-from dataclasses import dataclass
-
 from matplotlib import pyplot as plt
 from rl4co.envs.routing.cvrp.generator import CVRPGenerator
 from tensordict import TensorDict
 from torch.distributions import Uniform
 
-
-@dataclass(frozen=True)
-class CVRPConfig:
-    num_nodes: int
-    min_loc: float = 0.0
-    max_loc: float = 1.0
-    min_demand: int = 1
-    max_demand: int = 10
-    vehicle_capacity: float = 1.0
+from core.problems.cvrp import CVRPConfig
 
 
 def get_cvrp_generator(config: CVRPConfig) -> CVRPGenerator:
-    num_nodes = config.num_nodes
-    min_loc = config.min_loc
-    max_loc = config.max_loc
+    num_nodes = config.num_locations
+    min_loc = config.min_coordinate
+    max_loc = config.max_coordinate
     min_demand = config.min_demand
     max_demand = config.max_demand
     vehicle_capacity = config.vehicle_capacity
@@ -43,7 +33,7 @@ def visualize_cvrp_instance(
     locations = instance["locs"].cpu().numpy()
     demands = instance["demand"].cpu().numpy()
     depot = instance["depot"].cpu().numpy()
-    capacity = instance["capacity"].item()
+    _ = instance["capacity"].item()
 
     fig, ax = plt.subplots()
     scatter = ax.scatter(
