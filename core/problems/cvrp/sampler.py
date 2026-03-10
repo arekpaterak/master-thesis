@@ -41,10 +41,24 @@ class TensorDictCVRPSampler(CVRPSampler[TensorDict]):
 
         nodes = torch.cat([depot, customer_locations], dim=1)  # (batch, n+1, 2)
 
+        demand = self._sample_demand(batch_size)  # (batch, n+1)
+
+        # After normalisation of the demands, the effective capacity is 1.0
+        capacity = torch.ones(batch_size, 1)
+
+        return TensorDict(
+            {"nodes": nodes, "demand": demand, "capacity": capacity},
+            batch_size=[batch_size],
+        )
+
+    def _sample_demand(self, batch_size: int) -> torch.Tensor:
+        cfg = self._config
+        g = self._generator
+
         demand = torch.randint(
             cfg.min_demand,
             cfg.max_demand + 1,
-            (batch_size, cfg.num_locations),
+            (cfg.num_locations,),
             generator=g,
         ).float()
 
@@ -53,10 +67,4 @@ class TensorDictCVRPSampler(CVRPSampler[TensorDict]):
         depot_demand = torch.zeros(batch_size, 1)
         norm_demand = torch.cat([depot_demand, norm_demand], dim=1)  # (batch, n+1)
 
-        # After normalisation of the demands, the effective capacity is 1.0
-        norm_capacity = torch.ones(batch_size, 1)
-
-        return TensorDict(
-            {"nodes": nodes, "demand": norm_demand, "capacity": norm_capacity},
-            batch_size=[batch_size],
-        )
+        return norm_demand

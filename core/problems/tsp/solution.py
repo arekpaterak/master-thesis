@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -13,7 +15,7 @@ class TSPSolution:
     """A (partial or complete) solution to a TSP instance."""
 
     instance: TSPInstance
-    tour: torch.Tensor  # (num_visited,) — indices into instance.locations
+    tour: torch.Tensor  # indices into instance.locations
 
     def __post_init__(self):
         assert self.tour.ndim == 1, "Expected tour to be a 1D tensor of node indices."
@@ -112,3 +114,53 @@ class TSPSolution:
 
         ax.set_title(title)
         ax.grid(True, linestyle="--", alpha=0.4)
+
+
+# TODO: Adjust to work on better defined representation and handle discontinuous tours (for partial solutions)
+def tour_length(instances, solutions) -> torch.Tensor:
+    """
+    Args:
+        instances: (batch, n, 2)
+        solutions: (batch, n) - permutation of node indices
+    Returns:
+        lengths: (batch,)
+    """
+    batch_size, n = solutions.shape
+    # gather coordinates in tour order
+    ordered = instances[torch.arange(batch_size).unsqueeze(1), solutions]  # (batch, n, 2)
+    # distance from each node to the next, wrapping around
+    rolled = torch.roll(ordered, -1, dims=1)
+    return (ordered - rolled).norm(dim=-1).sum(dim=-1)  # (batch,)
+
+
+@dataclass(frozen=True)
+class TSPBatchSolution:
+    """
+    Batched solution representation using tensors throughout.
+
+    tour holds full (batch, n) tensor, with -1 for unvisited positions.
+    """
+
+    locations: torch.Tensor  # (batch, n, 2)
+    tour: torch.Tensor  # (batch, n), -1 for unvisited slots
+
+    @property
+    def batch_size(self) -> int:
+        return self.locations.shape[0]
+
+    @property
+    def n(self) -> int:
+        return self.locations.shape[1]
+
+    @property
+    def tour_lengths(self) -> torch.Tensor:
+        return tour_length(self.locations, self.tour)  # (batch,)
+
+    def to_list(self) -> list[TSPSolution]:
+        return [
+            TSPSolution(
+                instance=TSPInstance(self.locations[b_idx]),
+                tour=self.tour[b_idx],
+            )
+            for b_idx in range(self.batch_size)
+        ]

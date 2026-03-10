@@ -17,3 +17,6 @@ wheels/
 
 # Project related
 experiments/results/
+
+# Marimo
+__marimo__/

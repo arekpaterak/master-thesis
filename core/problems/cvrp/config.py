@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-# Capacities as defined by Kool et al. (2018) for each problem size.
 CAPACITY_PER_SIZE: dict[int, int] = {
     20: 30,
     50: 40,
@@ -29,7 +28,7 @@ class CVRPConfig:
         """
         if num_nodes not in CAPACITY_PER_SIZE:
             raise ValueError(
-                f"No standard Nazari capacity for n={num_nodes}. "
+                f"No standard capacity for n={num_nodes}. "
                 f"Supported sizes: {sorted(CAPACITY_PER_SIZE)}. "
                 "Pass vehicle_capacity explicitly to use a custom size."
             )
