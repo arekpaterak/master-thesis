@@ -12,12 +12,14 @@ dependencies = [
     "ipykernel>=7.2.0",
     "ipython>=9.10.0",
     "ipywidgets>=8.1.8",
+    "marimo>=0.20.4",
     "notebook>=7.5.4",
     "rl4co>=0.6.0",
     "tabulate>=0.9.0",
     "torch>=2.9.0",
     "torch-geometric>=2.7.0",
     "tqdm>=4.67.3",
+    "typer>=0.24.1",
 ]
 
 [dependency-groups]
@@ -50,6 +52,7 @@ line-length = 100
 target-version = "py312"
 ignore = [
     "F403", # Allow star imports (TODO: Refactor to avoid star imports)
+    "E501",
 ]
 
 [tool.ruff.lint]

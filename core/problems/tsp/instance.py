@@ -12,7 +12,7 @@ from tensordict import TensorDict
 class TSPInstance:
     """Canonical, generator-agnostic representation of a single TSP instance."""
 
-    locations: torch.Tensor  # (num_nodes, 2)
+    locations: torch.Tensor  # (n, 2)
 
     def __post_init__(self):
         assert self.locations.ndim == 2 and self.locations.shape[1] == 2, (
@@ -79,3 +79,24 @@ class TSPInstance:
         ax.set_aspect("equal", adjustable="box")
         ax.set_title(f"TSP({self.num_locations})")
         ax.grid(True, linestyle="--", alpha=0.4)
+
+
+@dataclass(frozen=True)
+class TSPBatchInstance:
+    locations: torch.Tensor  # (batch, n, 2)
+
+    @property
+    def batch_size(self) -> int:
+        return self.locations.shape[0]
+
+    @property
+    def n(self) -> int:
+        return self.locations.shape[1]
+
+    def to_list(self) -> list[TSPInstance]:
+        return [
+            TSPInstance(
+                self.locations[b_idx],
+            )
+            for b_idx in range(self.batch_size)
+        ]
