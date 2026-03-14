@@ -5,8 +5,11 @@ from dataclasses import dataclass
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from tensordict.tensorclass import TensorClass
 
-from .instance import CVRPInstance
+from .instance import CVRPBatchInstance, CVRPInstance
+
+# TODO: Don't store the instance in the solution? Make SolvedInstance objects that pair an instance with a solution?
 
 
 @dataclass(frozen=True)
@@ -17,6 +20,10 @@ class CVRPSolution:
     sequence: torch.Tensor  # e.g. [0, 3, 7, 2, 0, 5, 1, 0], starts and ends with 0
 
     def __post_init__(self):
+        assert self.sequence[0] == 0 and self.sequence[-1] == 0, (
+            "Sequence must start and end at depot (0)."
+        )
+
         for i, route in enumerate(self.routes):
             assert route.ndim == 1, f"Route {i} must be a 1-D tensor."
             assert route.numel() > 0, f"Route {i} is empty."
@@ -53,7 +60,7 @@ class CVRPSolution:
 
     @property
     def total_distance(self) -> float:
-        pts = self.instance.nodes[self.sequence]
+        pts = self.instance.locations[self.sequence]
         return (pts[1:] - pts[:-1]).norm(dim=-1).sum().item()
 
     @property
@@ -61,7 +68,7 @@ class CVRPSolution:
         if not self.is_complete:
             return False
         return all(
-            self.instance.demands[route].sum().item() <= self.instance.capacity
+            self.instance.demand[route].sum().item() <= self.instance.capacity
             for route in self.routes
         )
 
@@ -85,9 +92,9 @@ class CVRPSolution:
         if ax is None:
             ax = plt.gca()
 
-        all_nodes = self.instance.nodes.cpu().numpy()
-        customer_locs = self.instance.customer_nodes.cpu().numpy()
-        depot = self.instance.depot.cpu().numpy()
+        all_nodes = self.instance.locations.cpu().numpy()
+        customer_locs = self.instance.customer_locations.cpu().numpy()
+        depot = self.instance.depot_location.cpu().numpy()
 
         if min_coordinate is None or max_coordinate is None:
             min_coordinate = float(all_nodes.min())
@@ -128,7 +135,7 @@ class CVRPSolution:
             indices = torch.cat([torch.tensor([0]), route, torch.tensor([0])])
             waypoints = all_nodes[indices.numpy()]
 
-            route_demand = self.instance.demands[route].sum().item()
+            route_demand = self.instance.demand[route].sum().item()
             route_dist = (
                 (torch.tensor(waypoints[1:]) - torch.tensor(waypoints[:-1]))
                 .norm(dim=-1)
@@ -183,3 +190,28 @@ class CVRPSolution:
             title += f" | total distance = {self.total_distance:.4f}"
         ax.set_title(title)
         ax.grid(True, linestyle="--", alpha=0.4)
+
+
+class CVRPBatchSolution(TensorClass):
+    instance: CVRPBatchInstance
+    sequences: torch.Tensor  # shape: (B, L), padded with 0
+
+    @property
+    def total_distance(self) -> torch.Tensor:
+        B, L = self.sequences.shape
+        idx = self.sequences.unsqueeze(-1).expand(-1, -1, 2)
+        pts = torch.gather(self.instance.locations, 1, idx)  # (B, L, 2)
+
+        distance = (pts[:, 1:] - pts[:, :-1]).norm(dim=-1).sum(dim=-1)
+        return distance
+
+    def get_single(self, idx: int) -> CVRPSolution:
+        seq = self.sequences[idx]
+        last_idx = (seq != 0).nonzero()
+        if last_idx.numel() == 0:
+            clean_seq = torch.tensor([0, 0], device=seq.device)
+        else:
+            end = last_idx[-1].item() + 2
+            clean_seq = seq[:end]
+
+        return CVRPSolution(instance=self.instance.get_single(idx), sequence=clean_seq)

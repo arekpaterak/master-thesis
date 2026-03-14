@@ -8,6 +8,7 @@ from core.models.attention.decoder import Decoder
 from core.models.attention.encoder import Encoder
 from core.models.attention.graph import make_complete_graph
 from core.models.entropy import entropy
+from core.problems.tsp import TSPBatchInstance
 
 
 class RolloutResult(NamedTuple):
@@ -20,12 +21,17 @@ class RolloutResult(NamedTuple):
 class AttentionModel(nn.Module):
     def __init__(self, d_x: int = 2, d_h: int = 128, num_heads: int = 8, num_layers: int = 3):
         super().__init__()
-        self.encoder = Encoder(d_x, d_h, num_heads, num_layers)
+        self.encoder = Encoder(
+            d_x=d_x,
+            d_h=d_h,
+            num_heads=num_heads,
+            num_layers=num_layers,
+        )
         self.decoder = Decoder(d_h, num_heads)
 
     def forward(
         self,
-        instances: torch.Tensor,
+        instances: TSPBatchInstance,
         *,
         greedy: bool = False,
         partial_tour: torch.Tensor | None = None,
@@ -38,9 +44,11 @@ class AttentionModel(nn.Module):
         Returns:
             RolloutResult
         """
-        batch_size, n, _ = instances.shape
+        batch_size, n, _ = instances.locations.shape
 
-        data = Batch.from_data_list([make_complete_graph(instances[b]) for b in range(batch_size)])
+        data = Batch.from_data_list(
+            [make_complete_graph(instances.locations[b]) for b in range(batch_size)]
+        )
         assert data["edge_index"].shape[0] == 2, (
             "Expected edge_index to have shape (2, total_edges)"
         )

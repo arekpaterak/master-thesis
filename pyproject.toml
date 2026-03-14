@@ -53,6 +53,7 @@ target-version = "py312"
 ignore = [
     "F403", # Allow star imports (TODO: Refactor to avoid star imports)
     "E501",
+    "E731", # Allow lambda assignments
 ]
 
 [tool.ruff.lint]

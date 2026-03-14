@@ -6,6 +6,7 @@ import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from tensordict import TensorDict
+from tensordict.tensorclass import TensorClass
 
 
 @dataclass(frozen=True)
@@ -22,18 +23,6 @@ class TSPInstance:
     @property
     def num_locations(self) -> int:
         return self.locations.shape[0]
-
-    @classmethod
-    def from_tensor(cls, locations: torch.Tensor) -> TSPInstance:
-        """Convert from a raw tensor of locations."""
-        assert locations.ndim == 2 and locations.shape[1] == 2, (
-            "Expected locations to be of shape (num_locations, 2)."
-        )
-        return cls(locations=locations)
-
-    def to_tensor(self) -> torch.Tensor:
-        """Convert to a raw tensor of locations."""
-        return self.locations
 
     @classmethod
     def from_rl4co(cls, td: TensorDict) -> TSPInstance:
@@ -81,22 +70,12 @@ class TSPInstance:
         ax.grid(True, linestyle="--", alpha=0.4)
 
 
-@dataclass(frozen=True)
-class TSPBatchInstance:
-    locations: torch.Tensor  # (batch, n, 2)
-
-    @property
-    def batch_size(self) -> int:
-        return self.locations.shape[0]
+class TSPBatchInstance(TensorClass):
+    locations: torch.Tensor  # (B, N, 2)
 
     @property
     def n(self) -> int:
         return self.locations.shape[1]
 
-    def to_list(self) -> list[TSPInstance]:
-        return [
-            TSPInstance(
-                self.locations[b_idx],
-            )
-            for b_idx in range(self.batch_size)
-        ]
+    def get_single(self, idx: int) -> TSPInstance:
+        return TSPInstance(locations=self.locations[idx])

@@ -5,49 +5,49 @@ from dataclasses import dataclass
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from tensordict import TensorDict
+from tensordict import TensorClass, TensorDict
 
 
 @dataclass(frozen=True)
 class CVRPInstance:
     """Canonical, generator-agnostic representation of a single CVRP instance."""
 
-    nodes: torch.Tensor  # shape: (n+1, 2)
-    demands: torch.Tensor  # shape: (n+1,) - normalised to [0, 1]
+    locations: torch.Tensor  # shape: (n+1, 2)
+    demand: torch.Tensor  # shape: (n+1,) - normalised to [0, 1]
     capacity: float  # vehicle capacity (normalised)
 
     @property
-    def depot(self) -> torch.Tensor:
-        return self.nodes[0]
+    def num_customers(self) -> int:
+        return self.locations.shape[0] - 1  # excluding depot
 
     @property
-    def customer_nodes(self) -> torch.Tensor:
-        return self.nodes[1:]
+    def depot_location(self) -> torch.Tensor:
+        return self.locations[0]
+
+    @property
+    def customer_locations(self) -> torch.Tensor:
+        return self.locations[1:]
 
     @property
     def customer_demands(self) -> torch.Tensor:
-        return self.demands[1:]
+        return self.demand[1:]
 
     def __post_init__(self):
-        assert self.nodes.ndim == 2 and self.nodes.shape[1] == 2, (
+        assert self.locations.ndim == 2 and self.locations.shape[1] == 2, (
             "Expected locations to be of shape (num_nodes, 2)."
         )
-        assert self.demands.ndim == 1 and self.demands.shape[0] == self.nodes.shape[0], (
+        assert self.demand.ndim == 1 and self.demand.shape[0] == self.locations.shape[0], (
             "Expected demands to be of shape (num_nodes,) matching locations."
         )
-        assert self.depot.shape == (2,), "Expected depot to be of shape (2,)."
-
-    @property
-    def num_customers(self) -> int:
-        return self.nodes.shape[0] - 1  # excluding depot
+        assert self.depot_location.shape == (2,), "Expected depot to be of shape (2,)."
 
     @classmethod
     def from_td(cls, td: TensorDict) -> CVRPInstance:
         """Convert from a single (unbatched) RL4CO TensorDict."""
         assert td.batch_dims == 0, "Expected an unbatched TensorDict (single instance)."
         return cls(
-            nodes=td["nodes"],
-            demands=td["demand"],
+            locations=td["nodes"],
+            demand=td["demand"],
             capacity=td["capacity"].item(),
         )
 
@@ -65,9 +65,9 @@ class CVRPInstance:
         if ax is None:
             ax = plt.gca()
 
-        customer_locations = self.customer_nodes.cpu().numpy()
+        customer_locations = self.customer_locations.cpu().numpy()
         customer_demands = self.customer_demands.cpu().numpy()
-        depot = self.depot.cpu().numpy()
+        depot = self.depot_location.cpu().numpy()
 
         if min_coordinate is None or max_coordinate is None:
             all_coords = customer_locations
@@ -106,3 +106,56 @@ class CVRPInstance:
         ax.legend(loc="upper right")
         ax.set_title(f"CVRP({self.num_customers})")
         ax.grid(True, linestyle="--", alpha=0.4)
+
+
+class CVRPBatchInstance(TensorClass):
+    locations: torch.Tensor  # shape: (B, N+1, 2)
+    demand: torch.Tensor  # shape: (B, N+1)
+    capacity: torch.Tensor  # shape: (B, 1)
+
+    def __post_init__(self):
+        b_ndim = len(self.batch_size)
+
+        assert self.locations.ndim == b_ndim + 2, (
+            f"Expected nodes to have {b_ndim + 2} dims (batch + N+1 + 2), got {self.locations.ndim}"
+        )
+        assert self.demand.ndim == b_ndim + 1, (
+            f"Expected demand to have {b_ndim + 1} dims (batch + N+1), got {self.demand.ndim}"
+        )
+        assert self.capacity.ndim == b_ndim + 1, (
+            f"Expected capacity to have {b_ndim + 1} dims (batch + 1), got {self.capacity.ndim}"
+        )
+
+        assert self.locations.shape[-1] == 2, (
+            f"Expected nodes last dim to be 2 (x, y), got {self.locations.shape[-1]}"
+        )
+        assert self.capacity.shape[-1] == 1, (
+            f"Expected capacity last dim to be 1, got {self.capacity.shape[-1]}"
+        )
+        assert self.locations.shape[-2] == self.demand.shape[-1], (
+            "Number of nodes mismatch between nodes and demands."
+        )
+
+    @property
+    def num_nodes(self) -> int:
+        return self.locations.shape[1]
+
+    @property
+    def num_customers(self) -> int:
+        return self.num_nodes - 1
+
+    @property
+    def depot_location(self) -> torch.Tensor:
+        return self.locations[:, :1, :]  # (B, 1, 2)
+
+    @property
+    def customer_features(self) -> torch.Tensor:
+        customer_locations = self.locations[:, 1:, :]
+        customer_demands = self.demand[:, 1:].unsqueeze(-1)
+        return torch.cat([customer_locations, customer_demands], dim=-1)
+
+    def get_single(self, idx: int) -> CVRPInstance:
+        item = self[idx]
+        return CVRPInstance(
+            locations=item.locations, demand=item.demand, capacity=item.capacity.item()
+        )

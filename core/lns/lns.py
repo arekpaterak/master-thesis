@@ -17,6 +17,7 @@ class LNSResult(NamedTuple):
     improvements: torch.Tensor
 
 
+@torch.no_grad()
 def lns(
     starting_solutions: TSPBatchSolution,
     destroy: DestroyOperator,
@@ -39,7 +40,7 @@ def lns(
         # update current and best using tensor masking
         current = _select(mask, candidate, current)
         best = _select(current.tour_lengths < best.tour_lengths, current, best)
-        history.append(best.tour_lengths.cpu())
+        history.append(best.tour_lengths.detach().cpu())
 
     return LNSResult(
         best_solutions=best,
@@ -53,6 +54,6 @@ def lns(
 def _select(mask: torch.Tensor, a: TSPBatchSolution, b: TSPBatchSolution) -> TSPBatchSolution:
     """Select a[i] where mask[i] is True, else b[i]."""
     return TSPBatchSolution(
-        locations=a.locations,  # shared, should not change
+        instance=a.instance,  # shared, should not change
         tour=torch.where(mask.unsqueeze(1), a.tour, b.tour),
     )

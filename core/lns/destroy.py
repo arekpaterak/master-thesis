@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from dataclasses import replace
 
 import torch
 
@@ -41,4 +40,7 @@ class RandomSegmentDestroy(DestroyOperator):
         batch_idx = torch.arange(batch_size, device=device).unsqueeze(1)
         new_tour[batch_idx, positions_to_remove_at] = -1
 
-        return replace(solutions, tour=new_tour)
+        return TSPBatchSolution(
+            instance=solutions.instance,
+            tour=new_tour,
+        )
