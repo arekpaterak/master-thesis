@@ -5,14 +5,14 @@ import torch
 from core.models.attention.model import AttentionModel
 from core.models.attention.training import train
 from core.problems.tsp.config import TSPConfig
-from core.problems.tsp.sampler import TensorTSPSampler
+from core.problems.tsp.sampler import TSPBatchSampler
 
 
 def test_train_one_epoch():
     config = TSPConfig(num_locations=10)
-    sampler = TensorTSPSampler(config, seed=0)
+    sampler = TSPBatchSampler(config, seed=0)
 
-    model = AttentionModel()
+    model = AttentionModel().to("cpu")
     params_before = copy.deepcopy([p.detach().clone() for p in model.parameters()])
 
     train(
@@ -22,7 +22,6 @@ def test_train_one_epoch():
         steps_per_epoch=2,
         batch_size=8,
         lr=1e-4,
-        device="cpu",
     )
 
     params_after = list(model.parameters())

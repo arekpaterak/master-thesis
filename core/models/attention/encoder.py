@@ -14,6 +14,7 @@ class EncoderOutput(NamedTuple):
 class Encoder(nn.Module):
     def __init__(
         self,
+        *,
         d_x: int = 2,
         d_h: int = 128,
         num_heads: int = 8,
@@ -30,8 +31,7 @@ class Encoder(nn.Module):
         """
         super().__init__()
 
-        # Learned linear projection: h_i^(0) = W^x * x_i + b^x
-        self.input_projection = nn.Linear(d_x, d_h)
+        self.input_projection = TSPInitialNodeEmbedding(d_x=d_x, d_h=d_h)
 
         # N attention layers
         self.layers = nn.ModuleList(
@@ -68,22 +68,13 @@ class Encoder(nn.Module):
         return EncoderOutput(h, h_graph)
 
 
-class FeedForward(nn.Module):
-    def __init__(self, model_hidden_dim: int, d_ff: int = 512) -> None:
-        """
-        Args:
-            model_hidden_dim: The dimension denoted as $h$ in the paper.
-            d_ff: The dimension of the hidden layer in the feedforward network. Equal to 512 in the paper.
-        """
+class TSPInitialNodeEmbedding(nn.Module):
+    def __init__(self, *, d_x: int = 2, d_h: int = 128) -> None:
         super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(model_hidden_dim, d_ff),
-            nn.ReLU(),
-            nn.Linear(d_ff, model_hidden_dim),
-        )
+        self.input_projection = nn.Linear(d_x, d_h)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.layers(x)
+        return self.input_projection(x)
 
 
 class AttentionLayer(nn.Module):
@@ -91,6 +82,7 @@ class AttentionLayer(nn.Module):
         super().__init__()
         assert d_h % num_heads == 0
 
+        # TODO: Use simple nn.MultiheadAttention instead of torch_geometric's TransformerConv
         self.MHA = TransformerConv(
             in_channels=d_h,
             out_channels=d_h // num_heads,
@@ -105,9 +97,28 @@ class AttentionLayer(nn.Module):
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         # MHA sublayer (Eq. 2)
+        # TODO: Adjust BN if using nn.MultiheadAttention instead of TransformerConv
         x = self.BN1(x + self.MHA(x, edge_index))
 
         # FF sublayer (Eq. 3)
         x = self.BN2(x + self.FF(x))
 
         return x
+
+
+class FeedForward(nn.Module):
+    def __init__(self, d_h: int, d_ff: int = 512) -> None:
+        """
+        Args:
+            d_h: The dimension denoted as $h$ in the paper.
+            d_ff: The dimension of the hidden layer in the feedforward network. Equal to 512 in the paper.
+        """
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(d_h, d_ff),
+            nn.ReLU(),
+            nn.Linear(d_ff, d_h),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.layers(x)

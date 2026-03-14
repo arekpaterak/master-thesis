@@ -8,10 +8,10 @@ from core.problems.tsp.solution import TSPBatchSolution
 
 class RepairOperator(ABC):
     @abstractmethod
-    def repair(self, partials: TSPBatchSolution) -> TSPBatchSolution: ...
+    def repair(self, partial_solutions: TSPBatchSolution) -> TSPBatchSolution: ...
 
-    def __call__(self, partials: TSPBatchSolution) -> TSPBatchSolution:
-        return self.repair(partials)
+    def __call__(self, partial_solutions: TSPBatchSolution) -> TSPBatchSolution:
+        return self.repair(partial_solutions)
 
 
 class AttentionModelRepair(RepairOperator):
@@ -19,17 +19,17 @@ class AttentionModelRepair(RepairOperator):
         self.model = model
         self.greedy = greedy
 
-    def repair(self, partials: TSPBatchSolution) -> TSPBatchSolution:
-        partial_tour = self._extract_valid_tour(partials.tour)
+    def repair(self, partial_solutions: TSPBatchSolution) -> TSPBatchSolution:
+        partial_tour = self._extract_valid_tour(partial_solutions.tour)
 
         result = self.model(
-            partials.locations,
+            partial_solutions.instance,
             greedy=self.greedy,
             partial_tour=partial_tour,
         )
 
         return TSPBatchSolution(
-            locations=partials.locations,
+            instance=partial_solutions.instance,
             tour=result.tour,
         )
 

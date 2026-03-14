@@ -4,11 +4,11 @@ from rl4co.envs.routing.tsp.generator import TSPGenerator
 from tensordict import TensorDict
 from torch.distributions import Uniform
 
+from core.problems.sampler import BatchSampler
 from core.problems.tsp.config import TSPConfig
-from core.problems.tsp.sampler import TSPSampler
 
 
-class RL4COTSPSampler(TSPSampler[TensorDict]):
+class RL4COTSPSampler(BatchSampler[TensorDict]):
     def __init__(self, config: TSPConfig) -> None:
         assert config.distribution_of_locations == "uniform"
 

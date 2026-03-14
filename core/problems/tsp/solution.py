@@ -6,8 +6,9 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from tensordict import TensorClass
 
-from core.problems.tsp import TSPInstance
+from core.problems.tsp import TSPBatchInstance, TSPInstance
 
 
 @dataclass(frozen=True)
@@ -133,34 +134,26 @@ def tour_length(instances, solutions) -> torch.Tensor:
     return (ordered - rolled).norm(dim=-1).sum(dim=-1)  # (batch,)
 
 
-@dataclass(frozen=True)
-class TSPBatchSolution:
+class TSPBatchSolution(TensorClass):
     """
-    Batched solution representation using tensors throughout.
+    Batched solution representation.
 
     tour holds full (batch, n) tensor, with -1 for unvisited positions.
     """
 
-    locations: torch.Tensor  # (batch, n, 2)
+    instance: TSPBatchInstance
     tour: torch.Tensor  # (batch, n), -1 for unvisited slots
 
     @property
-    def batch_size(self) -> int:
-        return self.locations.shape[0]
-
-    @property
     def n(self) -> int:
-        return self.locations.shape[1]
+        return self.instance.n
 
     @property
     def tour_lengths(self) -> torch.Tensor:
-        return tour_length(self.locations, self.tour)  # (batch,)
+        return tour_length(self.instance.locations, self.tour)  # (batch,)
 
-    def to_list(self) -> list[TSPSolution]:
-        return [
-            TSPSolution(
-                instance=TSPInstance(self.locations[b_idx]),
-                tour=self.tour[b_idx],
-            )
-            for b_idx in range(self.batch_size)
-        ]
+    def get_single(self, idx: int) -> TSPSolution:
+        return TSPSolution(
+            instance=TSPInstance(locations=self.instance.locations[idx]),
+            tour=self.tour[idx],
+        )

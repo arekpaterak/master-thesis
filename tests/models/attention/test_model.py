@@ -1,6 +1,5 @@
-import torch
-
 from core.models.attention.model import AttentionModel
+from core.problems.tsp import TSPBatchSampler, TSPConfig
 
 
 def test_attention_model_rollout():
@@ -10,7 +9,7 @@ def test_attention_model_rollout():
     d_h = 16
 
     model = AttentionModel(d_x=d_x, d_h=d_h, num_heads=2, num_layers=1)
-    instances = torch.rand((batch_size, n, d_x))
+    instances = TSPBatchSampler(TSPConfig(num_locations=n))(batch_size)
 
     result_greedy = model(instances, greedy=True)
     assert result_greedy.tour.shape == (batch_size, n), "Expected tour shape (batch_size, n)"

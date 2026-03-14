@@ -9,7 +9,7 @@ from scipy import stats
 from tqdm.auto import tqdm
 
 from core.models.attention.model import AttentionModel, RolloutResult
-from core.problems.tsp import TensorTSPSampler
+from core.problems.tsp import TSPBatchSampler
 from core.problems.tsp.solution import tour_length
 
 
@@ -29,7 +29,7 @@ class PairedTTestResult(NamedTuple):
 
 def evaluate(
     model: AttentionModel,
-    tsp_sampler: TensorTSPSampler,
+    tsp_sampler: TSPBatchSampler,
     n_instances: int = 10_000,
     batch_size: int = 512,
     device: str | torch.types.Device = "cpu",
@@ -41,14 +41,14 @@ def evaluate(
             bs = min(batch_size, n_instances - len(all_lengths) * batch_size)
             instances = tsp_sampler(bs).to(device)  # (batch, n, 2)
             rollout = model(instances, greedy=True)
-            all_lengths.append(tour_length(instances, rollout.tour).cpu())
+            all_lengths.append(tour_length(instances.locations, rollout.tour).cpu())
     return EvaluationResult(lengths=torch.cat(all_lengths))
 
 
 def one_sided_paired_ttest(
     model: AttentionModel,
     baseline: AttentionModel,
-    tsp_sampler: TensorTSPSampler,
+    tsp_sampler: TSPBatchSampler,
     n_instances: int = 10_000,
     batch_size: int = 512,
     alpha: float = 0.05,
@@ -95,13 +95,12 @@ class EpochSummary(NamedTuple):
 
 def train(
     model: AttentionModel,
-    tsp_sampler: TensorTSPSampler,
+    tsp_sampler: TSPBatchSampler,
     n_epochs: int = 100,
     steps_per_epoch: int = 2500,
     batch_size: int = 512,
     lr: float = 1e-4,
     alpha: float = 0.05,
-    device: str | torch.types.Device = "cpu",
 ) -> list[EpochSummary]:
     """
     Train the Attention Model using REINFORCE with a greedy rollout baseline,
@@ -110,9 +109,9 @@ def train(
     Returns:
         (model, epoch_summaries)
     """
+    device = next(model.parameters()).device
 
     # (Algorithm 1, line 2)
-    model = model.to(device)
     baseline = prepare_baseline(model)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.0)
@@ -142,7 +141,7 @@ def train(
         )
         for _ in step_bar:
             # Sample batch of random instances (Algorithm 1, line 5)
-            instances = tsp_sampler(batch_size).to(next(model.parameters()).device)  # (batch, n, 2)
+            instances = tsp_sampler(batch_size).to(device)  # (batch, n, 2)
 
             # Sample rollout from training policy (line 6)
             rollout: RolloutResult = model(instances, greedy=False)
@@ -152,8 +151,8 @@ def train(
                 baseline_rollout = baseline(instances, greedy=True)
 
             # REINFORCE gradient (line 8)
-            L = tour_length(instances, rollout.tour)  # (batch,)
-            L_baseline = tour_length(instances, baseline_rollout.tour)  # (batch,)
+            L = tour_length(instances.locations, rollout.tour)  # (batch,)
+            L_baseline = tour_length(instances.locations, baseline_rollout.tour)  # (batch,)
 
             advantage = (L - L_baseline).detach()  # (batch,)
             loss = (advantage * rollout.log_p.sum(dim=1)).mean()
@@ -188,7 +187,7 @@ def train(
             baseline,
             tsp_sampler,
             alpha=alpha,
-            device=next(model.parameters()).device,
+            device=device,
         )
         if test.improved:
             baseline = prepare_baseline(model)

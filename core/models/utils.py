@@ -26,6 +26,6 @@ def load_checkpoint(
 ) -> None:
     device = next(model.parameters()).device
     checkpoint = torch.load(path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

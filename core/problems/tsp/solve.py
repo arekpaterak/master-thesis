@@ -18,4 +18,4 @@ def random_permutation(instance: TSPBatchInstance) -> TSPBatchSolution:
         [customer_indices[torch.randperm(num_locations)] for _ in range(batch_size)]
     )
 
-    return TSPBatchSolution(locations=instance.locations, tour=random_permutations)
+    return TSPBatchSolution(instance=instance, tour=random_permutations)

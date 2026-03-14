@@ -1,18 +1,12 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-
 import torch
 
-from core.problems.tsp import TSPConfig
+from core.problems.sampler import BatchSampler
+from core.problems.tsp import TSPBatchInstance, TSPConfig
 
 
-class TSPSampler[T](ABC):
-    @abstractmethod
-    def __call__(self, batch_size: int) -> T: ...
-
-
-class TensorTSPSampler(TSPSampler[torch.Tensor]):
+class TSPBatchSampler(BatchSampler[TSPBatchInstance]):
     def __init__(self, config: TSPConfig, seed: int | None = None) -> None:
         assert config.distribution_of_locations == "uniform"
 
@@ -21,9 +15,12 @@ class TensorTSPSampler(TSPSampler[torch.Tensor]):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def __call__(self, batch_size: int) -> torch.Tensor:
-        return (
-            torch.rand(batch_size, self._config.num_locations, 2, generator=self._generator)
+    def __call__(self, batch_size: int) -> TSPBatchInstance:
+        return TSPBatchInstance(
+            locations=torch.rand(
+                batch_size, self._config.num_locations, 2, generator=self._generator
+            )
             * (self._config.max_coordinate - self._config.min_coordinate)
-            + self._config.min_coordinate
+            + self._config.min_coordinate,
+            batch_size=[batch_size],
         )
