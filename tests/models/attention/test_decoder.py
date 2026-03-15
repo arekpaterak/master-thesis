@@ -16,12 +16,12 @@ def test_decoder_output_shape():
 
     # Empty tour
     tour = []
-    log_p = decoder(h_nodes, h_graph, tour)
+    log_p = decoder(h_nodes=h_nodes, h_graph=h_graph, tour_idx=tour)
     assert log_p.shape == (batch_size, n), f"Expected log_p shape {(batch_size, n)}"
 
     # Partial tour
     tour = [0, 2]
-    log_p = decoder(h_nodes, h_graph, tour)
+    log_p = decoder(h_nodes=h_nodes, h_graph=h_graph, tour_idx=tour)
     assert log_p.shape == (batch_size, n), f"Expected log_p shape {(batch_size, n)}"
 
     # Masked nodes should have probability close to 0 (logprob close to -inf)

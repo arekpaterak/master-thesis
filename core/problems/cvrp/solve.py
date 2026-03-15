@@ -4,14 +4,14 @@ from typing import Protocol
 
 import torch
 
-from core.problems.cvrp import CVRPBatchInstance, CVRPBatchSolution
+from core.problems.cvrp import CVRPInstance, CVRPSolution
 
 
 class CVRPSolveStrategy(Protocol):
-    def __call__(self, instance: CVRPBatchInstance) -> CVRPBatchSolution: ...
+    def __call__(self, instance: CVRPInstance) -> CVRPSolution: ...
 
 
-def one_customer_per_route(instance: CVRPBatchInstance) -> CVRPBatchSolution:
+def one_customer_per_route(instance: CVRPInstance) -> CVRPSolution:
     """Each customer gets its own route. Always feasible if no single demand exceeds capacity."""
     was_batched = True
     if len(instance.batch_size) == 0:
@@ -25,18 +25,18 @@ def one_customer_per_route(instance: CVRPBatchInstance) -> CVRPBatchSolution:
     customers = torch.arange(1, N + 1, device=device).repeat(B, 1)
     depots = torch.zeros_like(customers)
 
-    sequences = torch.stack([depots, customers], dim=2).view(B, -1)
+    sequence = torch.stack([depots, customers], dim=2).view(B, -1)
     final_zeros = torch.zeros((B, 1), dtype=torch.long, device=device)
-    sequences = torch.cat([sequences, final_zeros], dim=1)
+    sequence = torch.cat([sequence, final_zeros], dim=1)
 
     if not was_batched:
         instance = instance.squeeze(0)
-        sequences = sequences.squeeze(0)
+        sequence = sequence.squeeze(0)
 
-    return CVRPBatchSolution(instance=instance, sequences=sequences, batch_size=instance.batch_size)
+    return CVRPSolution(instance=instance, sequence=sequence, batch_size=instance.batch_size)
 
 
-def all_customers_one_route(instance: CVRPBatchInstance) -> CVRPBatchSolution:
+def all_customers_one_route(instance: CVRPInstance) -> CVRPSolution:
     """
     Single route visiting all customers (e.g. [0, 1, 2, ..., 0]).
     Ignores capacity so may be infeasible.
@@ -55,16 +55,16 @@ def all_customers_one_route(instance: CVRPBatchInstance) -> CVRPBatchSolution:
     start = torch.zeros((B, 1), dtype=torch.long, device=device)
     end = torch.zeros((B, 1), dtype=torch.long, device=device)
 
-    sequences = torch.cat([start, customers, end], dim=1)
+    sequence = torch.cat([start, customers, end], dim=1)
 
     if not was_batched:
         instance = instance.squeeze(0)
-        sequences = sequences.squeeze(0)
+        sequence = sequence.squeeze(0)
 
-    return CVRPBatchSolution(instance=instance, sequences=sequences, batch_size=instance.batch_size)
+    return CVRPSolution(instance=instance, sequence=sequence, batch_size=instance.batch_size)
 
 
-def index_sequential(instance: CVRPBatchInstance) -> CVRPBatchSolution:
+def index_sequential(instance: CVRPInstance) -> CVRPSolution:
     """Add customers in index order until capacity is exhausted."""
     was_batched = True
     if len(instance.batch_size) == 0:
@@ -75,7 +75,7 @@ def index_sequential(instance: CVRPBatchInstance) -> CVRPBatchSolution:
     N = instance.num_customers
     device = instance.device
 
-    sequences = []
+    sequence = []
     for b in range(B):
         tokens = [0]
         load = 0.0
@@ -91,14 +91,14 @@ def index_sequential(instance: CVRPBatchInstance) -> CVRPBatchSolution:
             load += demand
 
         tokens.append(0)
-        sequences.append(torch.tensor(tokens, dtype=torch.long, device=device))
-    sequences = torch.nn.utils.rnn.pad_sequence(sequences, batch_first=True)
+        sequence.append(torch.tensor(tokens, dtype=torch.long, device=device))
+    sequence = torch.nn.utils.rnn.pad_sequence(sequence, batch_first=True)
 
     if not was_batched:
         instance = instance.squeeze(0)
-        sequences = sequences.squeeze(0)
+        sequence = sequence.squeeze(0)
 
-    return CVRPBatchSolution(instance=instance, sequences=sequences, batch_size=instance.batch_size)
+    return CVRPSolution(instance=instance, sequence=sequence, batch_size=instance.batch_size)
 
 
 STRATEGIES = [

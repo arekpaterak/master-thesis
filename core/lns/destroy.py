@@ -2,14 +2,14 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from core.problems.tsp.solution import TSPBatchSolution
+from core.problems.tsp.solution import TSPSolution
 
 
 class DestroyOperator(ABC):
     @abstractmethod
-    def destroy(self, solution: TSPBatchSolution) -> TSPBatchSolution: ...
+    def destroy(self, solution: TSPSolution) -> TSPSolution: ...
 
-    def __call__(self, solution: TSPBatchSolution) -> TSPBatchSolution:
+    def __call__(self, solution: TSPSolution) -> TSPSolution:
         return self.destroy(solution)
 
 
@@ -21,7 +21,7 @@ class RandomSegmentDestroy(DestroyOperator):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def destroy(self, solution: TSPBatchSolution) -> TSPBatchSolution:
+    def destroy(self, solution: TSPSolution) -> TSPSolution:
         was_batched = False
         if len(solution.batch_size) == 0:
             solution = solution.unsqueeze(0)
@@ -49,7 +49,7 @@ class RandomSegmentDestroy(DestroyOperator):
             solution = solution.squeeze(0)
             new_tour = new_tour.squeeze(0)
 
-        return TSPBatchSolution(
+        return TSPSolution(
             instance=solution.instance,
             tour=new_tour,
             batch_size=solution.batch_size,

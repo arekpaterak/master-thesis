@@ -6,11 +6,11 @@ from tqdm import tqdm
 from core.lns.acceptance_criterion import AcceptanceCriterion
 from core.lns.destroy import DestroyOperator
 from core.lns.repair import RepairOperator
-from core.problems.tsp.solution import TSPBatchSolution
+from core.problems.tsp.solution import TSPSolution
 
 
 class LNSResult(NamedTuple):
-    best_solutions: TSPBatchSolution
+    best_solutions: TSPSolution
     initial_lengths: torch.Tensor  # (batch,)
     best_lengths: torch.Tensor  # (batch,)
     history: torch.Tensor  # (n_iterations+1, batch)
@@ -19,7 +19,7 @@ class LNSResult(NamedTuple):
 
 @torch.no_grad()
 def lns(
-    starting_solutions: TSPBatchSolution,
+    starting_solutions: TSPSolution,
     destroy: DestroyOperator,
     repair: RepairOperator,
     accept: AcceptanceCriterion,
@@ -29,7 +29,7 @@ def lns(
 ) -> LNSResult:
     current = starting_solutions
     best = starting_solutions
-    history = [starting_solutions.tour_lengths.cpu()]
+    history = [starting_solutions.tour_length.cpu()]
 
     iter_bar = tqdm(range(n_iterations), desc="LNS", disable=not with_progress)
     for _ in iter_bar:
@@ -39,21 +39,21 @@ def lns(
 
         # update current and best using tensor masking
         current = _select(mask, candidate, current)
-        best = _select(current.tour_lengths < best.tour_lengths, current, best)
-        history.append(best.tour_lengths.detach().cpu())
+        best = _select(current.tour_length < best.tour_length, current, best)
+        history.append(best.tour_length.detach().cpu())
 
     return LNSResult(
         best_solutions=best,
-        initial_lengths=starting_solutions.tour_lengths.cpu(),
-        best_lengths=best.tour_lengths.cpu(),
+        initial_lengths=starting_solutions.tour_length.cpu(),
+        best_lengths=best.tour_length.cpu(),
         history=torch.stack(history, dim=0),
-        improvements=(1 - best.tour_lengths.cpu() / starting_solutions.tour_lengths.cpu()),
+        improvements=(1 - best.tour_length.cpu() / starting_solutions.tour_length.cpu()),
     )
 
 
-def _select(mask: torch.Tensor, a: TSPBatchSolution, b: TSPBatchSolution) -> TSPBatchSolution:
+def _select(mask: torch.Tensor, a: TSPSolution, b: TSPSolution) -> TSPSolution:
     """Select a[i] where mask[i] is True, else b[i]."""
-    return TSPBatchSolution(
+    return TSPSolution(
         instance=a.instance,  # shared, should not change
         tour=torch.where(mask.unsqueeze(1), a.tour, b.tour),
     )

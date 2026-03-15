@@ -4,15 +4,15 @@ from typing import Protocol
 
 import torch
 
-from core.problems.tsp import TSPBatchInstance
-from core.problems.tsp.solution import TSPBatchSolution
+from core.problems.tsp import TSPInstance
+from core.problems.tsp.solution import TSPSolution
 
 
 class TSPSolveStrategy(Protocol):
-    def __call__(self, instance: TSPBatchInstance) -> TSPBatchSolution: ...
+    def __call__(self, instance: TSPInstance) -> TSPSolution: ...
 
 
-def random_permutation(instance: TSPBatchInstance) -> TSPBatchSolution:
+def random_permutation(instance: TSPInstance) -> TSPSolution:
     was_batched = True
     if len(instance.batch_size) == 0:
         instance = instance.unsqueeze(0)
@@ -30,7 +30,7 @@ def random_permutation(instance: TSPBatchInstance) -> TSPBatchSolution:
         instance = instance.squeeze(0)
         random_permutations = random_permutations.squeeze(0)
 
-    return TSPBatchSolution(
+    return TSPSolution(
         instance=instance,
         tour=random_permutations,
         batch_size=instance.batch_size,

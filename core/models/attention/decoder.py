@@ -4,7 +4,13 @@ import torch.nn.functional as F
 
 
 class Decoder(nn.Module):
-    def __init__(self, d_h: int = 128, num_heads: int = 8, C: float = 10.0) -> None:
+    def __init__(
+        self,
+        *,
+        d_h: int = 128,
+        num_heads: int = 8,
+        C: float = 10.0,
+    ) -> None:
         super().__init__()
         self.d_h = d_h
         self.C = C
@@ -21,9 +27,11 @@ class Decoder(nn.Module):
             batch_first=True,
             bias=False,
         )
-        self.final_scorer = SingleHeadScorer(d_h, C)
+        self.final_scorer = SingleHeadScorer(d_h=d_h, C=C)
 
-    def forward(self, h_nodes, h_graph, tour_idx) -> torch.Tensor:
+    def forward(
+        self, *, h_nodes: torch.Tensor, h_graph: torch.Tensor, tour_idx: list
+    ) -> torch.Tensor:
         batch_size, n, _ = h_nodes.shape
 
         # Initial context embeddings for first and last node in the tour
@@ -35,10 +43,10 @@ class Decoder(nn.Module):
             h_last = h_nodes[torch.arange(batch_size), tour_idx[-1]]
 
         # Initial context embedding
-        h_c = torch.cat([h_graph, h_last, h_first], dim=-1)
+        context_embedding = torch.cat([h_graph, h_last, h_first], dim=-1)
 
         # Project context to d_h
-        h_c = self.context_projection(h_c)
+        context_embedding = self.context_projection(context_embedding)
 
         # Mask nodes that cannot be visited
         mask = torch.zeros(batch_size, n, dtype=torch.bool, device=h_nodes.device)
@@ -46,28 +54,34 @@ class Decoder(nn.Module):
             mask[torch.arange(batch_size), t_idx] = True
 
         # MHA: context node attends over all unmasked nodes
-        h_c, _ = self.mha(
-            query=h_c.unsqueeze(1),
+        context_embedding, _ = self.mha(
+            query=context_embedding.unsqueeze(1),
             key=h_nodes,
             value=h_nodes,
             key_padding_mask=mask,
         )
-        h_c = h_c.squeeze(1)  # (batch, d_model)
+        context_embedding = context_embedding.squeeze(1)  # (batch, d_model)
 
         # Final single-head layer
-        log_p = self.final_scorer(h_c, h_nodes, mask)
+        log_p = self.final_scorer(h_c=context_embedding, h_nodes=h_nodes, mask=mask)
         return log_p
 
 
 class SingleHeadScorer(nn.Module):
-    def __init__(self, d_h: int = 128, C: float = 10.0) -> None:
+    def __init__(self, *, d_h: int = 128, C: float = 10.0) -> None:
         super().__init__()
         self.scale = d_h**0.5
         self.C = C
         self.W_Q = nn.Linear(d_h, d_h, bias=False)
         self.W_K = nn.Linear(d_h, d_h, bias=False)
 
-    def forward(self, h_c, h_nodes, mask) -> torch.Tensor:
+    def forward(
+        self,
+        *,
+        h_c: torch.Tensor,
+        h_nodes: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> torch.Tensor:
         """
         Args:
             h_c: (batch, d_model)

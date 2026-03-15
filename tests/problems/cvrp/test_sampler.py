@@ -1,13 +1,17 @@
+import pytest
 import torch
 
 from core.problems.cvrp.config import CVRPConfig
-from core.problems.cvrp.sampler import CVRPBatchSampler
+from core.problems.cvrp.sampler import CVRPSampler
 
 
-def test_sampler_shape():
+@pytest.mark.parametrize(
+    "batch_size",
+    [1, 5, 10],
+)
+def test_sampler_shape(batch_size: int):
     config = CVRPConfig.for_n(20)
-    sampler = CVRPBatchSampler(config)
-    batch_size = 5
+    sampler = CVRPSampler(config)
 
     sample = sampler(batch_size)
 
@@ -27,7 +31,7 @@ def test_sampler_shape():
 
 def test_sampler_value_range():
     config = CVRPConfig.for_n(20)
-    sampler = CVRPBatchSampler(config)
+    sampler = CVRPSampler(config)
     batch_size = 5
 
     sample = sampler(batch_size)
@@ -49,8 +53,8 @@ def test_sampler_value_range():
 def test_sampler_determinism():
     config = CVRPConfig.for_n(20)
     seed = 42
-    sampler1 = CVRPBatchSampler(config, seed=seed)
-    sampler2 = CVRPBatchSampler(config, seed=seed)
+    sampler1 = CVRPSampler(config, seed=seed)
+    sampler2 = CVRPSampler(config, seed=seed)
     batch_size = 5
 
     sample1 = sampler1(batch_size)
@@ -71,8 +75,8 @@ def test_sampler_different_seeds():
     config = CVRPConfig.for_n(20)
     seed1 = 42
     seed2 = 43
-    sampler1 = CVRPBatchSampler(config, seed=seed1)
-    sampler2 = CVRPBatchSampler(config, seed=seed2)
+    sampler1 = CVRPSampler(config, seed=seed1)
+    sampler2 = CVRPSampler(config, seed=seed2)
     batch_size = 5
 
     sample1 = sampler1(batch_size)
@@ -81,3 +85,16 @@ def test_sampler_different_seeds():
     assert not torch.allclose(sample1.locations, sample2.locations), (
         "Expected samples from two samplers with different seeds to be different"
     )
+
+
+def test_access_single():
+    config = CVRPConfig.for_n(20)
+    sampler = CVRPSampler(config)
+    batch_size = 5
+
+    sample = sampler(batch_size)
+
+    single_sample = sample[0]
+
+    assert single_sample.ndim == 0
+    assert single_sample.locations.shape == (config.num_customers + 1, 2)

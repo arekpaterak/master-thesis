@@ -1,26 +1,26 @@
 import pytest
 
-from core.problems.tsp import TSPBatchInstance, TSPBatchSampler, TSPConfig
-from core.problems.tsp.solution import TSPBatchSolution
+from core.problems.tsp import TSPConfig, TSPInstance, TSPSampler
+from core.problems.tsp.solution import TSPSolution
 from core.problems.tsp.solve import STRATEGIES
 
 
 @pytest.fixture
-def simple_instance() -> TSPBatchInstance:
+def simple_instance() -> TSPInstance:
     config = TSPConfig(num_locations=10, distribution_of_locations="uniform")
-    sampler = TSPBatchSampler(config)
+    sampler = TSPSampler(config)
     batch_size = 5
     return sampler(batch_size)
 
 
 @pytest.fixture
-def sampled_instance(request) -> TSPBatchInstance:
+def sampled_instance(request) -> TSPInstance:
     batch_size, num_locations = request.param
     config = TSPConfig(
         num_locations=num_locations,
         distribution_of_locations="uniform",
     )
-    sampler = TSPBatchSampler(config)
+    sampler = TSPSampler(config)
     return sampler(batch_size)
 
 
@@ -28,7 +28,7 @@ def sampled_instance(request) -> TSPBatchInstance:
 def test_strategy_returns_solution(strategy, simple_instance):
     solution = strategy(simple_instance)
 
-    assert isinstance(solution, TSPBatchSolution)
+    assert isinstance(solution, TSPSolution)
     assert solution.batch_size == simple_instance.batch_size
 
 
@@ -63,7 +63,7 @@ def test_solutions_are_valid_permutations(strategy, simple_instance):
     ids=lambda x: f"{x[0]}x{x[1]}",
 )
 @pytest.mark.parametrize("strategy", STRATEGIES)
-def test_various_instance_sizes(strategy, sampled_instance: TSPBatchInstance):
+def test_various_instance_sizes(strategy, sampled_instance: TSPInstance):
     batch_size, num_locations, _ = sampled_instance.locations.shape
 
     solution = strategy(sampled_instance)

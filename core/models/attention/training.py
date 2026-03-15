@@ -9,7 +9,7 @@ from scipy import stats
 from tqdm.auto import tqdm
 
 from core.models.attention.model import AttentionModel, RolloutResult
-from core.problems.tsp import TSPBatchSampler
+from core.problems.tsp import TSPSampler
 from core.problems.tsp.solution import tour_length
 
 
@@ -29,7 +29,7 @@ class PairedTTestResult(NamedTuple):
 
 def evaluate(
     model: AttentionModel,
-    tsp_sampler: TSPBatchSampler,
+    tsp_sampler: TSPSampler,
     n_instances: int = 10_000,
     batch_size: int = 512,
     device: str | torch.types.Device = "cpu",
@@ -48,7 +48,7 @@ def evaluate(
 def one_sided_paired_ttest(
     model: AttentionModel,
     baseline: AttentionModel,
-    tsp_sampler: TSPBatchSampler,
+    tsp_sampler: TSPSampler,
     n_instances: int = 10_000,
     batch_size: int = 512,
     alpha: float = 0.05,
@@ -95,7 +95,7 @@ class EpochSummary(NamedTuple):
 
 def train(
     model: AttentionModel,
-    tsp_sampler: TSPBatchSampler,
+    tsp_sampler: TSPSampler,
     n_epochs: int = 100,
     steps_per_epoch: int = 2500,
     batch_size: int = 512,
