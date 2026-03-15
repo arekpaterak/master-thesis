@@ -2,11 +2,11 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from core.problems.tsp.solution import TSPBatchSolution
+from core.problems.tsp.solution import TSPSolution
 
 
 class AcceptanceCriterion(ABC):
-    def accept(self, current: TSPBatchSolution, candidates: TSPBatchSolution) -> torch.Tensor:
+    def accept(self, current: TSPSolution, candidates: TSPSolution) -> torch.Tensor:
         """
         Args:
             current: The current batch of solutions.
@@ -21,12 +21,12 @@ class AcceptanceCriterion(ABC):
         return self._accept(current, candidates)
 
     @abstractmethod
-    def _accept(self, current: TSPBatchSolution, candidates: TSPBatchSolution) -> torch.Tensor: ...
+    def _accept(self, current: TSPSolution, candidates: TSPSolution) -> torch.Tensor: ...
 
-    def __call__(self, current: TSPBatchSolution, candidates: TSPBatchSolution) -> torch.Tensor:
+    def __call__(self, current: TSPSolution, candidates: TSPSolution) -> torch.Tensor:
         return self.accept(current, candidates)
 
 
 class GreedyAcceptance(AcceptanceCriterion):
-    def _accept(self, current: TSPBatchSolution, candidates: TSPBatchSolution) -> torch.Tensor:
-        return candidates.tour_lengths < current.tour_lengths
+    def _accept(self, current: TSPSolution, candidates: TSPSolution) -> torch.Tensor:
+        return candidates.tour_length < current.tour_length

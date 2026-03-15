@@ -1,38 +1,25 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from tensordict import TensorDict
 from tensordict.tensorclass import TensorClass
 
 
-@dataclass(frozen=True)
-class TSPInstance:
-    """Canonical, generator-agnostic representation of a single TSP instance."""
+class TSPInstance(TensorClass):
+    """Canonical, generator-agnostic representation of a single or batched TSP instance."""
 
-    locations: torch.Tensor  # (n, 2)
+    locations: torch.Tensor
+    """(B, N, 2) or (N, 2)"""
 
     def __post_init__(self):
-        assert self.locations.ndim == 2 and self.locations.shape[1] == 2, (
-            "Expected locations to be of shape (num_locations, 2)."
+        assert self.locations.shape[-1] == 2, (
+            "Expected locations to have shape (batch_size, num_locations, 2) or (num_locations, 2)."
         )
 
     @property
     def num_locations(self) -> int:
-        return self.locations.shape[0]
-
-    @classmethod
-    def from_rl4co(cls, td: TensorDict) -> TSPInstance:
-        """Convert from a single (unbatched) RL4CO TensorDict."""
-        assert td.batch_dims == 0, "Expected an unbatched TensorDict (single instance)."
-        return cls(locations=td["locs"])
-
-    def to_rl4co(self) -> TensorDict:
-        """Convert to the RL4CO TensorDict format."""
-        return TensorDict({"locs": self.locations}, batch_size=[])
+        return self.locations.shape[-2]
 
     def visualize(
         self,
@@ -40,6 +27,11 @@ class TSPInstance:
         max_coordinate: float | None = None,
         ax: Axes | None = None,
     ) -> None:
+        if self.batch_size.numel() > 1:
+            raise ValueError("visualize() only works on a single instance.")
+
+        instance = self.squeeze(0) if self.batch_size else self
+
         if min_coordinate is not None and max_coordinate is not None:
             assert min_coordinate < max_coordinate, (
                 "min_coordinate must be less than max_coordinate."
@@ -48,7 +40,7 @@ class TSPInstance:
         if ax is None:
             ax = plt.gca()
 
-        locations = self.locations.cpu().numpy()
+        locations = instance.locations.cpu().numpy()
 
         if min_coordinate is None or max_coordinate is None:
             min_coordinate = locations.min()
@@ -68,14 +60,3 @@ class TSPInstance:
         ax.set_aspect("equal", adjustable="box")
         ax.set_title(f"TSP({self.num_locations})")
         ax.grid(True, linestyle="--", alpha=0.4)
-
-
-class TSPBatchInstance(TensorClass):
-    locations: torch.Tensor  # (B, N, 2) or (N, 2)
-
-    @property
-    def num_locations(self) -> int:
-        return self.locations.shape[-2]
-
-    def get_single(self, idx: int) -> TSPInstance:
-        return TSPInstance(locations=self.locations[idx])

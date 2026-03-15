@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import torch
 
-from core.problems.sampler import BatchSampler
-from core.problems.tsp import TSPBatchInstance, TSPConfig
+from core.problems.sampler import Sampler
+from core.problems.tsp import TSPConfig, TSPInstance
 
 
-class TSPBatchSampler(BatchSampler[TSPBatchInstance]):
+class TSPSampler(Sampler[TSPInstance]):
     def __init__(self, config: TSPConfig, seed: int | None = None) -> None:
         assert config.distribution_of_locations == "uniform"
 
@@ -15,8 +15,8 @@ class TSPBatchSampler(BatchSampler[TSPBatchInstance]):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def __call__(self, batch_size: int) -> TSPBatchInstance:
-        return TSPBatchInstance(
+    def __call__(self, batch_size: int) -> TSPInstance:
+        return TSPInstance(
             locations=torch.rand(
                 batch_size, self._config.num_locations, 2, generator=self._generator
             )

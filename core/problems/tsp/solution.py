@@ -1,46 +1,94 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from tensordict import TensorClass
 
-from core.problems.tsp import TSPBatchInstance, TSPInstance
+from core.problems.tsp import TSPInstance
 
 
-@dataclass(frozen=True)
-class TSPSolution:
-    """A (partial or complete) solution to a TSP instance."""
+# TODO: Adjust to work on better defined representation and handle discontinuous tours (for partial solutions)
+def tour_length(instances, solutions) -> torch.Tensor:
+    """
+    Args:
+        instances: (batch, n, 2)
+        solutions: (batch, n) - permutation of node indices
+    Returns:
+        lengths: (batch,)
+    """
+    batch_size, n = solutions.shape
+    # gather coordinates in tour order
+    ordered = instances[torch.arange(batch_size).unsqueeze(1), solutions]  # (batch, n, 2)
+    # distance from each node to the next, wrapping around
+    rolled = torch.roll(ordered, -1, dims=1)
+    return (ordered - rolled).norm(dim=-1).sum(dim=-1)  # (batch,)
+
+
+class TSPSolution(TensorClass):
+    """
+    Canonical representation of single or batched TSP solutions.
+    """
 
     instance: TSPInstance
-    tour: torch.Tensor  # indices into instance.locations
+    tour: torch.Tensor
+    """(..., n), -1 for unvisited slots."""
 
     def __post_init__(self):
-        assert self.tour.ndim == 1, "Expected tour to be a 1D tensor of node indices."
-        assert self.tour.max() < self.instance.num_locations, (
-            "Tour contains node index out of bounds."
-        )
+        # Validate that tour indices are within bounds of the instance
+        mask = self.tour != -1
+        if mask.any():
+            assert self.tour[mask].max() < self.instance.num_locations, "Tour index out of bounds."
+            assert self.tour[mask].min() >= 0, "Tour index (excluding -1) must be non-negative."
 
     @property
-    def num_visited(self) -> int:
-        return self.tour.shape[0]
+    def num_locations(self) -> int:
+        return self.instance.num_locations
 
     @property
-    def is_complete(self) -> bool:
+    def num_visited(self) -> torch.Tensor:
+        return (self.tour != -1).sum(dim=-1)
+
+    @property
+    def is_complete(self) -> torch.Tensor:
         return self.num_visited == self.instance.num_locations
 
     @property
-    def tour_length(self) -> float:
-        ordered = self.instance.locations[self.tour]  # (num_visited, 2)
-        if self.is_complete:
-            rolled = torch.roll(ordered, -1, dims=0)
-        else:
-            rolled = ordered[1:]
-            ordered = ordered[:-1]
-        return (ordered - rolled).norm(dim=-1).sum().item()
+    def tour_length(self) -> torch.Tensor:
+        """
+        Calculates tour length for single or batched instances.
+        Handles both open paths (partial) and closed loops (complete).
+        """
+        # (..., N, 2)
+        locs = self.instance.locations
+
+        # Gather coordinates in tour order
+        # We use a dummy index for -1 to avoid errors during gather, then mask later
+        safe_tour = self.tour.clamp(min=0)
+        # Advanced indexing to handle arbitrary batch dims
+        ordered = locs.gather(dim=-2, index=safe_tour.unsqueeze(-1).expand(*safe_tour.shape, 2))
+
+        # Calculate distances between consecutive nodes
+        # (..., N-1, 2)
+        p1 = ordered[..., :-1, :]
+        p2 = ordered[..., 1:, :]
+        dists = (p1 - p2).norm(dim=-1)
+
+        # Mask out transitions involving -1
+        mask = (self.tour[..., :-1] != -1) & (self.tour[..., 1:] != -1)
+        total_dist = (dists * mask.float()).sum(dim=-1)
+
+        # If complete, add the return trip to the start
+        # Only add for batch elements that are actually complete
+        complete_mask = self.is_complete
+        if complete_mask.any():
+            start_loc = ordered[..., 0, :]
+            end_loc = ordered[..., -1, :]
+            return_dist = (end_loc - start_loc).norm(dim=-1)
+            total_dist = torch.where(complete_mask, total_dist + return_dist, total_dist)
+
+        return total_dist
 
     def visualize(
         self,
@@ -50,11 +98,16 @@ class TSPSolution:
         with_problem_size: bool = True,
         with_objective: bool = True,
     ) -> None:
+        if self.batch_size.numel() > 1:
+            raise ValueError(f"visualize() only works on a single instance. Got {self.batch_size}")
+
+        unbatched_self = self.squeeze(0) if self.batch_size else self
+
         if ax is None:
             ax = plt.gca()
 
-        locations = self.instance.locations.cpu().numpy()
-        tour = self.tour.cpu().numpy()
+        locations = unbatched_self.instance.locations.cpu().numpy()
+        tour = unbatched_self.tour.cpu().numpy()
 
         if min_coordinate is None or max_coordinate is None:
             min_coordinate = locations.min()
@@ -111,49 +164,7 @@ class TSPSolution:
             title += f"TSP({self.instance.num_locations}) | "
 
         if with_objective:
-            title += f"distance = {self.tour_length:.4f}"
+            title += f"distance = {self.tour_length.item():.4f}"
 
         ax.set_title(title)
         ax.grid(True, linestyle="--", alpha=0.4)
-
-
-# TODO: Adjust to work on better defined representation and handle discontinuous tours (for partial solutions)
-def tour_length(instances, solutions) -> torch.Tensor:
-    """
-    Args:
-        instances: (batch, n, 2)
-        solutions: (batch, n) - permutation of node indices
-    Returns:
-        lengths: (batch,)
-    """
-    batch_size, n = solutions.shape
-    # gather coordinates in tour order
-    ordered = instances[torch.arange(batch_size).unsqueeze(1), solutions]  # (batch, n, 2)
-    # distance from each node to the next, wrapping around
-    rolled = torch.roll(ordered, -1, dims=1)
-    return (ordered - rolled).norm(dim=-1).sum(dim=-1)  # (batch,)
-
-
-class TSPBatchSolution(TensorClass):
-    """
-    Batched solution representation.
-
-    tour holds full (batch, n) tensor, with -1 for unvisited positions.
-    """
-
-    instance: TSPBatchInstance
-    tour: torch.Tensor  # (batch, n), -1 for unvisited slots
-
-    @property
-    def num_locations(self) -> int:
-        return self.instance.num_locations
-
-    @property
-    def tour_lengths(self) -> torch.Tensor:
-        return tour_length(self.instance.locations, self.tour)  # (batch,)
-
-    def get_single(self, idx: int) -> TSPSolution:
-        return TSPSolution(
-            instance=TSPInstance(locations=self.instance.locations[idx]),
-            tour=self.tour[idx],
-        )

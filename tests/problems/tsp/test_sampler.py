@@ -1,13 +1,17 @@
+import pytest
 import torch
 
 from core.problems.tsp.config import TSPConfig
-from core.problems.tsp.sampler import TSPBatchSampler
+from core.problems.tsp.sampler import TSPSampler
 
 
-def test_sampler_shape():
+@pytest.mark.parametrize(
+    "batch_size",
+    [1, 5, 10],
+)
+def test_sampler_shape(batch_size: int):
     config = TSPConfig(num_locations=10, distribution_of_locations="uniform")
-    sampler = TSPBatchSampler(config)
-    batch_size = 5
+    sampler = TSPSampler(config)
 
     sample = sampler(batch_size)
 
@@ -26,7 +30,7 @@ def test_sampler_value_range():
         min_coordinate=0.0,
         max_coordinate=1.0,
     )
-    sampler = TSPBatchSampler(config)
+    sampler = TSPSampler(config)
     batch_size = 5
 
     sample = sampler(batch_size)
@@ -44,8 +48,8 @@ def test_sampler_determinism():
         max_coordinate=1.0,
     )
     seed = 42
-    sampler1 = TSPBatchSampler(config, seed=seed)
-    sampler2 = TSPBatchSampler(config, seed=seed)
+    sampler1 = TSPSampler(config, seed=seed)
+    sampler2 = TSPSampler(config, seed=seed)
     batch_size = 5
 
     sample1 = sampler1(batch_size)
@@ -65,8 +69,8 @@ def test_sampler_different_seeds():
     )
     seed1 = 42
     seed2 = 43
-    sampler1 = TSPBatchSampler(config, seed=seed1)
-    sampler2 = TSPBatchSampler(config, seed=seed2)
+    sampler1 = TSPSampler(config, seed=seed1)
+    sampler2 = TSPSampler(config, seed=seed2)
     batch_size = 5
 
     sample1 = sampler1(batch_size)
@@ -74,4 +78,21 @@ def test_sampler_different_seeds():
 
     assert not torch.allclose(sample1.locations, sample2.locations), (
         "Expected samples from two samplers with different seeds to be different"
+    )
+
+
+def test_access_single():
+    config = TSPConfig(
+        num_locations=10,
+    )
+    sampler = TSPSampler(config)
+    batch_size = 5
+
+    sample = sampler(batch_size)
+
+    single_sample = sample[0]
+
+    assert single_sample.ndim == 0
+    assert single_sample.locations.shape == (config.num_locations, 2), (
+        "Expected single sample locations to have shape (num_locations, 2)"
     )

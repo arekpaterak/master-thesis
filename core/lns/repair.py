@@ -3,14 +3,14 @@ from abc import ABC, abstractmethod
 import torch
 
 from core.models.attention import AttentionModel
-from core.problems.tsp.solution import TSPBatchSolution
+from core.problems.tsp.solution import TSPSolution
 
 
 class RepairOperator(ABC):
     @abstractmethod
-    def repair(self, partial_solution: TSPBatchSolution) -> TSPBatchSolution: ...
+    def repair(self, partial_solution: TSPSolution) -> TSPSolution: ...
 
-    def __call__(self, partial_solution: TSPBatchSolution) -> TSPBatchSolution:
+    def __call__(self, partial_solution: TSPSolution) -> TSPSolution:
         return self.repair(partial_solution)
 
 
@@ -19,7 +19,7 @@ class AttentionModelRepair(RepairOperator):
         self.model = model
         self.greedy = greedy
 
-    def repair(self, partial_solution: TSPBatchSolution) -> TSPBatchSolution:
+    def repair(self, partial_solution: TSPSolution) -> TSPSolution:
         partial_tour = self._extract_valid_tour(partial_solution.tour)
 
         result = self.model(
@@ -28,7 +28,7 @@ class AttentionModelRepair(RepairOperator):
             partial_tour=partial_tour,
         )
 
-        return TSPBatchSolution(
+        return TSPSolution(
             instance=partial_solution.instance,
             tour=result.tour,
             batch_size=partial_solution.batch_size,

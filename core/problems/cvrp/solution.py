@@ -1,81 +1,66 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from tensordict.tensorclass import TensorClass
 
-from .instance import CVRPBatchInstance, CVRPInstance
-
-# TODO: Don't store the instance in the solution? Make SolvedInstance objects that pair an instance with a solution?
+from .instance import CVRPInstance
 
 
-@dataclass(frozen=True)
-class CVRPSolution:
-    """A (partial or complete) solution to a CVRP instance."""
+class CVRPSolution(TensorClass):
+    """Canonical representation of single or batched CVRP solutions."""
 
     instance: CVRPInstance
-    sequence: torch.Tensor  # e.g. [0, 3, 7, 2, 0, 5, 1, 0], starts and ends with 0
+    sequence: torch.Tensor
+    """(..., L) where L is the max sequence length in the batch. Starts and ends with 0 (depot). Padded with 0s if necessary."""
 
     def __post_init__(self):
-        assert self.sequence[0] == 0 and self.sequence[-1] == 0, (
+        # Validate that sequence indices are within bounds
+        if self.sequence.numel() > 0:
+            assert (self.sequence >= 0).all(), "Node indices must be non-negative."
+            assert (self.sequence <= self.instance.num_customers).all(), "Node index out of bounds."
+
+        assert (self.sequence[..., 0] == 0).all() and (self.sequence[..., -1] == 0).all(), (
             "Sequence must start and end at depot (0)."
         )
 
-        for i, route in enumerate(self.routes):
-            assert route.ndim == 1, f"Route {i} must be a 1-D tensor."
-            assert route.numel() > 0, f"Route {i} is empty."
-            assert int(route.min()) >= 1 and int(route.max()) <= self.instance.num_customers, (
-                f"Route {i} contains an index outside [1, num_customers]."
-            )
+    @property
+    def total_distance(self) -> torch.Tensor:
+        """
+        Calculates total distance for single or batched instances.
+        Computes the norm between consecutive nodes in the sequence.
+        """
+        # (..., L, 2) - Gather locations based on sequence indices
+        # We need to expand sequence to match the (x, y) dimension
+        idx = self.sequence.unsqueeze(-1).expand(*self.sequence.shape, 2)
+        pts = self.instance.locations.gather(dim=-2, index=idx)
+
+        # Distance between consecutive points in the sequence
+        dists = (pts[..., 1:, :] - pts[..., :-1, :]).norm(dim=-1)
+        return dists.sum(dim=-1)
 
     @property
+    def is_complete(self) -> torch.Tensor:
+        raise NotImplementedError()
+
+    @property
+    def is_feasible(self) -> torch.Tensor:
+        raise NotImplementedError()
+
     def routes(self) -> list[torch.Tensor]:
-        """
-        Split ``sequence`` on depot visits into individual routes.
+        """Splits the single-instance sequence into a list of routes (excluding depot)."""
+        if self.batch_size.numel() > 1:
+            raise ValueError("routes() only works on a single instance.")
 
-        Routes store *global* node indices (1..n). Index 0 is the depot and is
-        implicit at the start and end of every route.
-        """
-        depot_positions = (self.sequence == 0).nonzero(as_tuple=True)[0]
+        seq = self.sequence.cpu()
+        depot_indices = (seq == 0).nonzero(as_tuple=True)[0]
         routes = []
-        for i in range(len(depot_positions) - 1):
-            segment = self.sequence[depot_positions[i] + 1 : depot_positions[i + 1]]
-            if segment.numel() > 0:
-                routes.append(segment)
+        for start, end in zip(depot_indices[:-1], depot_indices[1:]):
+            route = seq[start + 1 : end]
+            if route.numel() > 0:
+                routes.append(route)
         return routes
-
-    @property
-    def num_routes(self) -> int:
-        return len(self.routes)
-
-    @property
-    def all_visited_nodes(self) -> set[int]:
-        visited: set[int] = set()
-        for route in self.routes:
-            visited.update(route.tolist())
-        return visited
-
-    @property
-    def total_distance(self) -> float:
-        pts = self.instance.locations[self.sequence]
-        return (pts[1:] - pts[:-1]).norm(dim=-1).sum().item()
-
-    @property
-    def is_feasible(self) -> bool:
-        if not self.is_complete:
-            return False
-        return all(
-            self.instance.demand[route].sum().item() <= self.instance.capacity
-            for route in self.routes
-        )
-
-    @property
-    def is_complete(self) -> bool:
-        customers = self.sequence[self.sequence != 0]
-        return customers.sort().values.equal(torch.arange(1, self.instance.num_customers + 1))
 
     def visualize(
         self,
@@ -89,20 +74,26 @@ class CVRPSolution:
         with_route_labels: bool = True,
         legend_loc: str | None = "upper right",
     ) -> None:
+        if self.batch_size.numel() > 1:
+            raise ValueError("visualize() only works on a single instance.")
+
         if ax is None:
             ax = plt.gca()
 
-        all_nodes = self.instance.locations.cpu().numpy()
-        customer_locs = self.instance.customer_locations.cpu().numpy()
-        depot = self.instance.depot_location.cpu().numpy()
+        instance = self.instance.squeeze(0) if self.batch_size else self.instance
+
+        all_nodes = instance.locations.cpu().numpy()
+        # customer_locs = instance.customer_locations.cpu().numpy()
+        depot = instance.depot_location.squeeze(0).cpu().numpy()
+        routes = self.routes()
 
         if min_coordinate is None or max_coordinate is None:
             min_coordinate = float(all_nodes.min())
             max_coordinate = float(all_nodes.max())
 
         cmap = plt.get_cmap("tab10")
-        num_colours = max(self.num_routes, 1)
 
+        # Plot depot
         ax.scatter(
             depot[0],
             depot[1],
@@ -116,21 +107,22 @@ class CVRPSolution:
         )
 
         # Unvisited customers in grey
-        visited = self.all_visited_nodes
-        unvisited_mask = [i not in visited for i in range(1, self.instance.num_customers + 1)]
-        if any(unvisited_mask):
-            unvisited_locs = customer_locs[[i for i, m in enumerate(unvisited_mask) if m]]
-            ax.scatter(
-                unvisited_locs[:, 0],
-                unvisited_locs[:, 1],
-                c="lightgrey",
-                s=40,
-                edgecolors="black",
-                linewidths=0.5,
-                zorder=3,
-            )
+        # visited = self.all_visited_nodes
+        # unvisited_mask = [i not in visited for i in range(1, self.instance.num_customers + 1)]
+        # if any(unvisited_mask):
+        #     unvisited_locs = customer_locs[[i for i, m in enumerate(unvisited_mask) if m]]
+        #     ax.scatter(
+        #         unvisited_locs[:, 0],
+        #         unvisited_locs[:, 1],
+        #         c="lightgrey",
+        #         s=40,
+        #         edgecolors="black",
+        #         linewidths=0.5,
+        #         zorder=3,
+        #     )
 
-        for r_idx, route in enumerate(self.routes):
+        num_colours = max(len(routes), 1)
+        for r_idx, route in enumerate(routes):
             colour = cmap(r_idx % num_colours)
             indices = torch.cat([torch.tensor([0]), route, torch.tensor([0])])
             waypoints = all_nodes[indices.numpy()]
@@ -183,38 +175,10 @@ class CVRPSolution:
         def resolve_routes_num_desc(n: int) -> str:
             return "no routes" if n == 0 else f"{n} route{'s' if n > 1 else ''}"
 
-        title = f"{resolve_routes_num_desc(self.num_routes)}"
+        title = f"{resolve_routes_num_desc(len(routes))}"
         if with_problem_size:
             title = f"CVRP({self.instance.num_customers}) | " + title
         if with_objective:
-            title += f" | total distance = {self.total_distance:.4f}"
+            title += f" | total distance = {self.total_distance.item():.4f}"
         ax.set_title(title)
         ax.grid(True, linestyle="--", alpha=0.4)
-
-
-class CVRPBatchSolution(TensorClass):
-    instance: CVRPBatchInstance
-    sequences: torch.Tensor  # shape: (B, L), padded with 0
-
-    @property
-    def total_distance(self) -> torch.Tensor:
-        B, L = self.sequences.shape
-        idx = self.sequences.unsqueeze(-1).expand(-1, -1, 2)
-        pts = torch.gather(self.instance.locations, 1, idx)  # (B, L, 2)
-
-        distance = (pts[:, 1:] - pts[:, :-1]).norm(dim=-1).sum(dim=-1)
-        return distance
-
-    def get_single(self, idx: int) -> CVRPSolution:
-        if len(self.batch_size) == 0:
-            return CVRPSolution(instance=self.instance.get_single(idx), sequence=self.sequences)
-
-        seq = self.sequences[idx]
-        last_idx = (seq != 0).nonzero()
-        if last_idx.numel() == 0:
-            clean_seq = torch.tensor([0, 0], device=seq.device)
-        else:
-            end = last_idx[-1].item() + 2
-            clean_seq = seq[:end]
-
-        return CVRPSolution(instance=self.instance.get_single(idx), sequence=clean_seq)

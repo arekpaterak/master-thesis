@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import torch
 
-from ..sampler import BatchSampler
-from . import CVRPBatchInstance
+from ..sampler import Sampler
+from . import CVRPInstance
 from .config import CVRPConfig
 
 
-class CVRPBatchSampler(BatchSampler[CVRPBatchInstance]):
+class CVRPSampler(Sampler[CVRPInstance]):
     def __init__(self, config: CVRPConfig, seed: int | None = None) -> None:
         assert config.distribution_of_locations == "uniform"
 
@@ -16,7 +16,7 @@ class CVRPBatchSampler(BatchSampler[CVRPBatchInstance]):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def __call__(self, batch_size: int) -> CVRPBatchInstance:
+    def __call__(self, batch_size: int) -> CVRPInstance:
         cfg = self._config
         g = self._generator
 
@@ -40,7 +40,7 @@ class CVRPBatchSampler(BatchSampler[CVRPBatchInstance]):
         # After normalisation of the demands, the effective capacity is 1.0
         capacity = torch.ones(batch_size, 1)
 
-        return CVRPBatchInstance(
+        return CVRPInstance(
             locations=locations, demand=demand, capacity=capacity, batch_size=[batch_size]
         )
 

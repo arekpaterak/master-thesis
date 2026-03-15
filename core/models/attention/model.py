@@ -8,7 +8,7 @@ from core.models.attention.decoder import Decoder
 from core.models.attention.encoder import Encoder
 from core.models.attention.graph import make_complete_graph
 from core.models.entropy import entropy
-from core.problems.tsp import TSPBatchInstance
+from core.problems.tsp import TSPInstance
 
 
 class RolloutResult(NamedTuple):
@@ -27,11 +27,11 @@ class AttentionModel(nn.Module):
             num_heads=num_heads,
             num_layers=num_layers,
         )
-        self.decoder = Decoder(d_h, num_heads)
+        self.decoder = Decoder(d_h=d_h, num_heads=num_heads)
 
     def forward(
         self,
-        instances: TSPBatchInstance,
+        instances: TSPInstance,
         *,
         greedy: bool = False,
         partial_tour: torch.Tensor | None = None,
@@ -69,7 +69,7 @@ class AttentionModel(nn.Module):
 
         steps_remaining = n - len(tour_idx)
         for _ in range(steps_remaining):
-            log_p: torch.Tensor = self.decoder(h_nodes, h_graph, tour_idx=tour_idx)
+            log_p: torch.Tensor = self.decoder(h_nodes=h_nodes, h_graph=h_graph, tour_idx=tour_idx)
             selected = log_p.argmax(-1) if greedy else log_p.exp().multinomial(1).squeeze(1)
             log_p_of_selected.append(log_p[torch.arange(batch_size), selected])
             tour_idx.append(selected)

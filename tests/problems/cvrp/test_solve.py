@@ -1,14 +1,14 @@
 import pytest
 
-from core.problems.cvrp import CVRPBatchInstance, CVRPBatchSampler, CVRPConfig
-from core.problems.cvrp.solution import CVRPBatchSolution
+from core.problems.cvrp import CVRPConfig, CVRPInstance, CVRPSampler
+from core.problems.cvrp.solution import CVRPSolution
 from core.problems.cvrp.solve import STRATEGIES
 
 
 @pytest.fixture
-def simple_instance() -> CVRPBatchInstance:
+def simple_instance() -> CVRPInstance:
     config = CVRPConfig.for_n(20)
-    sampler = CVRPBatchSampler(config)
+    sampler = CVRPSampler(config)
     batch_size = 5
     return sampler(batch_size)
 
@@ -17,7 +17,7 @@ def simple_instance() -> CVRPBatchInstance:
 def test_strategy_returns_solution(strategy, simple_instance):
     solution = strategy(simple_instance)
 
-    assert isinstance(solution, CVRPBatchSolution)
+    assert isinstance(solution, CVRPSolution)
     assert solution.batch_size == simple_instance.batch_size
 
 
@@ -29,7 +29,7 @@ def test_solution_contains_all_customers(strategy, simple_instance):
 
     solution = strategy(simple_instance)
 
-    sequences = solution.sequences if solution.batch_dims > 0 else [solution.sequences]
+    sequences = solution.sequence if solution.batch_dims > 0 else [solution.sequence]
 
     for seq in sequences:
         customers_in_tour = seq[seq != 0].tolist()
@@ -45,4 +45,4 @@ def test_without_batch_dim(strategy, simple_instance):
     solution = strategy(single_instance)
 
     assert solution.batch_dims == 0
-    assert solution.sequences.ndim == 1
+    assert solution.sequence.ndim == 1
