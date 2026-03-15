@@ -4,7 +4,7 @@ from core.problems.tsp.config import TSPConfig
 from core.problems.tsp.sampler import TSPBatchSampler
 
 
-def test_tensor_sampler_shape():
+def test_sampler_shape():
     config = TSPConfig(num_locations=10, distribution_of_locations="uniform")
     sampler = TSPBatchSampler(config)
     batch_size = 5
@@ -19,7 +19,7 @@ def test_tensor_sampler_shape():
     )
 
 
-def test_tensor_sampler_value_range():
+def test_sampler_value_range():
     config = TSPConfig(
         num_locations=10,
         distribution_of_locations="uniform",
@@ -36,7 +36,7 @@ def test_tensor_sampler_value_range():
     ), "Expected all sample values to be within the specified coordinate range"
 
 
-def test_tensor_sampler_determinism():
+def test_sampler_determinism():
     config = TSPConfig(
         num_locations=10,
         distribution_of_locations="uniform",
@@ -56,7 +56,7 @@ def test_tensor_sampler_determinism():
     )
 
 
-def test_tensor_sampler_different_seeds():
+def test_sampler_different_seeds():
     config = TSPConfig(
         num_locations=10,
         distribution_of_locations="uniform",

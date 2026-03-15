@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from core.lns.destroy import RandomSegmentDestroy
-from core.problems.tsp import TSPBatchInstance
+from core.problems.tsp import TSPBatchSampler, TSPConfig
 from core.problems.tsp.solution import TSPBatchSolution
 
 
@@ -10,13 +10,28 @@ from core.problems.tsp.solution import TSPBatchSolution
 def sample_solution():
     batch_size = 3
     n = 10
-    locations = torch.randn(batch_size, n, 2)
+    instance = TSPBatchSampler(TSPConfig(num_locations=n))(batch_size)
 
     # Create a simple sequential tour: [0, 1, 2, ..., 9]
     tour = torch.stack([torch.arange(n) for _ in range(batch_size)])
     return TSPBatchSolution(
-        instance=TSPBatchInstance(locations=locations),
+        instance=instance,
         tour=tour,
+        batch_size=[batch_size],
+    )
+
+
+@pytest.fixture
+def circular_solution():
+    batch_size = 1
+    n = 5
+    instance = TSPBatchSampler(TSPConfig(num_locations=n))(batch_size)
+
+    tour = torch.tensor([[0, 1, 2, 3, 4]])  # Sequential tour
+    return TSPBatchSolution(
+        instance=instance,
+        tour=tour,
+        batch_size=[1],
     )
 
 
@@ -27,18 +42,10 @@ def test_random_segment_destroy_logic(sample_solution):
     destroyed = destroy(sample_solution)
 
     assert destroyed.batch_size == sample_solution.batch_size
-    assert destroyed.n == sample_solution.n
+    assert destroyed.num_locations == sample_solution.num_locations
 
-
-@pytest.fixture
-def circular_solution():
-    # Batch of 1 for easy verification, 5 nodes
-    locations = torch.randn(1, 5, 2)
-    tour = torch.tensor([[0, 1, 2, 3, 4]])  # Sequential tour
-    return TSPBatchSolution(
-        instance=TSPBatchInstance(locations=locations),
-        tour=tour,
-    )
+    for destroyed_tour in destroyed.tour:
+        assert (destroyed_tour == -1).sum() == segment_size
 
 
 def test_random_segment_destroy_wrap_around(circular_solution):
@@ -62,9 +69,26 @@ def test_random_segment_destroy_wrap_around(circular_solution):
 def test_preserves_existing_holes(circular_solution):
     # Create a solution that already has a hole
     tour_with_hole = torch.tensor([[0, -1, 2, 3, 4]])
-    solution = TSPBatchSolution(instance=circular_solution.instance, tour=tour_with_hole)
+    solution = TSPBatchSolution(
+        instance=circular_solution.instance,
+        tour=tour_with_hole,
+        batch_size=[1],
+    )
 
-    destroyer = RandomSegmentDestroy(segment_size=1)
-    destroyed = destroyer(solution)
+    destroy = RandomSegmentDestroy(segment_size=1)
+    destroyed = destroy(solution)
 
-    assert (destroyed.tour == -1).sum() == 2
+    assert destroyed.batch_size == solution.batch_size
+    assert destroyed.tour[0, 1] == -1
+
+
+def test_without_batch_dim(sample_solution):
+    single_solution = sample_solution[0]
+    assert single_solution.batch_dims == 0
+    num_locations = single_solution.num_locations
+
+    destroy = RandomSegmentDestroy(segment_size=1)
+    destroyed = destroy(single_solution)
+
+    assert destroyed.batch_dims == 0
+    assert destroyed.tour.shape == (num_locations,)

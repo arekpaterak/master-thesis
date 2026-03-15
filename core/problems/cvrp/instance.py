@@ -155,6 +155,10 @@ class CVRPBatchInstance(TensorClass):
         return torch.cat([customer_locations, customer_demands], dim=-1)
 
     def get_single(self, idx: int) -> CVRPInstance:
+        if len(self.batch_size) == 0:
+            return CVRPInstance(
+                locations=self.locations, demand=self.demand, capacity=self.capacity.item()
+            )
         item = self[idx]
         return CVRPInstance(
             locations=item.locations, demand=item.demand, capacity=item.capacity.item()
