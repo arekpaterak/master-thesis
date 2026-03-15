@@ -145,8 +145,8 @@ class TSPBatchSolution(TensorClass):
     tour: torch.Tensor  # (batch, n), -1 for unvisited slots
 
     @property
-    def n(self) -> int:
-        return self.instance.n
+    def num_locations(self) -> int:
+        return self.instance.num_locations
 
     @property
     def tour_lengths(self) -> torch.Tensor:

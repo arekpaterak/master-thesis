@@ -206,6 +206,9 @@ class CVRPBatchSolution(TensorClass):
         return distance
 
     def get_single(self, idx: int) -> CVRPSolution:
+        if len(self.batch_size) == 0:
+            return CVRPSolution(instance=self.instance.get_single(idx), sequence=self.sequences)
+
         seq = self.sequences[idx]
         last_idx = (seq != 0).nonzero()
         if last_idx.numel() == 0:

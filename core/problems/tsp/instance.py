@@ -71,11 +71,11 @@ class TSPInstance:
 
 
 class TSPBatchInstance(TensorClass):
-    locations: torch.Tensor  # (B, N, 2)
+    locations: torch.Tensor  # (B, N, 2) or (N, 2)
 
     @property
-    def n(self) -> int:
-        return self.locations.shape[1]
+    def num_locations(self) -> int:
+        return self.locations.shape[-2]
 
     def get_single(self, idx: int) -> TSPInstance:
         return TSPInstance(locations=self.locations[idx])
