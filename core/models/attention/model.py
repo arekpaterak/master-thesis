@@ -29,6 +29,7 @@ class AttentionModel(nn.Module):
         )
         self.decoder = Decoder(d_h=d_h, num_heads=num_heads)
 
+    # TODO: Change to single step, add rollout to produce full sequence
     def forward(
         self,
         instances: TSPInstance,
