@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+from core.models.layers.single_head_scorer import CompatibilityScorer
 
 
 class Decoder(nn.Module):
@@ -15,19 +16,20 @@ class Decoder(nn.Module):
         self.d_h = d_h
         self.C = C
 
+        # Learnable input placeholders for the initial decoding step
         self.v_l = nn.Parameter(torch.zeros(d_h))
         self.v_f = nn.Parameter(torch.zeros(d_h))
 
         # MODIFICATION: Project 3*d_model context down to d_model upfront
         self.context_projection = nn.Linear(3 * d_h, d_h, bias=False)
 
-        self.mha = nn.MultiheadAttention(
+        self.MHA = nn.MultiheadAttention(
             embed_dim=d_h,
             num_heads=num_heads,
             batch_first=True,
             bias=False,
         )
-        self.final_scorer = SingleHeadScorer(d_h=d_h, C=C)
+        self.final_scorer = CompatibilityScorer(d_h=d_h, C=C)
 
     def forward(
         self, *, h_nodes: torch.Tensor, h_graph: torch.Tensor, tour_idx: list
@@ -54,7 +56,7 @@ class Decoder(nn.Module):
             mask[torch.arange(batch_size), t_idx] = True
 
         # MHA: context node attends over all unmasked nodes
-        context_embedding, _ = self.mha(
+        context_embedding, _ = self.MHA(
             query=context_embedding.unsqueeze(1),
             key=h_nodes,
             value=h_nodes,
@@ -65,34 +67,3 @@ class Decoder(nn.Module):
         # Final single-head layer
         log_p = self.final_scorer(h_c=context_embedding, h_nodes=h_nodes, mask=mask)
         return log_p
-
-
-class SingleHeadScorer(nn.Module):
-    def __init__(self, *, d_h: int = 128, C: float = 10.0) -> None:
-        super().__init__()
-        self.scale = d_h**0.5
-        self.C = C
-        self.W_Q = nn.Linear(d_h, d_h, bias=False)
-        self.W_K = nn.Linear(d_h, d_h, bias=False)
-
-    def forward(
-        self,
-        *,
-        h_c: torch.Tensor,
-        h_nodes: torch.Tensor,
-        mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Args:
-            h_c: (batch, d_model)
-            h_nodes: (batch, n, d_model)
-            mask: (batch, n) bool
-        Returns:
-            log_p: (batch, n)
-        """
-        Q = self.W_Q(h_c).unsqueeze(1)  # (batch, 1, d_model)
-        K = self.W_K(h_nodes)  # (batch, n, d_model)
-        u = torch.matmul(Q, K.transpose(-2, -1)).squeeze(1) / self.scale  # (batch, n)
-        u = self.C * torch.tanh(u)
-        u = u.masked_fill(mask, float("-inf"))
-        return F.log_softmax(u, dim=-1)

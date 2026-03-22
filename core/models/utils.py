@@ -33,3 +33,9 @@ def load_checkpoint(
     model.load_state_dict(checkpoint["model_state_dict"], strict=False)
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+
+def get_model_device(
+    model: torch.nn.Module,
+) -> torch.device:
+    return next(model.parameters()).device
