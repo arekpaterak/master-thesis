@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 from torch_geometric.data import Batch
 
-from core.models.attention.decoder import Decoder
-from core.models.attention.encoder import Encoder
-from core.models.attention.graph import make_complete_graph
+from core.models.attention_model.decoder import Decoder
+from core.models.attention_model.encoder import Encoder
+from core.models.attention_model.graph import make_complete_graph
 from core.models.entropy import entropy
 from core.problems.tsp import TSPInstance
 

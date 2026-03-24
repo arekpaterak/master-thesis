@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from core.models.attention import AttentionModel
+from core.models.attention_model import AttentionModel
 from core.problems.tsp.solution import TSPSolution
 
 

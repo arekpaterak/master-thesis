@@ -57,6 +57,9 @@ class CVRPInstance(TensorClass):
 
     @property
     def customer_features(self) -> torch.Tensor:
+        """
+        (B, N, 3) or (N, 3)
+        """
         customer_locations = self.locations[..., 1:, :]
         customer_demands = self.demand[..., 1:].unsqueeze(-1)
         return torch.cat([customer_locations, customer_demands], dim=-1)

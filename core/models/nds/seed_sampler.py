@@ -2,6 +2,6 @@ import torch
 
 
 def sample_seed(
-    B: int, rollout_size: int, z_dim: int, device: torch.device | None = None
+    *, batch_size: int, rollout_size: int, seed_dim: int, device: torch.device | None = None
 ) -> torch.Tensor:
-    return torch.randint(0, 2, (B, rollout_size, z_dim), device=device).float()
+    return torch.randint(0, 2, (batch_size, rollout_size, seed_dim), device=device).float()

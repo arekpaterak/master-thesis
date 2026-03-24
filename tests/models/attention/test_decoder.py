@@ -1,6 +1,6 @@
 import torch
 
-from core.models.attention.decoder import Decoder
+from core.models.attention_model.decoder import Decoder
 
 
 def test_decoder_output_shape():

@@ -1,4 +1,4 @@
-from core.models.attention.model import AttentionModel
+from core.models.attention_model.model import AttentionModel
 from core.problems.tsp import TSPConfig, TSPSampler
 
 

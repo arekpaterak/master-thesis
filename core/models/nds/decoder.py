@@ -15,7 +15,7 @@ class DecoderCache(NamedTuple):
             Shape: (B, rollout_size, N+1, d_h).
         v: Projected values for multi-head attention.
             Shape: (B, rollout_size, N+1, d_h).
-        z: Seed vectors for diverse rollout conditioning.
+        seed: Seed vectors for diverse rollout conditioning.
             Shape: (B, rollout_size, z_dim).
         h_nodes_expanded: Node embeddings expanded over rollout dimension.
             Shape: (B, rollout_size, N+1, d_h).
@@ -23,7 +23,7 @@ class DecoderCache(NamedTuple):
 
     k: torch.Tensor
     v: torch.Tensor
-    z: torch.Tensor
+    seed: torch.Tensor
     h_nodes_expanded: torch.Tensor
 
 
@@ -97,7 +97,7 @@ class NDSDecoder(nn.Module):
         *,
         B: int,
         rollout_size: int,
-        N: int,
+        num_customers: int,
         device: torch.device | None = None,
     ) -> DecoderState:
         """Build zeroed initial state before the first decoding step.
@@ -105,7 +105,7 @@ class NDSDecoder(nn.Module):
         Args:
             B: Batch size.
             rollout_size: Number of parallel rollouts per instance.
-            N: Number of customers (excluding depot).
+            num_customers: Number of customers (excluding depot).
             device: Target device (optional).
 
         Returns:
@@ -114,7 +114,9 @@ class NDSDecoder(nn.Module):
         if not device:
             device = next(self.parameters()).device
 
-        selected_mask = torch.zeros(B, rollout_size, N + 1, dtype=torch.bool, device=device)
+        selected_mask = torch.zeros(
+            B, rollout_size, num_customers + 1, dtype=torch.bool, device=device
+        )
         selected_mask[:, :, 0] = True
 
         h_start = self.start_token.view(1, 1, -1).expand(B, rollout_size, -1)
@@ -129,26 +131,26 @@ class NDSDecoder(nn.Module):
         self,
         *,
         h_nodes: torch.Tensor,
-        z: torch.Tensor,
+        seed: torch.Tensor,
     ) -> DecoderCache:
         """Precompute keys, values, and seed vectors before the decoding loop.
 
         Args:
             h_nodes: Encoder output node embeddings. Shape: (B, N+1, d_h).
-            z: Seed vectors for rollout diversity. Shape: (B, rollout_size, z_dim).
+            seed: Seed vectors for rollout diversity. Shape: (B, rollout_size, z_dim).
 
         Returns:
             DecoderCache containing projected keys, values, seed vectors, and expanded node embeddings.
         """
         B, L, d_h = h_nodes.shape
-        _, rollout_size, _ = z.shape
+        _, rollout_size, _ = seed.shape
 
         # Expand nodes for rollout dimension
         h_nodes_expanded = h_nodes.unsqueeze(1).expand(B, rollout_size, L, d_h)
 
         k, v = self.MHA.project_kv(h_nodes_expanded)
 
-        return DecoderCache(k=k, v=v, z=z, h_nodes_expanded=h_nodes_expanded)
+        return DecoderCache(k=k, v=v, seed=seed, h_nodes_expanded=h_nodes_expanded)
 
     def forward(
         self,
@@ -180,7 +182,7 @@ class NDSDecoder(nn.Module):
             q=context, k_cached=cache.k, v_cached=cache.v, attention_mask=attention_mask
         ).reshape(B, R, self.d_h)
 
-        context_out = mh_out + self.poly_net(torch.cat([mh_out, cache.z], dim=-1))
+        context_out = mh_out + self.poly_net(torch.cat([mh_out, cache.seed], dim=-1))
 
         log_p = self.final_scorer(
             h_c=context_out, h_nodes=cache.h_nodes_expanded, mask=state.selected_mask

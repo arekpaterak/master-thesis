@@ -11,10 +11,10 @@ def test_one_step_of_decoder() -> None:
     decoder = NDSDecoder()
 
     embedded_nodes = torch.randn(B, N + 1, 128)
-    z = sample_seed(B, rollout_size, z_dim)
+    z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=z_dim)
 
-    state = decoder.build_initial_state(B=B, rollout_size=rollout_size, N=N)
-    cache = decoder.build_cache(h_nodes=embedded_nodes, z=z)
+    state = decoder.build_initial_state(B=B, rollout_size=rollout_size, num_customers=N)
+    cache = decoder.build_cache(h_nodes=embedded_nodes, seed=z)
 
     log_p, gru_hidden_state = decoder.forward(cache=cache, state=state)
 
