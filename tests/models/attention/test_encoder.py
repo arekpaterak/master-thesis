@@ -1,8 +1,8 @@
 import torch
 from torch_geometric.data import Batch
 
-from core.models.attention.encoder import Encoder
-from core.models.attention.graph import make_complete_graph
+from core.models.attention_model.encoder import Encoder
+from core.models.attention_model.graph import make_complete_graph
 
 
 def test_encoder_output_shape():

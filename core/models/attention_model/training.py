@@ -8,7 +8,7 @@ import torch.nn as nn
 from scipy import stats
 from tqdm.auto import tqdm
 
-from core.models.attention.model import AttentionModel, RolloutResult
+from core.models.attention_model.model import AttentionModel, RolloutResult
 from core.problems.tsp import TSPSampler
 from core.problems.tsp.solution import tour_length
 

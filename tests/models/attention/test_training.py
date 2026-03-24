@@ -2,8 +2,8 @@ import copy
 
 import torch
 
-from core.models.attention.model import AttentionModel
-from core.models.attention.training import train
+from core.models.attention_model.model import AttentionModel
+from core.models.attention_model.training import train
 from core.problems.tsp.config import TSPConfig
 from core.problems.tsp.sampler import TSPSampler
 

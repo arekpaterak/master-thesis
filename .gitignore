@@ -20,3 +20,4 @@ experiments/results/
 
 # Marimo
 __marimo__/
+notebooks/checkpoints/
