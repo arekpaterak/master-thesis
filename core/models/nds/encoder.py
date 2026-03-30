@@ -161,6 +161,7 @@ class MessagePassingLayer(nn.Module):
         return embeddings.gather(1, indices[:, :, None].expand(B, N, d_h))
 
 
+# TODO: Rename to RouteEncodingLayer to unify naming
 class TourEncodingLayer(nn.Module):
     def __init__(self, d_h: int, d_ff: int) -> None:
         super().__init__()

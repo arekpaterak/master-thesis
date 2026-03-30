@@ -28,7 +28,7 @@ def tour_length(instances, solutions) -> torch.Tensor:
 
 class TSPSolution(TensorClass):
     """
-    Canonical representation of single or batched TSP solutions.
+    Canonical representation of single or batched TSP solution.
     """
 
     instance: TSPInstance
@@ -53,6 +53,9 @@ class TSPSolution(TensorClass):
     @property
     def is_complete(self) -> torch.Tensor:
         return self.num_visited == self.instance.num_locations
+
+    def objective(self) -> torch.Tensor:
+        return self.tour_length
 
     @property
     def tour_length(self) -> torch.Tensor:

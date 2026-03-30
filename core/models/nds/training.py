@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 
 from core.models.nds.model import NDSModel
-from core.models.nds.rollout import Rollout, rollout_policy
+from core.models.nds.rollout import NDSRollout, rollout_policy
 from core.problems.cvrp import CVRPInstance, CVRPSolution
 
 
@@ -20,8 +20,8 @@ def train(
     generate_instance: Callable[[], CVRPInstance],
     generate_start_solution: Callable[[CVRPInstance], CVRPSolution],
     improvement_step: Callable[[CVRPSolution, NDSModel], CVRPSolution],
-    remove_customers: Callable[[CVRPSolution, Rollout], CVRPSolution],
-    greedy_insertion: Callable[[CVRPSolution, Rollout], CVRPSolution],
+    remove_customers: Callable[[CVRPSolution, NDSRollout], CVRPSolution],
+    greedy_insertion: Callable[[CVRPSolution, NDSRollout], CVRPSolution],
     objective: Callable[[CVRPSolution], torch.Tensor],
 ):
     """
