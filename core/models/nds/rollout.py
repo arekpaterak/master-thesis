@@ -5,14 +5,14 @@ import torch
 from core.models.entropy import entropy
 from core.models.nds.decoder import DecoderState
 from core.models.nds.model import NDSModel
-from core.models.nds.preprocessing import build_encoder_input_indexes_from_sequence
+from core.models.nds.preprocessing import build_encoder_input_indexes
 from core.models.nds.seed_sampler import sample_seed
 from core.models.utils import get_model_device
 from core.problems.cvrp import CVRPSolution
 
 
 @dataclass
-class Rollout:
+class NDSRollout:
     """
     Attributes:
         actions: A sequence of actions that specify the indices of the customers to be removed.
@@ -34,15 +34,13 @@ def rollout_policy(
     rollouts_per_solution: int,
     deconstruction_size: int,
     greedy: bool = False,
-) -> Rollout:
+) -> NDSRollout:
     instance = solution.instance
 
     B = instance.batch_size[0]
     R = rollouts_per_solution
 
-    neighbours_index, tour_index = build_encoder_input_indexes_from_sequence(
-        solution.sequence, num_customers=instance.num_customers
-    )
+    neighbours_index, tour_index = build_encoder_input_indexes(solution)
 
     seed = sample_seed(
         batch_size=B,
@@ -98,7 +96,7 @@ def rollout_policy(
     mean_entropy = torch.stack(entropies, dim=-1).mean().item()
     mean_entropy_norm = torch.stack(entropies_norm, dim=-1).mean().item()
 
-    return Rollout(
+    return NDSRollout(
         actions=selected,
         log_p_of_actions=torch.stack(log_p_of_selected, dim=-1),
         entropy=mean_entropy,

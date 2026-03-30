@@ -8,7 +8,7 @@ import torch.nn as nn
 from scipy import stats
 from tqdm.auto import tqdm
 
-from core.models.attention_model.model import AttentionModel, RolloutResult
+from core.models.attention_model.model import AMRollout, AttentionModel
 from core.problems.tsp import TSPSampler
 from core.problems.tsp.solution import tour_length
 
@@ -144,7 +144,7 @@ def train(
             instances = tsp_sampler(batch_size).to(device)  # (batch, n, 2)
 
             # Sample rollout from training policy (line 6)
-            rollout: RolloutResult = model(instances, greedy=False)
+            rollout: AMRollout = model(instances, greedy=False)
 
             # Greedy rollout from baseline policy (line 7)
             with torch.no_grad():

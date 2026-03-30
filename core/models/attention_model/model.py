@@ -6,12 +6,12 @@ from torch_geometric.data import Batch
 
 from core.models.attention_model.decoder import Decoder
 from core.models.attention_model.encoder import Encoder
-from core.models.attention_model.graph import make_complete_graph
+from core.models.attention_model.preprocessing import make_complete_graph
 from core.models.entropy import entropy
 from core.problems.tsp import TSPInstance
 
 
-class RolloutResult(NamedTuple):
+class AMRollout(NamedTuple):
     tour: torch.Tensor
     log_p: torch.Tensor
     entropy: float | None
@@ -36,7 +36,7 @@ class AttentionModel(nn.Module):
         *,
         greedy: bool = False,
         partial_tour: torch.Tensor | None = None,
-    ) -> RolloutResult:
+    ) -> AMRollout:
         """
         Args:
             instances: (batch, n, d_x)
@@ -85,7 +85,7 @@ class AttentionModel(nn.Module):
         # full tour: partial nodes + newly decoded nodes
         full_tour = torch.stack(tour_idx, dim=1)  # (batch, n)
 
-        return RolloutResult(
+        return AMRollout(
             tour=full_tour,
             log_p=torch.stack(log_p_of_selected, dim=1),
             entropy=mean_entropy,

@@ -1,5 +1,5 @@
 from core.models.nds.model import NDSModel
-from core.models.nds.preprocessing import build_encoder_input_indexes_from_sequence
+from core.models.nds.preprocessing import build_encoder_input_indexes
 from core.models.nds.seed_sampler import sample_seed
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.solve import one_customer_per_route
@@ -9,9 +9,7 @@ def test_model() -> None:
     sampler = CVRPSampler(CVRPConfig.for_n(20))
     instance = sampler(4)
     solution = one_customer_per_route(instance)
-    neighbours_index, tour_index = build_encoder_input_indexes_from_sequence(
-        solution.sequence, num_customers=instance.num_customers
-    )
+    neighbours_index, tour_index = build_encoder_input_indexes(solution)
     seed = sample_seed(batch_size=4, rollout_size=10, seed_dim=10)
 
     model = NDSModel()

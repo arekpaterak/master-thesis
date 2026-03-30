@@ -64,6 +64,7 @@ ignore = [
     "F403", # Allow star imports (TODO: Refactor to avoid star imports)
     "E501",
     "E731", # Allow lambda assignments
+    "E712",
 ]
 
 [tool.ruff.format]

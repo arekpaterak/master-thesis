@@ -33,7 +33,11 @@ def one_customer_per_route(instance: CVRPInstance) -> CVRPSolution:
         instance = instance.squeeze(0)
         sequence = sequence.squeeze(0)
 
-    return CVRPSolution(instance=instance, sequence=sequence, batch_size=instance.batch_size)
+    return CVRPSolution(
+        instance=instance,
+        sequence=sequence,
+        batch_size=instance.batch_size,
+    )
 
 
 def all_customers_one_route(instance: CVRPInstance) -> CVRPSolution:
@@ -61,7 +65,11 @@ def all_customers_one_route(instance: CVRPInstance) -> CVRPSolution:
         instance = instance.squeeze(0)
         sequence = sequence.squeeze(0)
 
-    return CVRPSolution(instance=instance, sequence=sequence, batch_size=instance.batch_size)
+    return CVRPSolution(
+        instance=instance,
+        sequence=sequence,
+        batch_size=instance.batch_size,
+    )
 
 
 def index_sequential(instance: CVRPInstance) -> CVRPSolution:
@@ -98,7 +106,11 @@ def index_sequential(instance: CVRPInstance) -> CVRPSolution:
         instance = instance.squeeze(0)
         sequence = sequence.squeeze(0)
 
-    return CVRPSolution(instance=instance, sequence=sequence, batch_size=instance.batch_size)
+    return CVRPSolution(
+        instance=instance,
+        sequence=sequence,
+        batch_size=instance.batch_size,
+    )
 
 
 STRATEGIES = [

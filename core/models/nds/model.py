@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from core.models.nds.decoder import DecoderCache, DecoderState, NDSDecoder
+from core.models.nds.decoder import DecoderCache, DecoderOutput, DecoderState, NDSDecoder
 from core.models.nds.encoder import NDSEncoder
 
 
@@ -53,5 +53,5 @@ class NDSModel(nn.Module):
         *,
         state: DecoderState,
         cache: DecoderCache,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> DecoderOutput:
         return self.decoder(state=state, cache=cache)

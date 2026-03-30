@@ -1,6 +1,6 @@
 import torch
 
-from core.models.attention_model.graph import make_complete_graph
+from core.models.attention_model.preprocessing import make_complete_graph
 
 
 def test_make_complete_graph():

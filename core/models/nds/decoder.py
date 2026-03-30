@@ -43,6 +43,11 @@ class DecoderState(NamedTuple):
     selected_mask: torch.Tensor
 
 
+class DecoderOutput(NamedTuple):
+    log_p: torch.Tensor
+    gru_hidden: torch.Tensor
+
+
 class NDSDecoder(nn.Module):
     """Autoregressive decoder for sequential customer selection in NDS.
 
@@ -157,7 +162,7 @@ class NDSDecoder(nn.Module):
         *,
         state: DecoderState,
         cache: DecoderCache,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> DecoderOutput:
         """Score nodes for selection. A pure (stateless) function.
 
         Args:
@@ -165,7 +170,7 @@ class NDSDecoder(nn.Module):
             cache: Precomputed keys, values, and seed vectors.
 
         Returns:
-            Tuple of:
+            DecoderOutput:
                 log_p: Log-probabilities over all nodes. Shape: (B, rollout_size, N+1).
                 gru_hidden_state: A new GRU hidden state.
         """
@@ -188,4 +193,7 @@ class NDSDecoder(nn.Module):
             h_c=context_out, h_nodes=cache.h_nodes_expanded, mask=state.selected_mask
         )
 
-        return log_p, gru_hidden
+        return DecoderOutput(
+            log_p=log_p,
+            gru_hidden=gru_hidden,
+        )
