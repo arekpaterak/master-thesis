@@ -3,10 +3,11 @@ from __future__ import annotations
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from tensordict import TensorClass
+
+from core.problems.instance import BaseProblemInstance
 
 
-class CVRPInstance(TensorClass):
+class CVRPInstance(BaseProblemInstance):
     """Canonical, generator-agnostic representation of a single or batched CVRP instance."""
 
     locations: torch.Tensor

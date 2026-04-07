@@ -5,10 +5,10 @@ import torch
 from core.models.entropy import entropy
 from core.models.nds.decoder import DecoderState
 from core.models.nds.model import NDSModel
-from core.models.nds.preprocessing import build_encoder_input_indexes
 from core.models.nds.seed_sampler import sample_seed
 from core.models.utils import get_model_device
 from core.problems.cvrp import CVRPSolution
+from core.problems.solution import BaseSolution
 
 
 @dataclass
@@ -29,18 +29,19 @@ class NDSRollout:
 
 def rollout_policy(
     model: NDSModel,
-    solution: CVRPSolution,
+    solution: BaseSolution,
     *,
     rollouts_per_solution: int,
     deconstruction_size: int,
     greedy: bool = False,
 ) -> NDSRollout:
+    if not isinstance(solution, CVRPSolution):
+        raise NotImplementedError("Only works with CVRPSolution")
+
     instance = solution.instance
 
     B = instance.batch_size[0]
     R = rollouts_per_solution
-
-    neighbours_index, tour_index = build_encoder_input_indexes(solution)
 
     seed = sample_seed(
         batch_size=B,
@@ -50,10 +51,7 @@ def rollout_policy(
     )
 
     state, cache = model.pre_forward(
-        depot_location=instance.depot_location,
-        customer_features=instance.customer_features,
-        neighbours_index=neighbours_index,
-        tour_index=tour_index,
+        solution=solution,
         seed=seed,
         rollout_size=rollouts_per_solution,
     )
@@ -77,8 +75,8 @@ def rollout_policy(
         log_p_of_selected.append(step_log_p_of_selected)
 
         step_entropy = entropy(step_log_p)
-        entropies.append(step_entropy.entropy)
-        entropies_norm.append(step_entropy.entropy_norm)
+        entropies.append(step_entropy.entropy.detach())
+        entropies_norm.append(step_entropy.entropy_norm.detach())
 
         # Transition DecoderState, TODO: Encapsulate
         new_mask = state.selected_mask.clone()
@@ -91,7 +89,7 @@ def rollout_policy(
             h_last_node=new_h_last_node, gru_hidden=gru_hidden_state, selected_mask=new_mask
         )
 
-    selected = torch.stack(selected, dim=-1)
+    selected = torch.stack(selected, dim=-1).detach()
 
     mean_entropy = torch.stack(entropies, dim=-1).mean().item()
     mean_entropy_norm = torch.stack(entropies_norm, dim=-1).mean().item()

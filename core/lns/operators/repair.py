@@ -3,18 +3,19 @@ from abc import ABC, abstractmethod
 import torch
 
 from core.models.attention_model import AttentionModel
+from core.problems.solution import BaseSolution
 from core.problems.tsp.solution import TSPSolution
 
 
-class RepairOperator(ABC):
+class RepairOperator[S: BaseSolution](ABC):
     @abstractmethod
-    def repair(self, partial_solution: TSPSolution) -> TSPSolution: ...
+    def repair(self, partial_solution: S) -> S: ...
 
-    def __call__(self, partial_solution: TSPSolution) -> TSPSolution:
+    def __call__(self, partial_solution: S) -> S:
         return self.repair(partial_solution)
 
 
-class AttentionModelRepair(RepairOperator):
+class AttentionModelRepair(RepairOperator[TSPSolution]):
     def __init__(self, model: AttentionModel, greedy: bool = True):
         self.model = model
         self.greedy = greedy

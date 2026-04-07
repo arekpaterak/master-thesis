@@ -3,10 +3,11 @@ from __future__ import annotations
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from tensordict.tensorclass import TensorClass
+
+from core.problems.instance import BaseProblemInstance
 
 
-class TSPInstance(TensorClass):
+class TSPInstance(BaseProblemInstance):
     """Canonical, generator-agnostic representation of a single or batched TSP instance."""
 
     locations: torch.Tensor
@@ -20,6 +21,10 @@ class TSPInstance(TensorClass):
     @property
     def num_locations(self) -> int:
         return self.locations.shape[-2]
+
+    @property
+    def num_nodes(self) -> int:
+        return self.num_locations
 
     def visualize(
         self,

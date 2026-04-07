@@ -141,6 +141,35 @@ def test_objective():
     assert (objective > 0).all()
 
 
+def test_mean_objective_per_instance_in_batch():
+    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    solution = one_customer_per_route(instance)
+    rollout_size = 5
+    expanded_solution = solution.unsqueeze(-1).expand(*solution.batch_size, rollout_size)
+
+    objective = expanded_solution.objective()
+    mean_objective_per_instance_in_batch = objective.mean(dim=1)
+
+    assert mean_objective_per_instance_in_batch.shape == (10,)
+    assert torch.allclose(
+        mean_objective_per_instance_in_batch,
+        solution.objective(),
+    )
+
+
+def test_gather_from_multiple_rollouts():
+    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    solution = one_customer_per_route(instance)
+    rollout_size = 5
+    expanded_solution = solution.unsqueeze(-1).expand(*solution.batch_size, rollout_size)
+    best_per_instance = torch.randint(0, rollout_size, (10,))
+
+    gathered_solution = expanded_solution.gather(1, best_per_instance).squeeze(1)
+
+    assert gathered_solution.batch_dims == 1
+    assert gathered_solution.instance.batch_size == (10,)
+
+
 def test_is_complete():
     instance = CVRPSampler(CVRPConfig.for_n(20))(10)
     solution = one_customer_per_route(instance)

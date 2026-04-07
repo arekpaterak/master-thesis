@@ -2,18 +2,19 @@ from abc import ABC, abstractmethod
 
 import torch
 
+from core.problems.solution import BaseSolution
 from core.problems.tsp.solution import TSPSolution
 
 
-class DestroyOperator(ABC):
+class DestroyOperator[S: BaseSolution](ABC):
     @abstractmethod
-    def destroy(self, solution: TSPSolution) -> TSPSolution: ...
+    def destroy(self, solution: S) -> S: ...
 
-    def __call__(self, solution: TSPSolution) -> TSPSolution:
+    def __call__(self, solution: S) -> S:
         return self.destroy(solution)
 
 
-class RandomSegmentDestroy(DestroyOperator):
+class RandomSegmentDestroy(DestroyOperator[TSPSolution]):
     def __init__(self, segment_size: int, *, seed: int | None = None) -> None:
         self.segment_size = segment_size
 

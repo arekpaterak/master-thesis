@@ -5,7 +5,8 @@ import torch.optim as optim
 
 from core.models.nds.model import NDSModel
 from core.models.nds.rollout import NDSRollout, rollout_policy
-from core.problems.cvrp import CVRPInstance, CVRPSolution
+from core.problems.instance import BaseProblemInstance
+from core.problems.solution import BaseSolution
 
 
 def train(
@@ -17,12 +18,11 @@ def train(
     num_initial_improvement_steps: int,
     deconstruction_size: int,
     max_epochs: int,
-    generate_instance: Callable[[], CVRPInstance],
-    generate_start_solution: Callable[[CVRPInstance], CVRPSolution],
-    improvement_step: Callable[[CVRPSolution, NDSModel], CVRPSolution],
-    remove_customers: Callable[[CVRPSolution, NDSRollout], CVRPSolution],
-    greedy_insertion: Callable[[CVRPSolution, NDSRollout], CVRPSolution],
-    objective: Callable[[CVRPSolution], torch.Tensor],
+    generate_instance: Callable[[], BaseProblemInstance],
+    generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
+    improvement_step: Callable[[BaseSolution, NDSModel], BaseSolution],
+    apply_rollout: Callable[[BaseSolution, NDSRollout], BaseSolution],
+    repair: Callable[[BaseSolution, NDSRollout], BaseSolution],
 ):
     """
     Args:
@@ -36,9 +36,8 @@ def train(
         generate_instance:
         generate_start_solution:
         improvement_step:
-        remove_customers:
-        greedy_insertion:
-        objective:
+        apply_rollout:
+        repair:
 
     Returns:
 
@@ -57,7 +56,7 @@ def train(
             solution = improvement_step(solution, model)
 
         # 9: Main iterations
-        for i in range(1, num_iterations + 1):
+        for i in range(num_iterations):
             # 10: Sample K rollouts (keep log_probs for backprop)
             rollout = rollout_policy(
                 model,
@@ -68,31 +67,33 @@ def train(
             )
 
             # 11-12: Deconstruct and reconstruct
-            solution_partial = remove_customers(solution, rollout)
-            solution_prime = greedy_insertion(solution_partial, rollout)
+            solution_partial = apply_rollout(solution, rollout)  # (B, R)
+            solution_prime = repair(solution_partial, rollout)  # (B, R)
 
             # 13: Calculate reward
-            reward = max(
-                objective(solution) - objective(solution_prime),
-                torch.zeros_like(objective(solution)),
+            reward = torch.clamp(
+                solution.objective().unsqueeze(-1) - solution_prime.objective(),
+                min=0.0,
             )
 
             # 14: Calculate baseline
-            b = reward.mean()
+            b = reward.mean(
+                dim=1, keepdim=True
+            )  # (B, 1) average over rollouts for each problem instance in the batch
 
-            # 15: Find the best rollout in this iteration
-            k_star = torch.argmax(reward)
+            # 15: Find the best rollout in each batch
+            best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)  # (B, 1)
 
             # 16: Calculate gradients for the best rollout
             log_p = rollout.log_p_of_actions
-            loss_i = -(reward[k_star] - b) * log_p[k_star].sum()
+            best_reward = reward.gather(1, best_rollout_idx)
+            best_log_p = log_p.gather(1, best_rollout_idx)
+            loss_i = -((best_reward - b) * best_log_p).mean()
             loss_i.backward()
 
             # 17: Update the current solution with best found solution
-            solution = solution_prime[k_star]
+            solution = solution_prime.gather(1, best_rollout_idx.squeeze()).squeeze(1)  # (B,)
 
-        # 19: Optimizer step (with gradients accumulated over I iterations)
+        # 19: Optimizer step (with gradients accumulated over iterations)
         optimizer.step()
         optimizer.zero_grad()
-
-    return model
