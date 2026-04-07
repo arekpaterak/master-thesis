@@ -8,7 +8,7 @@ from core.models.layers.single_head_scorer import CompatibilityScorer
 
 
 class DecoderCache(NamedTuple):
-    """Precomputed values that remain constant across all M deconstruction steps.
+    """Precomputed values that remain constant across all deconstruction steps.
 
     Attributes:
         k: Projected keys for multi-head attention.
@@ -102,7 +102,7 @@ class NDSDecoder(nn.Module):
         *,
         B: int,
         rollout_size: int,
-        num_customers: int,
+        num_nodes: int,
         device: torch.device | None = None,
     ) -> DecoderState:
         """Build zeroed initial state before the first decoding step.
@@ -110,7 +110,7 @@ class NDSDecoder(nn.Module):
         Args:
             B: Batch size.
             rollout_size: Number of parallel rollouts per instance.
-            num_customers: Number of customers (excluding depot).
+            num_nodes: Number of all nodes (e.g. with the depot in the CVRP).
             device: Target device (optional).
 
         Returns:
@@ -119,9 +119,7 @@ class NDSDecoder(nn.Module):
         if not device:
             device = next(self.parameters()).device
 
-        selected_mask = torch.zeros(
-            B, rollout_size, num_customers + 1, dtype=torch.bool, device=device
-        )
+        selected_mask = torch.zeros(B, rollout_size, num_nodes, dtype=torch.bool, device=device)
         selected_mask[:, :, 0] = True
 
         h_start = self.start_token.view(1, 1, -1).expand(B, rollout_size, -1)

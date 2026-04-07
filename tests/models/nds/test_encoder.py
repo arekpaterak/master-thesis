@@ -1,5 +1,4 @@
 from core.models.nds.encoder import CVRPInitialNodeEmbedding, NDSEncoder
-from core.models.nds.preprocessing import build_encoder_input_indexes
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.solve import one_customer_per_route
 
@@ -10,7 +9,7 @@ def test_encoder() -> None:
     instance = sampler(B)
     solution = one_customer_per_route(instance)
 
-    neighbours_index, tour_index = build_encoder_input_indexes(solution)
+    neighbours_index, tour_index = solution.neighbours_per_customer(), solution.route_per_customer()
 
     encoder = NDSEncoder()
     embedded_nodes = encoder.forward(

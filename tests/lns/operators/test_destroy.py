@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.lns.destroy import RandomSegmentDestroy
+from core.lns.operators.destroy import RandomSegmentDestroy
 from core.problems.tsp import TSPConfig, TSPSampler
 from core.problems.tsp.solution import TSPSolution
 
@@ -22,11 +22,10 @@ def sample_solution():
 
 
 @pytest.fixture
-def circular_solution():
+def small_solution():
     batch_size = 1
     n = 5
     instance = TSPSampler(TSPConfig(num_locations=n))(batch_size)
-
     tour = torch.tensor([[0, 1, 2, 3, 4]])  # Sequential tour
     return TSPSolution(
         instance=instance,
@@ -48,7 +47,7 @@ def test_random_segment_destroy_logic(sample_solution):
         assert (destroyed_tour == -1).sum() == segment_size
 
 
-def test_random_segment_destroy_wrap_around(circular_solution):
+def test_random_segment_destroy_wrap_around(small_solution):
     # Arrange
     segment_size = 2
     destroy = RandomSegmentDestroy(segment_size=segment_size, seed=42)
@@ -57,7 +56,7 @@ def test_random_segment_destroy_wrap_around(circular_solution):
     # We force the start to the last index (4) and remove 2 nodes
     # Expected tour: [-1, 1, 2, 3, -1] (wrapped 4 and 0)
     while True:
-        destroyed = destroy(circular_solution)
+        destroyed = destroy(small_solution)
         if (destroyed.tour == -1).sum().item() == segment_size:
             break  # We got the desired random segment
 
@@ -66,11 +65,11 @@ def test_random_segment_destroy_wrap_around(circular_solution):
     assert (destroyed.tour == -1).sum() == segment_size
 
 
-def test_preserves_existing_holes(circular_solution):
+def test_preserves_existing_holes(small_solution):
     # Create a solution that already has a hole
     tour_with_hole = torch.tensor([[0, -1, 2, 3, 4]])
     solution = TSPSolution(
-        instance=circular_solution.instance,
+        instance=small_solution.instance,
         tour=tour_with_hole,
         batch_size=[1],
     )
@@ -83,7 +82,7 @@ def test_preserves_existing_holes(circular_solution):
 
 
 def test_without_batch_dim(sample_solution):
-    single_solution = sample_solution[0]
+    single_solution: TSPSolution = sample_solution[0]
     assert single_solution.batch_dims == 0
     num_locations = single_solution.num_locations
 

@@ -4,8 +4,8 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from tensordict import TensorClass
 
+from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPInstance
 
 
@@ -26,7 +26,7 @@ def tour_length(instances, solutions) -> torch.Tensor:
     return (ordered - rolled).norm(dim=-1).sum(dim=-1)  # (batch,)
 
 
-class TSPSolution(TensorClass):
+class TSPSolution(BaseSolution):
     """
     Canonical representation of single or batched TSP solution.
     """

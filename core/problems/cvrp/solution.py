@@ -3,14 +3,17 @@ from __future__ import annotations
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from tensordict.tensorclass import TensorClass
 
 from ...constants import EPS
+from ..solution import BaseSolution
 from .instance import CVRPInstance
 
 
-class CVRPSolution(TensorClass):
+class CVRPSolution(BaseSolution):
     """Canonical representation of single or batched CVRP solution."""
+
+    UNASSIGNED = -1
+    DEPOT = 0
 
     instance: CVRPInstance
     sequence: torch.Tensor
@@ -26,12 +29,14 @@ class CVRPSolution(TensorClass):
 
         # Validate that sequence indices are within bounds
         if self.sequence.numel() > 0:
-            assert (self.sequence >= -1).all(), "Node indices must be non-negative or be -1."
+            assert (self.sequence >= self.UNASSIGNED).all(), (
+                "Node indices must be non-negative or be -1."
+            )
             assert (self.sequence <= self.instance.num_customers).all(), "Node index out of bounds."
 
-        assert (self.sequence[..., 0] == 0).all() and (self.sequence[..., -1] == 0).all(), (
-            "Sequence must start and end at depot (0)."
-        )
+        assert (self.sequence[..., 0] == self.DEPOT).all() and (
+            self.sequence[..., -1] == self.DEPOT
+        ).all(), "Sequence must start and end at depot (0)."
 
     def objective(self) -> torch.Tensor:
         return self.total_distance()
@@ -65,7 +70,7 @@ class CVRPSolution(TensorClass):
 
     @property
     def is_deconstructed(self) -> torch.Tensor:
-        return (self.sequence == -1).any(dim=-1)
+        return (self.sequence == self.UNASSIGNED).any(dim=-1)
 
     @property
     def is_feasible(self) -> torch.Tensor:
@@ -77,7 +82,7 @@ class CVRPSolution(TensorClass):
 
     @property
     def route_indexed_sequence(self):
-        result = (self.sequence == 0).long().cumsum(dim=-1) - 1
+        result = (self.sequence == self.DEPOT).long().cumsum(dim=-1) - 1
 
         # Ensure the final depot is part of the last route index
         result[..., -1] = result[..., -2]
@@ -213,7 +218,7 @@ class CVRPSolution(TensorClass):
             raise ValueError("routes() only works on a single instance.")
 
         sequence = self.sequence.cpu()
-        depot_indices = (sequence == 0).nonzero(as_tuple=True)[0]
+        depot_indices = (sequence == self.DEPOT).nonzero(as_tuple=True)[0]
         routes = []
         for start, end in zip(depot_indices[:-1], depot_indices[1:]):
             route = sequence[start + 1 : end]  # skip depots

@@ -3,6 +3,7 @@ import torch.nn as nn
 
 from core.models.nds.decoder import DecoderCache, DecoderOutput, DecoderState, NDSDecoder
 from core.models.nds.encoder import NDSEncoder
+from core.problems.cvrp import CVRPSolution
 
 
 class NDSModel(nn.Module):
@@ -25,26 +26,26 @@ class NDSModel(nn.Module):
     def pre_forward(
         self,
         *,
-        depot_location: torch.Tensor,
-        customer_features: torch.Tensor,
-        neighbours_index: torch.Tensor,
-        tour_index: torch.Tensor,
+        solution: CVRPSolution,
         seed: torch.Tensor,
         rollout_size: int,
     ) -> tuple[DecoderState, DecoderCache]:
-        B, N, _ = customer_features.shape
+        B = solution.batch_size[0]
+        N = solution.instance.num_nodes
+
+        instance = solution.instance
 
         encoded_nodes = self.encoder(
-            depot_location=depot_location,
-            customer_features=customer_features,
-            neighbours_index=neighbours_index,
-            tour_index=tour_index,
+            depot_location=instance.depot_location,
+            customer_features=instance.customer_features,
+            neighbours_index=solution.neighbours_per_customer(),
+            tour_index=solution.route_per_customer(),
         )
         cache = self.decoder.build_cache(h_nodes=encoded_nodes, seed=seed)
         initial_state = self.decoder.build_initial_state(
             B=B,
             rollout_size=rollout_size,
-            num_customers=N,
+            num_nodes=N,
         )
         return initial_state, cache
 

@@ -4,8 +4,8 @@ import torch
 from tqdm import tqdm
 
 from core.lns.acceptance_criterion import AcceptanceCriterion
-from core.lns.destroy import DestroyOperator
-from core.lns.repair import RepairOperator
+from core.lns.operators.destroy import DestroyOperator
+from core.lns.operators.repair import RepairOperator
 from core.problems.tsp.solution import TSPSolution
 
 
