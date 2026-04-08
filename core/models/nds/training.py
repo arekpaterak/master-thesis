@@ -68,9 +68,10 @@ def train(
 
             # 11-12: Deconstruct and reconstruct
             solution_partial = apply_rollout(solution, rollout)  # (B, R)
+            assert solution_partial.batch_dims == 2
             solution_prime = repair(solution_partial, rollout)  # (B, R)
 
-            # 13: Calculate reward
+            # 13: Calculate reward and constrain to be non-negative
             reward = torch.clamp(
                 solution.objective().unsqueeze(-1) - solution_prime.objective(),
                 min=0.0,
@@ -85,9 +86,10 @@ def train(
             best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)  # (B, 1)
 
             # 16: Calculate gradients for the best rollout
-            log_p = rollout.log_p_of_actions
+            log_p = rollout.log_p_of_actions  # (B, R, M)
+            overall_log_p = log_p.sum(dim=-1)  # (B, R)
             best_reward = reward.gather(1, best_rollout_idx)
-            best_log_p = log_p.gather(1, best_rollout_idx)
+            best_log_p = overall_log_p.gather(1, best_rollout_idx)
             loss_i = -((best_reward - b) * best_log_p).mean()
             loss_i.backward()
 
