@@ -86,8 +86,7 @@ def train(
             best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)  # (B, 1)
 
             # 16: Calculate gradients for the best rollout
-            log_p = rollout.log_p_of_actions  # (B, R, M)
-            overall_log_p = log_p.sum(dim=-1)  # (B, R)
+            overall_log_p = rollout.overall_log_p  # (B, R)
             best_reward = reward.gather(1, best_rollout_idx)
             best_log_p = overall_log_p.gather(1, best_rollout_idx)
             loss_i = -((best_reward - b) * best_log_p).mean()
