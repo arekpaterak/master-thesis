@@ -9,3 +9,6 @@ class BaseProblemInstance(TensorClass, ABC):
     @property
     @abstractmethod
     def num_nodes(self) -> int: ...
+
+    @abstractmethod
+    def visualize(self, **kwargs) -> None: ...

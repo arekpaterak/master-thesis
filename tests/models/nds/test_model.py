@@ -5,20 +5,21 @@ from core.problems.cvrp.solve import one_customer_per_route
 
 
 def test_model() -> None:
-    sampler = CVRPSampler(CVRPConfig.for_n(20))
-    instance = sampler(4)
+    B, R, N = 4, 10, 20
+    sampler = CVRPSampler(CVRPConfig.for_n(N))
+    instance = sampler(B)
     solution = one_customer_per_route(instance)
-    seed = sample_seed(batch_size=4, rollout_size=10, seed_dim=10)
+    seed = sample_seed(batch_size=B, rollout_size=R, seed_dim=10)
 
     model = NDSModel()
 
     state, cache = model.pre_forward(
         solution=solution,
         seed=seed,
-        rollout_size=10,
+        rollout_size=R,
     )
 
     log_p, gru_hidden_state = model.forward(state=state, cache=cache)
 
-    assert log_p.shape == (4, 10, 21)
-    assert gru_hidden_state.shape == (4 * 10, 128)
+    assert log_p.shape == (B, R, N + 1)
+    assert gru_hidden_state.shape == (B * R, 128)
