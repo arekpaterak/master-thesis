@@ -22,9 +22,19 @@ class NDSRollout:
     """
 
     actions: torch.Tensor
+    """(B, R, M)"""
     log_p_of_actions: torch.Tensor
+    """(B, R, M)"""
     entropy: float | None
     entropy_norm: float | None
+
+    def __post_init__(self):
+        assert self.actions.size() == self.log_p_of_actions.size()
+
+    @property
+    def overall_log_p(self) -> torch.Tensor:
+        """(B, R)"""
+        return self.log_p_of_actions.sum(dim=-1)
 
 
 def rollout_policy(

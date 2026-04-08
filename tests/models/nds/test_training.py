@@ -15,10 +15,11 @@ def test_train():
     B, R, N = 4, 10, 20
     sampler = CVRPSampler(CVRPConfig.for_n(N))
     model = NDSModel()
+    optimizer = torch.optim.AdamW(model.parameters())
 
     train(
         model=model,
-        optimizer=torch.optim.AdamW(model.parameters()),
+        optimizer=optimizer,
         num_iterations=3,
         rollouts_per_solution=R,
         num_initial_improvement_steps=10,
