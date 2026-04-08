@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
-from matplotlib import pyplot as plt
-from matplotlib.axes import Axes
 
 from ...constants import EPS
 from ..solution import BaseSolution
 from .instance import CVRPInstance
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 
 class CVRPSolution(BaseSolution):
@@ -183,12 +186,13 @@ class CVRPSolution(BaseSolution):
 
     def remove_customers(self, to_remove: torch.Tensor) -> CVRPSolution:
         """
+        Deconstruct the solution.
 
         Args:
             to_remove: (batch_size, deconstruction_size) or (batch_size, rollout_size, deconstruction_size)
 
         Returns:
-
+            A new CVRPSolution with the specified customers removed (set to -1 in the sequence).
         """
         # 1. Determine the target batch shape by broadcasting the leading dimensions
         # This handles cases where to_remove has extra dims like (batch, rollout)
@@ -228,6 +232,7 @@ class CVRPSolution(BaseSolution):
 
     def visualize(
         self,
+        *,
         min_coordinate: float | None = None,
         max_coordinate: float | None = None,
         ax: Axes | None = None,
@@ -238,111 +243,17 @@ class CVRPSolution(BaseSolution):
         with_route_labels: bool = True,
         legend_loc: str | None = "upper right",
     ) -> None:
-        if self.batch_size.numel() > 1:
-            raise ValueError("visualize() only works on a single instance.")
+        from .render import render_solution
 
-        if ax is None:
-            ax = plt.gca()
-
-        instance = self.instance.squeeze(0) if self.batch_size else self.instance
-
-        all_nodes = instance.locations.cpu().numpy()
-        # customer_locs = instance.customer_locations.cpu().numpy()
-        depot = instance.depot_location.squeeze(0).cpu().numpy()
-        routes = self.routes()
-
-        if min_coordinate is None or max_coordinate is None:
-            min_coordinate = float(all_nodes.min())
-            max_coordinate = float(all_nodes.max())
-
-        cmap = plt.get_cmap("tab10")
-
-        # Plot depot
-        ax.scatter(
-            depot[0],
-            depot[1],
-            c="orange",
-            s=120,
-            marker="s",
-            edgecolors="black",
-            linewidths=1,
-            label="depot" if depot_in_legend else None,
-            zorder=5,
+        render_solution(
+            self,
+            min_coordinate=min_coordinate,
+            max_coordinate=max_coordinate,
+            ax=ax,
+            with_problem_size=with_problem_size,
+            with_objective=with_objective,
+            show_depot_edges=show_depot_edges,
+            depot_in_legend=depot_in_legend,
+            with_route_labels=with_route_labels,
+            legend_loc=legend_loc,
         )
-
-        # Unvisited customers in grey
-        # visited = self.all_visited_nodes
-        # unvisited_mask = [i not in visited for i in range(1, self.instance.num_customers + 1)]
-        # if any(unvisited_mask):
-        #     unvisited_locs = customer_locs[[i for i, m in enumerate(unvisited_mask) if m]]
-        #     ax.scatter(
-        #         unvisited_locs[:, 0],
-        #         unvisited_locs[:, 1],
-        #         c="lightgrey",
-        #         s=40,
-        #         edgecolors="black",
-        #         linewidths=0.5,
-        #         zorder=3,
-        #     )
-
-        num_colours = max(len(routes), 1)
-        for r_idx, route in enumerate(routes):
-            colour = cmap(r_idx % num_colours)
-            indices = torch.cat([torch.tensor([0]), route, torch.tensor([0])])
-            waypoints = all_nodes[indices.numpy()]
-
-            route_demand = self.instance.demand[route].sum().item()
-            route_dist = (
-                (torch.tensor(waypoints[1:]) - torch.tensor(waypoints[:-1]))
-                .norm(dim=-1)
-                .sum()
-                .item()
-            )
-            route_label = (
-                f"R{r_idx + 1}, # {route.numel()}, c={route_demand:.2f}, d={route_dist:.4f}"
-            )
-
-            # Nodes coloured by route
-            route_locs = all_nodes[route.numpy()]
-            ax.scatter(
-                route_locs[:, 0],
-                route_locs[:, 1],
-                c=[colour],
-                s=40,
-                edgecolors="black",
-                linewidths=0.5,
-                label=route_label if with_route_labels else None,
-                zorder=4,
-            )
-
-            # Edges
-            for k in range(len(waypoints) - 1):
-                is_depot_edge = k == 0 or k == len(waypoints) - 2
-                if is_depot_edge and not show_depot_edges:
-                    continue
-                ax.annotate(
-                    "",
-                    xy=waypoints[k + 1],
-                    xytext=waypoints[k],
-                    arrowprops=dict(arrowstyle="->", color=colour, lw=1.5),
-                    zorder=2,
-                )
-
-        ax.set_xlim(min_coordinate - 0.1, max_coordinate + 0.1)
-        ax.set_ylim(min_coordinate - 0.1, max_coordinate + 0.1)
-        ax.set_aspect("equal", adjustable="box")
-
-        handles, labels = ax.get_legend_handles_labels()
-        if handles:
-            ax.legend(loc=legend_loc)
-
-        def resolve_routes_num_desc(n: int) -> str:
-            return "no routes" if n == 0 else f"{n} route{'s' if n > 1 else ''}"
-
-        title = f"{resolve_routes_num_desc(len(routes))}"
-        if with_problem_size:
-            title = f"CVRP({self.instance.num_customers}) | " + title
-        if with_objective:
-            title += f" | total distance = {self.total_distance().item():.4f}"
-        ax.set_title(title)
-        ax.grid(True, linestyle="--", alpha=0.4)
