@@ -6,13 +6,14 @@ import torch.nn.functional as F
 class NDSEncoder(nn.Module):
     def __init__(
         self,
+        *,
         d_h: int = 128,
         num_heads: int = 8,
         d_ff: int = 512,
     ) -> None:
         super().__init__()
 
-        self.embedding = CVRPInitialNodeEmbedding(d_h)
+        self.embedding = CVRPInitialNodeEmbedding(d_h=d_h)
         attention_layer = lambda: AttentionLayer(d_h, num_heads, d_ff)
         self.pre_attention = nn.Sequential(
             attention_layer(),
@@ -59,7 +60,7 @@ class CVRPInitialNodeEmbedding(nn.Module):
     Customer: (x, y, demand) -> d_h
     """
 
-    def __init__(self, d_h: int) -> None:
+    def __init__(self, *, d_h: int) -> None:
         super().__init__()
         self.depot_projection = nn.Linear(2, d_h)  # (x, y)
         self.customer_projection = nn.Linear(3, d_h)  # (x, y, demand)
