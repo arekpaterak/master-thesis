@@ -34,7 +34,7 @@ class RandomSegmentDestroy(DestroyOperator[TSPSolution]):
         new_tour = solution.tour.clone()
 
         # 1. Choose starting position (0 to n-1) for each batch
-        start_indices = torch.randint(0, N, (B,), device=device)
+        start_indices = torch.randint(0, N, (B,), device=device, generator=self._generator)
 
         # 2. Create an offset tensor for the segment [0, 1, ..., k-1]
         offsets = torch.arange(self.segment_size, device=device).repeat(B, 1)

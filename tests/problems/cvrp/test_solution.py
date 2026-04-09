@@ -228,6 +228,30 @@ def test_is_feasible():
     assert combined_solution.is_feasible.any() and (~combined_solution.is_feasible).any()
 
 
+@pytest.mark.xfail
+def test_is_feasible_on_deconstructed():
+    """
+    Test if is_feasible is safe to call on deconstructed solutions.
+    """
+
+    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    solution = one_customer_per_route(instance)
+
+    # Deconstruct one element by introducing an UNASSIGNED token.
+    solution.sequence[0, 4] = -1
+    assert solution.is_deconstructed[0]
+
+    # Must not raise
+    feasible = solution.is_feasible
+
+    assert feasible.dtype == torch.bool
+    assert feasible.shape == (10,)
+    assert feasible[0].item() is False
+
+    # Ensure the masking behaviour is per-batch-element and is not all-or-nothing.
+    assert feasible[1:].all().item() is True
+
+
 def test_route_indexed_sequence():
     instance = CVRPSampler(CVRPConfig.for_n(20))(10)
     num_customers = instance.num_customers
@@ -262,6 +286,49 @@ def test_num_routes():
     assert (num_routes == 1).all()
 
 
+@pytest.mark.xfail
+def test_num_routes_ignores_trailing_depot_padding():
+    """
+    Trailing padding zeros must not affect the semantic number of routes.
+    """
+
+    config = CVRPConfig(
+        num_customers=3,
+        vehicle_capacity_raw=3,
+        min_demand_raw=1,
+        max_demand_raw=1,
+    )
+    instance = CVRPSampler(config, seed=0)(1)
+
+    # Three non-empty routes: [1], [2], [3], followed by depot padding.
+    # Semantic routes should be 3, regardless of how many terminal 0s there are.
+    seq = torch.tensor([[0, 1, 0, 2, 0, 3, 0, 0, 0]])
+    solution = CVRPSolution(instance=instance, sequence=seq)
+
+    assert solution.num_routes.item() == 3
+
+
+@pytest.mark.xfail
+def test_num_routes_ignores_consecutive_depots_mid_sequence():
+    """Consecutive depots should not create empty routes.
+
+    Example: 0-1-0-0-2-0-3-0 encodes the same non-empty routes as 0-1-0-2-0-3-0.
+    """
+
+    config = CVRPConfig(
+        num_customers=3,
+        vehicle_capacity_raw=3,
+        min_demand_raw=1,
+        max_demand_raw=1,
+    )
+    instance = CVRPSampler(config, seed=0)(1)
+
+    seq = torch.tensor([[0, 1, 0, 0, 2, 0, 3, 0]])
+    solution = CVRPSolution(instance=instance, sequence=seq)
+
+    assert solution.num_routes.item() == 3
+
+
 def test_demand_per_route():
     config = CVRPConfig(
         num_customers=20,
@@ -276,6 +343,36 @@ def test_demand_per_route():
 
     solution = one_customer_per_route(instance)
     assert torch.allclose(solution.demand_per_route(), torch.tensor(1.0 / 20))
+
+
+@pytest.mark.xfail
+def test_demand_per_route_on_deconstructed():
+    """
+    Test if demand_per_route is safe on deconstructed solutions.
+
+    Even if its values are not meaningful for incomplete solutions, it must not crash
+    when `self.sequence` contains UNASSIGNED (-1).
+    """
+
+    config = CVRPConfig(
+        num_customers=20,
+        vehicle_capacity_raw=20,
+        min_demand_raw=1,
+        max_demand_raw=1,
+    )
+    instance = CVRPSampler(config, seed=0)(10)
+    solution = one_customer_per_route(instance)
+
+    # Introduce deconstruction tokens
+    solution.sequence[0, 4] = -1
+    solution.sequence[3, 6] = -1
+    assert solution.is_deconstructed[[0, 3]].all()
+
+    # Must not raise
+    dpr = solution.demand_per_route()
+
+    assert torch.isfinite(dpr).all()
+    assert dpr.shape[0] == 10
 
 
 def test_route_per_customer():
@@ -336,11 +433,10 @@ def test_remove_customers():
     instance = CVRPSampler(config, seed=0)(1)
     solution = CVRPSolution(instance=instance, sequence=sequence, batch_size=[1])
 
-    # Remove customers 1 and 3
-    to_remove = torch.tensor([[1, 3]])
+    to_remove = torch.tensor([[[1, 3], [2, 1]]])
     deconstructed_solution = solution.remove_customers(to_remove)
 
-    # Expected: D -> -1 -> 2 -> -1 -> D
-    expected = torch.tensor([[0, -1, 2, -1, 0]])
+    expected = torch.tensor([[[0, -1, 2, -1, 0], [0, -1, -1, 3, 0]]])
+    assert deconstructed_solution.sequence.shape == (1, 2, 5)
     assert torch.equal(deconstructed_solution.sequence, expected)
     assert deconstructed_solution.is_deconstructed.all()

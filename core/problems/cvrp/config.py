@@ -21,19 +21,19 @@ class CVRPConfig:
     distribution_of_locations: Literal["uniform"] = "uniform"
 
     @classmethod
-    def for_n(cls, num_nodes: int, **kwargs) -> CVRPConfig:
+    def for_n(cls, num_customers: int, **kwargs) -> CVRPConfig:
         """Create a config for a given problem size.
 
         Raises ``ValueError`` for unsupported sizes.
         """
-        if num_nodes not in CAPACITY_PER_SIZE:
+        if num_customers not in CAPACITY_PER_SIZE:
             raise ValueError(
-                f"No standard capacity for n={num_nodes}. "
+                f"No standard capacity for n={num_customers}. "
                 f"Supported sizes: {sorted(CAPACITY_PER_SIZE)}. "
                 "Pass vehicle_capacity_raw explicitly to use a custom size."
             )
         return cls(
-            num_customers=num_nodes,
-            vehicle_capacity_raw=CAPACITY_PER_SIZE[num_nodes],
+            num_customers=num_customers,
+            vehicle_capacity_raw=CAPACITY_PER_SIZE[num_customers],
             **kwargs,
         )

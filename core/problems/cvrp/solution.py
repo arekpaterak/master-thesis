@@ -45,10 +45,6 @@ class CVRPSolution(BaseSolution):
         return self.total_distance()
 
     def total_distance(self) -> torch.Tensor:
-        """
-        Calculates total distance for single or batched instances.
-        Computes the norm between consecutive nodes in the sequence.
-        """
         # (..., L, 2) - Gather locations based on sequence indices
         # We need to expand sequence to match the (x, y) dimension
         idx = self.sequence.unsqueeze(-1).expand(*self.sequence.shape, 2)
@@ -56,6 +52,10 @@ class CVRPSolution(BaseSolution):
 
         # Distance between consecutive points in the sequence
         return (points[..., 1:, :] - points[..., :-1, :]).norm(dim=-1).sum(dim=-1)
+
+    @property
+    def is_deconstructed(self) -> torch.Tensor:
+        return (self.sequence == self.UNASSIGNED).any(dim=-1)
 
     @property
     def is_complete(self) -> torch.Tensor:
@@ -70,10 +70,6 @@ class CVRPSolution(BaseSolution):
         each_customer_once = (customer_counts == 1).all(dim=-1)
 
         return ~self.is_deconstructed & each_customer_once
-
-    @property
-    def is_deconstructed(self) -> torch.Tensor:
-        return (self.sequence == self.UNASSIGNED).any(dim=-1)
 
     @property
     def is_feasible(self) -> torch.Tensor:
@@ -195,7 +191,6 @@ class CVRPSolution(BaseSolution):
             A new CVRPSolution with the specified customers removed (set to -1 in the sequence).
         """
         # 1. Determine the target batch shape by broadcasting the leading dimensions
-        # This handles cases where to_remove has extra dims like (batch, rollout)
         target_batch_shape = torch.broadcast_shapes(self.batch_size, to_remove.shape[:-1])
 
         # 2. Expand sequence and instance to match the new batch shape
