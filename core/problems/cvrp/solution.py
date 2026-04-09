@@ -18,9 +18,18 @@ class CVRPSolution(BaseSolution):
     UNASSIGNED = -1
     DEPOT = 0
 
-    instance: CVRPInstance
+    _instance: CVRPInstance
     sequence: torch.Tensor
     """(..., L) where L is the max sequence length in the batch. Starts and ends with 0 (depot). Padded with 0s if necessary. -1 for deconstructed slots."""
+
+    @property
+    def instance(self) -> CVRPInstance:
+        return self._instance
+
+    @classmethod
+    def create(cls, instance: CVRPInstance, sequence: torch.Tensor) -> CVRPSolution:
+        batch_size = instance.batch_size
+        return cls(_instance=instance, sequence=sequence, batch_size=batch_size)
 
     def __post_init__(self):
         if self.sequence is not None:
@@ -81,24 +90,27 @@ class CVRPSolution(BaseSolution):
 
     @property
     def route_indexed_sequence(self):
-        result = (self.sequence == self.DEPOT).long().cumsum(dim=-1) - 1
+        is_route_split = (self.sequence == self.DEPOT) | (self.sequence == self.UNASSIGNED)
 
-        # Ensure the final depot is part of the last route index
-        result[..., -1] = result[..., -2]
+        next_is_customer = torch.zeros_like(self.sequence, dtype=torch.bool)
+        next_is_customer[..., :-1] = self.sequence[..., 1:] >= 1
+
+        result = torch.clamp((is_route_split & next_is_customer).long().cumsum(dim=-1) - 1, min=0)
         return result
 
     @property
     def num_routes(self) -> torch.Tensor:
         return self.route_indexed_sequence.max(dim=-1).values + 1
 
-    def demand_per_route(self):
-        route_idx = self.route_indexed_sequence
-        demand = self.instance.demand.gather(-1, self.sequence)
+    def demand_per_route(self) -> torch.Tensor:
+        safe_sequence = self.sequence.clamp(min=0)
+        demand = self.instance.demand.gather(-1, safe_sequence)
         assert demand.shape == self.sequence.shape
 
         max_num_routes = self.num_routes.max().item()
         output_size = (*self.batch_size, max_num_routes)
 
+        route_idx = self.route_indexed_sequence
         return torch.zeros(
             output_size, device=self.sequence.device, dtype=demand.dtype
         ).scatter_reduce(dim=-1, index=route_idx, src=demand, reduce="sum", include_self=False)
@@ -114,13 +126,12 @@ class CVRPSolution(BaseSolution):
         # Create a mask for valid customers (nodes 1 to N+1)
         customer_mask = (self.sequence >= 1) & (self.sequence <= num_customers)
 
-        # Map customer 1..N+1 to indices 0..N.
-        # Map everything else to a 'trash bin' at index N+1.
+        # Map customers 1..N+1 to indices 0..N-1, everything else to a 'trash bin' at index N.
         trash_bin_idx = num_customers
         target_indices = torch.where(
             condition=customer_mask,
             input=self.sequence - 1,  # customer indexed
-            other=torch.tensor(trash_bin_idx, device=self.sequence.device),
+            other=torch.full_like(self.sequence, trash_bin_idx),
         )
 
         # -1 as a default to identify unvisited customers
@@ -166,8 +177,9 @@ class CVRPSolution(BaseSolution):
         )
 
         # Prepare the buffer (..., num_customers + 1, 2)
-        buffer = torch.zeros(
+        buffer = torch.full(
             (*prefix_shape, num_customers + 1, 2),
+            -1,
             dtype=self.sequence.dtype,
             device=self.sequence.device,
         )
@@ -203,13 +215,13 @@ class CVRPSolution(BaseSolution):
         is_removed = (sequence.unsqueeze(-1) == to_remove.unsqueeze(-2)).any(dim=-1)
 
         # 4. Safety: Only allow removal of customers (node indices >= 1)
-        # This prevents accidental removal of depots (0) or padding (-1)
+        # This prevents accidental removal of depots (0)
         mask = is_removed & (sequence >= 1)
 
         # 5. Create the new sequence with -1 at masked positions
-        new_sequence = sequence.clone().masked_fill_(mask, -1)
+        new_sequence = sequence.clone().masked_fill_(mask, self.UNASSIGNED)
 
-        return CVRPSolution(instance=instance, sequence=new_sequence, batch_size=target_batch_shape)
+        return CVRPSolution.create(instance=instance, sequence=new_sequence)
 
     def routes(self) -> list[torch.Tensor]:
         """Splits the single-instance sequence into a list of routes (excluding depot)."""

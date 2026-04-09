@@ -9,7 +9,20 @@ from core.problems.instance import BaseProblemInstance
 
 
 class BaseSolution(TensorClass, ABC):
-    instance: BaseProblemInstance
+    @property
+    @abstractmethod
+    def instance(self) -> BaseProblemInstance: ...
+
+    @property
+    @abstractmethod
+    def is_complete(self) -> torch.Tensor: ...
+
+    @property
+    @abstractmethod
+    def is_feasible(self) -> torch.Tensor: ...
 
     @abstractmethod
     def objective(self) -> torch.Tensor: ...
+
+    @abstractmethod
+    def visualize(self, **kwargs) -> None: ...

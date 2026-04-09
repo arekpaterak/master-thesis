@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
-# TODO: Adjust to work on better defined representation and handle discontinuous tours (for partial solutions)
+# TODO: Use solution method instead
 def tour_length(instances, solutions) -> torch.Tensor:
     """
     Args:
@@ -33,63 +33,72 @@ class TSPSolution(BaseSolution):
     Canonical representation of single or batched TSP solution.
     """
 
-    instance: TSPInstance
+    _instance: TSPInstance
     tour: torch.Tensor
     """(..., n), -1 for unvisited slots."""
 
+    PADDING = -1
+
+    @property
+    def instance(self) -> TSPInstance:
+        return self._instance
+
+    @classmethod
+    def create(cls, instance: TSPInstance, tour: torch.Tensor) -> TSPSolution:
+        return cls(_instance=instance, tour=tour, batch_size=instance.batch_size)
+
     def __post_init__(self):
         # Validate that tour indices are within bounds of the instance
-        mask = self.tour != -1
+        mask = self.tour != self.PADDING
         if mask.any():
             assert self.tour[mask].max() < self.instance.num_locations, "Tour index out of bounds."
             assert self.tour[mask].min() >= 0, "Tour index (excluding -1) must be non-negative."
 
     @property
-    def num_locations(self) -> int:
-        return self.instance.num_locations
-
-    @property
     def num_visited(self) -> torch.Tensor:
-        return (self.tour != -1).sum(dim=-1)
+        return (self.tour != self.PADDING).sum(dim=-1)
 
     @property
     def is_complete(self) -> torch.Tensor:
         return self.num_visited == self.instance.num_locations
 
-    def objective(self) -> torch.Tensor:
-        return self.tour_length
-
     @property
+    def is_feasible(self) -> torch.Tensor:
+        return self.is_complete  # All permutations are feasible
+
+    def objective(self) -> torch.Tensor:
+        if (self.is_complete == False).any():
+            raise ValueError("Cannot calculate objective for incomplete TSP solutions.")
+        return self.tour_length()
+
     def tour_length(self) -> torch.Tensor:
         """
         Calculates tour length for single or batched instances.
         Handles both open paths (partial) and closed loops (complete).
         """
-        # (..., N, 2)
         locs = self.instance.locations
 
-        # Gather coordinates in tour order
-        # We use a dummy index for -1 to avoid errors during gather, then mask later
         safe_tour = self.tour.clamp(min=0)
-        # Advanced indexing to handle arbitrary batch dims
-        ordered = locs.gather(dim=-2, index=safe_tour.unsqueeze(-1).expand(*safe_tour.shape, 2))
 
-        # Calculate distances between consecutive nodes
-        # (..., N-1, 2)
-        p1 = ordered[..., :-1, :]
-        p2 = ordered[..., 1:, :]
+        # (..., N, 2) coordinates in tour order
+        ordered_locs = locs.gather(
+            dim=-2, index=safe_tour.unsqueeze(-1).expand(*safe_tour.shape, 2)
+        )
+
+        # 1. Calculate distances between consecutive nodes in the sequence
+        p1 = ordered_locs[..., :-1, :]
+        p2 = ordered_locs[..., 1:, :]
         dists = (p1 - p2).norm(dim=-1)
 
-        # Mask out transitions involving -1
-        mask = (self.tour[..., :-1] != -1) & (self.tour[..., 1:] != -1)
+        # Mask out transitions involving PADDING
+        mask = (self.tour[..., :-1] != self.PADDING) & (self.tour[..., 1:] != self.PADDING)
         total_dist = (dists * mask.float()).sum(dim=-1)
 
-        # If complete, add the return trip to the start
-        # Only add for batch elements that are actually complete
+        # 2. Add the return trip to the start only for complete tours (the Hamiltonian Cycle)
         complete_mask = self.is_complete
         if complete_mask.any():
-            start_loc = ordered[..., 0, :]
-            end_loc = ordered[..., -1, :]
+            start_loc = ordered_locs[..., 0, :]
+            end_loc = ordered_locs[..., -1, :]
             return_dist = (end_loc - start_loc).norm(dim=-1)
             total_dist = torch.where(complete_mask, total_dist + return_dist, total_dist)
 

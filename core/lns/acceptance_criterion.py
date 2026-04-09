@@ -29,4 +29,4 @@ class AcceptanceCriterion(ABC):
 
 class GreedyAcceptance(AcceptanceCriterion):
     def _accept(self, current: TSPSolution, candidates: TSPSolution) -> torch.Tensor:
-        return candidates.tour_length < current.tour_length
+        return candidates.objective() < current.objective()
