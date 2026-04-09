@@ -30,10 +30,9 @@ def random_permutation(instance: TSPInstance) -> TSPSolution:
         instance = instance.squeeze(0)
         random_permutations = random_permutations.squeeze(0)
 
-    return TSPSolution(
+    return TSPSolution.create(
         instance=instance,
         tour=random_permutations,
-        batch_size=instance.batch_size,
     )
 
 

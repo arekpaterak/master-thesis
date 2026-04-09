@@ -28,7 +28,7 @@ class RandomSegmentDestroy(DestroyOperator[TSPSolution]):
             solution = solution.unsqueeze(0)
             was_batched = True
         B = solution.batch_size[0]
-        N = solution.num_locations
+        N = solution.instance.num_locations
         device = solution.tour.device
 
         new_tour = solution.tour.clone()
@@ -50,8 +50,7 @@ class RandomSegmentDestroy(DestroyOperator[TSPSolution]):
             solution = solution.squeeze(0)
             new_tour = new_tour.squeeze(0)
 
-        return TSPSolution(
+        return TSPSolution.create(
             instance=solution.instance,
             tour=new_tour,
-            batch_size=solution.batch_size,
         )

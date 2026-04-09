@@ -29,10 +29,9 @@ class AttentionModelRepair(RepairOperator[TSPSolution]):
             partial_tour=partial_tour,
         )
 
-        return TSPSolution(
+        return TSPSolution.create(
             instance=partial_solution.instance,
             tour=result.tour,
-            batch_size=partial_solution.batch_size,
         )
 
     @staticmethod

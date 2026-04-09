@@ -1,7 +1,6 @@
 import pytest
 import torch
 
-from core.models.nds.preprocessing import build_encoder_input_indexes
 from core.problems.cvrp import CVRPConfig, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import all_customers_one_route, one_customer_per_route
 
@@ -172,12 +171,13 @@ def test_gather_from_multiple_rollouts():
 
 def test_is_complete():
     instance = CVRPSampler(CVRPConfig.for_n(20))(10)
-    solution = one_customer_per_route(instance)
 
+    # sequence: [0, 1, 0, 2, 0, ..., 0, 19, 0], expected: True
+    solution = one_customer_per_route(instance)
     assert (solution.is_complete == True).all()
 
+    # sequence: [0, 1, 2, ..., 19, 0], expected: False
     solution.sequence = solution.sequence[:, :-3]
-
     assert (solution.is_complete == False).all()
 
 
@@ -228,7 +228,6 @@ def test_is_feasible():
     assert combined_solution.is_feasible.any() and (~combined_solution.is_feasible).any()
 
 
-@pytest.mark.xfail
 def test_is_feasible_on_deconstructed():
     """
     Test if is_feasible is safe to call on deconstructed solutions.
@@ -252,46 +251,150 @@ def test_is_feasible_on_deconstructed():
     assert feasible[1:].all().item() is True
 
 
-def test_route_indexed_sequence():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
-    num_customers = instance.num_customers
+@pytest.mark.parametrize(
+    "sequence,expected",
+    [
+        ([0], [0]),
+        ([0, 0], [0, 0]),
+        ([0, 1, 2, 3, 0], [0, 0, 0, 0, 0]),
+        ([0, 1, 0, 2, 0, 3, 0], [0, 0, 1, 1, 2, 2, 2]),
+        ([0, 1, 0], [0, 0, 0]),
+        ([0, 1, 0, 2, 0], [0, 0, 1, 1, 1]),
+        ([0, 1, -1, 0], [0, 0, 0, 0]),
+        ([0, 1, -1, 0, 3, 0], [0, 0, 0, 1, 1, 1]),
+        ([0, 1, -1, 3, 0], [0, 0, 1, 1, 1]),
+        ([0, -1, 0, -1, 0, -1, 0], [0, 0, 0, 0, 0, 0, 0]),
+        ([0, 1, 0, 0, 2, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 1]),
+        ([0, 1, -1, -1, 2, 0], [0, 0, 0, 1, 1, 1]),
+    ],
+)
+def test_route_indexed_sequence(sequence, expected):
+    sequence = torch.tensor(sequence, dtype=torch.long)
+    expected = torch.tensor(expected, dtype=torch.long)
+    instance = CVRPSampler(CVRPConfig.for_n(20))(1)
+    solution = CVRPSolution.create(
+        instance=instance,
+        sequence=sequence.unsqueeze(0),
+    )
 
-    solution = one_customer_per_route(instance)
     route_indexed_sequence = solution.route_indexed_sequence
 
-    # Expected: [0, 0, 1, 1, 2, 2, ..., 19, 19, 19]
-    expected = torch.cat(
-        [torch.arange(num_customers).repeat_interleave(2), torch.tensor([num_customers - 1])]
-    )
-    assert torch.equal(route_indexed_sequence[0], expected)
-
-    solution = all_customers_one_route(instance)
-    route_indexed_sequence = solution.route_indexed_sequence
-
-    # Expected: [0, 0, 0, ..., 0]
-    expected = torch.zeros_like(route_indexed_sequence[0])
     assert torch.equal(route_indexed_sequence[0], expected)
 
 
-def test_num_routes():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
-    solution = one_customer_per_route(instance)
-    num_routes = solution.num_routes
+@pytest.mark.parametrize(
+    "sequence,expected",
+    [
+        ([0, 0], 1),
+        ([0, 1, 2, 3, 0], 1),
+        ([0, 1, 0, 2, 0, 3, 0], 3),
+        ([0, 1, 0], 1),
+        ([0, 1, 0, 2, 0], 2),
+        ([0, 1, -1, 0], 1),
+        ([0, 1, -1, 0, 3, 0], 2),
+        ([0, 1, -1, 3, 0], 2),
+        ([0, -1, 0, -1, 0, -1, 0], 1),
+    ],
+)
+def test_num_routes(sequence, expected):
+    sequence = torch.tensor(sequence, dtype=torch.long)
+    instance = CVRPSampler(CVRPConfig.for_n(20))(1)
+    solution = CVRPSolution.create(
+        instance=instance,
+        sequence=sequence.unsqueeze(0),
+    )
 
-    assert (num_routes == 20).all()
+    num_routes = solution.num_routes[0]
 
-    solution = all_customers_one_route(instance)
-    num_routes = solution.num_routes
-
-    assert (num_routes == 1).all()
+    assert num_routes == expected
 
 
-@pytest.mark.xfail
-def test_num_routes_ignores_trailing_depot_padding():
-    """
-    Trailing padding zeros must not affect the semantic number of routes.
-    """
+@pytest.mark.parametrize(
+    "sequence,expected",
+    [
+        ([0], [0]),
+        ([0, 0], [0]),
+        ([0, 1, 2, 3, 0], [0.03]),
+        ([0, 1, 0, 2, 0, 3, 0], [0.01, 0.01, 0.01]),
+        ([0, 1, 0], [0.01]),
+        ([0, 1, 0, 2, 0], [0.01, 0.01]),
+        ([0, 1, -1, 0], [0.01]),
+        ([0, 1, -1, 0, 3, 0], [0.01, 0.01]),
+        ([0, 1, -1, 3, 0], [0.01, 0.01]),
+        ([0, -1, 0, -1, 0, -1, 0], [0]),
+        ([0, 1, 0, 0, 2, 0, 0, 0], [0.01, 0.01]),
+        ([0, 1, -1, -1, 2, 0], [0.01, 0.01]),
+    ],
+)
+def test_demand_per_route(sequence, expected):
+    sequence = torch.tensor(sequence, dtype=torch.long)
+    expected = torch.tensor(expected, dtype=torch.float32)
+    config = CVRPConfig(
+        num_customers=100,
+        vehicle_capacity_raw=100,
+        min_demand_raw=1,
+        max_demand_raw=1,
+    )
+    instance = CVRPSampler(config, seed=0)(1)
+    solution = CVRPSolution.create(
+        instance=instance,
+        sequence=sequence.unsqueeze(0),
+    )
 
+    demand_per_route = solution.demand_per_route()
+
+    assert torch.allclose(demand_per_route[0], expected)
+
+
+@pytest.mark.parametrize(
+    "sequence,expected",
+    [
+        (
+            [[0, 1, 0, 2, 0, 3, 0, 0, 0], [0, 1, 0, 2, 0, 3, 0, 4, 0]],
+            [[0.01, 0.01, 0.01, 0.00], [0.01, 0.01, 0.01, 0.01]],
+        ),
+    ],
+)
+def test_demand_per_route_with_mixed_num_routes_in_batch(sequence, expected):
+    sequence = torch.tensor(sequence, dtype=torch.long)
+    expected = torch.tensor(expected, dtype=torch.float32)
+    config = CVRPConfig(
+        num_customers=100,
+        vehicle_capacity_raw=100,
+        min_demand_raw=1,
+        max_demand_raw=1,
+    )
+    instance = CVRPSampler(config, seed=0)(2)
+    solution = CVRPSolution.create(
+        instance=instance,
+        sequence=sequence,
+    )
+
+    demand_per_route = solution.demand_per_route()
+
+    assert torch.allclose(demand_per_route, expected)
+
+
+@pytest.mark.parametrize(
+    "sequence,expected",
+    [
+        ([0], [-1, -1, -1]),
+        ([0, 0], [-1, -1, -1]),
+        ([0, 1, 2, 3, 0], [0, 0, 0]),
+        ([0, 1, 0, 2, 0, 3, 0], [0, 1, 2]),
+        ([0, 1, 0], [0, -1, -1]),
+        ([0, 1, 0, 2, 0], [0, 1, -1]),
+        ([0, 1, -1, 0], [0, -1, -1]),
+        ([0, 1, -1, 0, 3, 0], [0, -1, 1]),
+        ([0, 1, -1, 3, 0], [0, -1, 1]),
+        ([0, -1, 0, -1, 0, -1, 0], [-1, -1, -1]),
+        ([0, 1, 0, 0, 2, 0, 0, 0], [0, 1, -1]),
+        ([0, 1, -1, -1, 2, 0], [0, 1, -1]),
+    ],
+)
+def test_route_per_customer(sequence, expected):
+    sequence = torch.tensor(sequence, dtype=torch.long).unsqueeze(0)
+    expected = torch.tensor(expected, dtype=torch.long).unsqueeze(0)
     config = CVRPConfig(
         num_customers=3,
         vehicle_capacity_raw=3,
@@ -299,111 +402,36 @@ def test_num_routes_ignores_trailing_depot_padding():
         max_demand_raw=1,
     )
     instance = CVRPSampler(config, seed=0)(1)
-
-    # Three non-empty routes: [1], [2], [3], followed by depot padding.
-    # Semantic routes should be 3, regardless of how many terminal 0s there are.
-    seq = torch.tensor([[0, 1, 0, 2, 0, 3, 0, 0, 0]])
-    solution = CVRPSolution(instance=instance, sequence=seq)
-
-    assert solution.num_routes.item() == 3
-
-
-@pytest.mark.xfail
-def test_num_routes_ignores_consecutive_depots_mid_sequence():
-    """Consecutive depots should not create empty routes.
-
-    Example: 0-1-0-0-2-0-3-0 encodes the same non-empty routes as 0-1-0-2-0-3-0.
-    """
-
-    config = CVRPConfig(
-        num_customers=3,
-        vehicle_capacity_raw=3,
-        min_demand_raw=1,
-        max_demand_raw=1,
+    solution = CVRPSolution.create(
+        instance=instance,
+        sequence=sequence,
     )
-    instance = CVRPSampler(config, seed=0)(1)
-
-    seq = torch.tensor([[0, 1, 0, 0, 2, 0, 3, 0]])
-    solution = CVRPSolution(instance=instance, sequence=seq)
-
-    assert solution.num_routes.item() == 3
-
-
-def test_demand_per_route():
-    config = CVRPConfig(
-        num_customers=20,
-        vehicle_capacity_raw=20,
-        min_demand_raw=1,
-        max_demand_raw=1,
-    )
-    instance = CVRPSampler(config, seed=0)(10)
-    solution = all_customers_one_route(instance)
-
-    assert torch.allclose(solution.demand_per_route(), torch.tensor(1.0))
-
-    solution = one_customer_per_route(instance)
-    assert torch.allclose(solution.demand_per_route(), torch.tensor(1.0 / 20))
-
-
-@pytest.mark.xfail
-def test_demand_per_route_on_deconstructed():
-    """
-    Test if demand_per_route is safe on deconstructed solutions.
-
-    Even if its values are not meaningful for incomplete solutions, it must not crash
-    when `self.sequence` contains UNASSIGNED (-1).
-    """
-
-    config = CVRPConfig(
-        num_customers=20,
-        vehicle_capacity_raw=20,
-        min_demand_raw=1,
-        max_demand_raw=1,
-    )
-    instance = CVRPSampler(config, seed=0)(10)
-    solution = one_customer_per_route(instance)
-
-    # Introduce deconstruction tokens
-    solution.sequence[0, 4] = -1
-    solution.sequence[3, 6] = -1
-    assert solution.is_deconstructed[[0, 3]].all()
-
-    # Must not raise
-    dpr = solution.demand_per_route()
-
-    assert torch.isfinite(dpr).all()
-    assert dpr.shape[0] == 10
-
-
-def test_route_per_customer():
-    """
-    Sequence: D -> C1 -> C2 -> D -> C3 -> D
-
-    Routes:
-        - Route 0: C0, C1,
-        - Route 1: C2
-    """
-    config = CVRPConfig(
-        num_customers=3,
-        vehicle_capacity_raw=3,
-        min_demand_raw=1,
-        max_demand_raw=1,
-    )
-    instance = CVRPSampler(config, seed=0)(1)
-    solution = CVRPSolution(instance=instance, sequence=torch.tensor([[0, 1, 2, 0, 3, 0]]))
 
     route_per_customer = solution.route_per_customer()
 
-    expected = torch.tensor([[0, 0, 1]])
     assert torch.equal(route_per_customer, expected)
 
-    assert torch.equal(route_per_customer, build_encoder_input_indexes(solution)[1])
 
-
-def test_neighbours_per_customer():
-    """
-    Sequence: D -> C1 -> C2 -> D -> C3 -> D
-    """
+@pytest.mark.parametrize(
+    "sequence,expected",
+    [
+        ([0], [[-1, -1], [-1, -1], [-1, -1]]),
+        ([0, 0], [[-1, -1], [-1, -1], [-1, -1]]),
+        ([0, 1, 2, 3, 0], [[0, 2], [1, 3], [2, 0]]),
+        ([0, 1, 0, 2, 0, 3, 0], [[0, 0], [0, 0], [0, 0]]),
+        ([0, 1, 0], [[0, 0], [-1, -1], [-1, -1]]),
+        ([0, 1, 0, 2, 0], [[0, 0], [0, 0], [-1, -1]]),
+        ([0, 1, -1, 0], [[0, -1], [-1, -1], [-1, -1]]),
+        ([0, 1, -1, 0, 3, 0], [[0, -1], [-1, -1], [0, 0]]),
+        ([0, 1, -1, 3, 0], [[0, -1], [-1, -1], [-1, 0]]),
+        ([0, -1, 0, -1, 0, -1, 0], [[-1, -1], [-1, -1], [-1, -1]]),
+        ([0, 1, 0, 0, 2, 0, 0, 0], [[0, 0], [0, 0], [-1, -1]]),
+        ([0, 1, -1, -1, 2, 0], [[0, -1], [-1, 0], [-1, -1]]),
+    ],
+)
+def test_neighbours_per_customer(sequence, expected):
+    sequence = torch.tensor(sequence, dtype=torch.long).unsqueeze(0)
+    expected = torch.tensor(expected, dtype=torch.long).unsqueeze(0)
     config = CVRPConfig(
         num_customers=3,
         vehicle_capacity_raw=3,
@@ -411,14 +439,14 @@ def test_neighbours_per_customer():
         max_demand_raw=1,
     )
     instance = CVRPSampler(config, seed=0)(1)
-    solution = CVRPSolution(instance=instance, sequence=torch.tensor([[0, 1, 2, 0, 3, 0]]))
+    solution = CVRPSolution.create(
+        instance=instance,
+        sequence=sequence,
+    )
 
     neighbours_per_customer = solution.neighbours_per_customer()
 
-    expected = torch.tensor([[[0, 2], [1, 0], [0, 0]]])
     assert torch.equal(neighbours_per_customer, expected)
-
-    assert torch.equal(neighbours_per_customer, build_encoder_input_indexes(solution)[0])
 
 
 def test_remove_customers():
@@ -431,7 +459,7 @@ def test_remove_customers():
         max_demand_raw=1,
     )
     instance = CVRPSampler(config, seed=0)(1)
-    solution = CVRPSolution(instance=instance, sequence=sequence, batch_size=[1])
+    solution = CVRPSolution.create(instance=instance, sequence=sequence)
 
     to_remove = torch.tensor([[[1, 3], [2, 1]]])
     deconstructed_solution = solution.remove_customers(to_remove)

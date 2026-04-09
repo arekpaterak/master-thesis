@@ -259,7 +259,7 @@ def _(DEVICE, D_H, D_POLY, N_HEADS, Z_DIM, sample_seed, torch):
     B, rollout_size, N = (2, 10, 4)
     z_dim = 10
     _M = 4
-    decoder = NDSDecoder(d_h=D_H, z_dim=Z_DIM, d_poly=D_POLY, num_heads=N_HEADS).to(DEVICE)
+    decoder = NDSDecoder(d_h=D_H, seed_dim=Z_DIM, d_poly=D_POLY, num_heads=N_HEADS).to(DEVICE)
     h_nodes = torch.randn(B, N + 1, D_H).to(DEVICE)
     z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=z_dim, device=DEVICE)
     print(f"z: {z}")

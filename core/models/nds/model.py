@@ -10,18 +10,20 @@ class NDSModel(nn.Module):
     def __init__(
         self,
         *,
-        d_h: int = 128,
+        hidden_dim: int = 128,
         num_heads: int = 8,
-        d_ff: int = 512,
-        d_poly: int = 256,
-        z_dim: int = 10,
+        ff_dim: int = 512,
+        poly_dim: int = 256,
+        seed_dim: int = 10,
     ) -> None:
         super().__init__()
 
-        self.z_dim = z_dim
+        self.z_dim = seed_dim
 
-        self.encoder = NDSEncoder(d_h=d_h, num_heads=num_heads, d_ff=d_ff)
-        self.decoder = NDSDecoder(d_h=d_h, num_heads=num_heads, z_dim=z_dim, d_poly=d_poly)
+        self.encoder = NDSEncoder(d_h=hidden_dim, num_heads=num_heads, d_ff=ff_dim)
+        self.decoder = NDSDecoder(
+            d_h=hidden_dim, num_heads=num_heads, seed_dim=seed_dim, d_poly=poly_dim
+        )
 
     def pre_forward(
         self,

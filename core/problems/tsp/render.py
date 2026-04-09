@@ -127,7 +127,7 @@ def render_solution(
         title += f"TSP({unbatched_solution.instance.num_locations}) | "
 
     if with_objective:
-        title += f"distance = {unbatched_solution.tour_length.item():.4f}"
+        title += f"distance = {unbatched_solution.tour_length().item():.4f}"
 
     ax.set_title(title)
     ax.grid(True, linestyle="--", alpha=0.4)

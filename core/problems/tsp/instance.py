@@ -12,6 +12,11 @@ class TSPInstance(BaseProblemInstance):
     locations: torch.Tensor
     """(B, N, 2) or (N, 2)"""
 
+    @classmethod
+    def create(cls, locations: torch.Tensor) -> TSPInstance:
+        batch_size = locations.shape[0] if locations.dim() == 3 else []
+        return cls(locations=locations, batch_size=batch_size)
+
     def __post_init__(self):
         assert self.locations.shape[-1] == 2, (
             "Expected locations to have shape (batch_size, num_locations, 2) or (num_locations, 2)."

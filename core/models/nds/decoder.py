@@ -58,7 +58,7 @@ class NDSDecoder(nn.Module):
 
     Args:
         d_h: Node embedding dimension.
-        z_dim: Seed vector dimension.
+        seed_dim: Seed vector dimension.
         d_poly: Hidden dimension of the polynomial conditioning network.
         num_heads: Number of attention heads.
         C: Tanh clipping constant for final scorer logits.
@@ -68,7 +68,7 @@ class NDSDecoder(nn.Module):
         self,
         *,
         d_h: int = 128,
-        z_dim: int = 10,
+        seed_dim: int = 10,
         d_poly: int = 512,
         num_heads: int = 8,
         C: float = 10.0,
@@ -90,7 +90,7 @@ class NDSDecoder(nn.Module):
         self.GRU = nn.GRUCell(d_h, d_h)
 
         self.poly_net = nn.Sequential(
-            nn.Linear(d_h + z_dim, d_poly),
+            nn.Linear(d_h + seed_dim, d_poly),
             nn.ReLU(),
             nn.Linear(d_poly, d_h),
         )

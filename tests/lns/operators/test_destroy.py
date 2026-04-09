@@ -14,10 +14,9 @@ def sample_solution():
 
     # Create a simple sequential tour: [0, 1, 2, ..., 9]
     tour = torch.stack([torch.arange(n) for _ in range(batch_size)])
-    return TSPSolution(
+    return TSPSolution.create(
         instance=instance,
         tour=tour,
-        batch_size=[batch_size],
     )
 
 
@@ -27,10 +26,9 @@ def small_solution():
     n = 5
     instance = TSPSampler(TSPConfig(num_locations=n))(batch_size)
     tour = torch.tensor([[0, 1, 2, 3, 4]])  # Sequential tour
-    return TSPSolution(
+    return TSPSolution.create(
         instance=instance,
         tour=tour,
-        batch_size=[1],
     )
 
 
@@ -41,7 +39,7 @@ def test_random_segment_destroy_logic(sample_solution):
     destroyed = destroy(sample_solution)
 
     assert destroyed.batch_size == sample_solution.batch_size
-    assert destroyed.num_locations == sample_solution.num_locations
+    assert destroyed.instance.num_locations == sample_solution.instance.num_locations
 
     for destroyed_tour in destroyed.tour:
         assert (destroyed_tour == -1).sum() == segment_size
@@ -68,10 +66,9 @@ def test_random_segment_destroy_wrap_around(small_solution):
 def test_preserves_existing_holes(small_solution):
     # Create a solution that already has a hole
     tour_with_hole = torch.tensor([[0, -1, 2, 3, 4]])
-    solution = TSPSolution(
+    solution = TSPSolution.create(
         instance=small_solution.instance,
         tour=tour_with_hole,
-        batch_size=[1],
     )
 
     destroy = RandomSegmentDestroy(segment_size=1)
@@ -84,7 +81,7 @@ def test_preserves_existing_holes(small_solution):
 def test_without_batch_dim(sample_solution):
     single_solution: TSPSolution = sample_solution[0]
     assert single_solution.batch_dims == 0
-    num_locations = single_solution.num_locations
+    num_locations = single_solution.instance.num_locations
 
     destroy = RandomSegmentDestroy(segment_size=1)
     destroyed = destroy(single_solution)
