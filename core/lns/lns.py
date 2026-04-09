@@ -56,4 +56,5 @@ def _select(mask: torch.Tensor, a: TSPSolution, b: TSPSolution) -> TSPSolution:
     return TSPSolution(
         instance=a.instance,  # shared, should not change
         tour=torch.where(mask.unsqueeze(1), a.tour, b.tour),
+        batch_size=a.batch_size,
     )
