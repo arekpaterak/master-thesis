@@ -12,7 +12,7 @@ class TSPFeatureExtractor(FeatureExtractor[TSPSolution]):
 
     def __call__(self, solution: TSPSolution) -> dict[str, torch.Tensor]:
         return {
-            "locations": solution.instance.locations,
+            "node_features": solution.instance.locations,
             "neighbours_index": solution.neighbours_index(),
         }
 

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from core.models.embeddings.cvrp import CVRPInitialEmbedding
+
 
 class NDSEncoder(nn.Module):
     def __init__(
@@ -15,7 +17,7 @@ class NDSEncoder(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.initial_embedding = CVRPInitialNodeEmbedding(d_h=hidden_dim)
+        self.initial_embedding = CVRPInitialEmbedding(hidden_dim=hidden_dim)
         attention_layer = lambda: AttentionLayer(d_h=hidden_dim, num_heads=num_heads, d_ff=ff_dim)
         self.pre_attention = nn.Sequential(
             attention_layer(),
@@ -37,14 +39,14 @@ class NDSEncoder(nn.Module):
     def forward(
         self,
         *,
-        depot_location: torch.Tensor,
+        depot_features: torch.Tensor,
         customer_features: torch.Tensor,
         neighbours_index: torch.Tensor,
         tour_index: torch.Tensor,
     ) -> torch.Tensor:
         """
         Args:
-            depot_location: (B, 2)
+            depot_features: (B, 2)
             customer_features: (B, N, 3)
             neighbours_index: (B, N, 2)
             tour_index: (B, N)
@@ -53,54 +55,13 @@ class NDSEncoder(nn.Module):
             (B, N+1, d_h)
         """
         h = self.initial_embedding(
-            depot_location=depot_location, customer_features=customer_features
+            depot_features=depot_features, customer_features=customer_features
         )
         h = self.pre_attention(h)
         h = self.neighbours_encoding(h, neighbours_index=neighbours_index)
         h = self.tour_encoding(h, tour_index=tour_index)
         h = self.post_attention(h)
         return h
-
-
-class CVRPInitialNodeEmbedding(nn.Module):
-    """
-    Separate linear projections for depot and customer nodes.
-
-    Default:
-    - Depot: (x, y) -> d_h
-    - Customer: (x, y, demand) -> d_h
-    """
-
-    def __init__(
-        self,
-        *,
-        d_h: int,
-        depot_features_dim: int = 2,
-        customer_features_dim: int = 3,
-    ) -> None:
-        super().__init__()
-        assert depot_features_dim > 0
-        assert customer_features_dim > 0
-        self.depot_projection = nn.Linear(depot_features_dim, d_h)  # default: [x, y]
-        self.customer_projection = nn.Linear(customer_features_dim, d_h)  # default: [x, y, demand]
-
-    def forward(
-        self,
-        *,
-        depot_location: torch.Tensor,
-        customer_features: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Args:
-            depot_location: (B, 1, depot_features_dim)
-            customer_features: (B, N, customer_features_dim)
-
-        Returns:
-            (B, N+1, d_h)
-        """
-        depot_embedding = self.depot_projection(depot_location)
-        customer_embeddings = self.customer_projection(customer_features)
-        return torch.cat([depot_embedding, customer_embeddings], dim=1)
 
 
 class AttentionLayer(nn.Module):

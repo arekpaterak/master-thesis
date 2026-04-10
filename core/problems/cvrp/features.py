@@ -12,7 +12,7 @@ class CVRPFeatureExtractor(FeatureExtractor[CVRPSolution]):
 
     def __call__(self, solution: CVRPSolution) -> dict[str, torch.Tensor]:
         return {
-            "depot_location": solution.instance.depot_location,
+            "depot_features": solution.instance.depot_location,
             "customer_features": solution.instance.customer_features,
             "neighbours_index": solution.neighbours_per_customer(),
             "tour_index": solution.route_per_customer(),
