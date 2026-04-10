@@ -267,7 +267,8 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(torch):
+    torch.randint(1, 21, size=(10, 4))
     return
 
 

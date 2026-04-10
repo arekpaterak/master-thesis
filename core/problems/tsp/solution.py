@@ -37,7 +37,7 @@ class TSPSolution(BaseSolution):
     tour: torch.Tensor
     """(..., n), -1 for unvisited slots."""
 
-    PADDING = -1
+    UNASSIGNED = -1
 
     @property
     def instance(self) -> TSPInstance:
@@ -49,14 +49,18 @@ class TSPSolution(BaseSolution):
 
     def __post_init__(self):
         # Validate that tour indices are within bounds of the instance
-        mask = self.tour != self.PADDING
+        mask = self.tour != self.UNASSIGNED
         if mask.any():
             assert self.tour[mask].max() < self.instance.num_locations, "Tour index out of bounds."
             assert self.tour[mask].min() >= 0, "Tour index (excluding -1) must be non-negative."
 
     @property
     def num_visited(self) -> torch.Tensor:
-        return (self.tour != self.PADDING).sum(dim=-1)
+        return (self.tour != self.UNASSIGNED).sum(dim=-1)
+
+    @property
+    def num_unassigned(self) -> torch.Tensor:
+        return (self.tour == self.UNASSIGNED).sum(dim=-1)
 
     @property
     def is_complete(self) -> torch.Tensor:
@@ -70,6 +74,32 @@ class TSPSolution(BaseSolution):
         if (self.is_complete == False).any():
             raise ValueError("Cannot calculate objective for incomplete TSP solutions.")
         return self.tour_length()
+
+    def remove_nodes(self, to_remove: torch.Tensor) -> TSPSolution:
+        """
+        Deconstruct the TSP tour.
+
+        Args:
+            to_remove: Tensor containing node indices to remove with shape [..., deconstruction_size].
+
+        Returns:
+            A new solution with the specified nodes replaced by PADDING (-1).
+        """
+        # 1. Determine the target batch shape by broadcasting leading dimensions
+        target_batch_shape = torch.broadcast_shapes(self.batch_size, to_remove.shape[:-1])
+
+        # 2. Expand tour and instance to match the new batch shape
+        tour = self.tour.expand(*target_batch_shape, -1)
+        instance = self.instance.expand(*target_batch_shape)
+
+        # 3. Create a mask identifying where nodes in the tour match nodes in to_remove
+        # (..., num_nodes, 1) == (..., 1, deconstruction_size) -> (..., num_nodes)
+        is_removed = (tour.unsqueeze(-1) == to_remove.unsqueeze(-2)).any(dim=-1)
+
+        # 4. Create the new tour with PADDING at masked positions
+        new_tour = tour.clone().masked_fill_(is_removed, self.UNASSIGNED)
+
+        return TSPSolution.create(instance=instance, tour=new_tour)
 
     def tour_length(self) -> torch.Tensor:
         """
@@ -91,7 +121,7 @@ class TSPSolution(BaseSolution):
         dists = (p1 - p2).norm(dim=-1)
 
         # Mask out transitions involving PADDING
-        mask = (self.tour[..., :-1] != self.PADDING) & (self.tour[..., 1:] != self.PADDING)
+        mask = (self.tour[..., :-1] != self.UNASSIGNED) & (self.tour[..., 1:] != self.UNASSIGNED)
         total_dist = (dists * mask.float()).sum(dim=-1)
 
         # 2. Add the return trip to the start only for complete tours (the Hamiltonian Cycle)

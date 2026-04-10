@@ -1,18 +1,8 @@
-from abc import ABC, abstractmethod
-
 import torch
 
+from core.lns.operators.repair.base import RepairOperator
 from core.models.attention_model import AttentionModel
-from core.problems.solution import BaseSolution
 from core.problems.tsp.solution import TSPSolution
-
-
-class RepairOperator[S: BaseSolution](ABC):
-    @abstractmethod
-    def repair(self, partial_solution: S) -> S: ...
-
-    def __call__(self, partial_solution: S) -> S:
-        return self.repair(partial_solution)
 
 
 class AttentionModelRepair(RepairOperator[TSPSolution]):
@@ -61,7 +51,7 @@ def batched_roll_2d(x: torch.Tensor, *, shifts: torch.Tensor) -> torch.Tensor:
     return torch.gather(x, 1, shifted_idx)
 
 
-def find_first_following_value(x: torch.Tensor, value: float = -1):
+def find_first_following_value(x: torch.Tensor, *, value: float = -1):
     assert x.ndim == 2, "Expected a 2D tensor of shape (batch_size, sequence_length)."
 
     is_value = x == value

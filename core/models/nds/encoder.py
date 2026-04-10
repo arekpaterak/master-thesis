@@ -10,17 +10,25 @@ class NDSEncoder(nn.Module):
         d_h: int = 128,
         num_heads: int = 8,
         d_ff: int = 512,
+        with_neighbours_encoding: bool = True,
+        with_tour_encoding: bool = True,
     ) -> None:
         super().__init__()
 
         self.embedding = CVRPInitialNodeEmbedding(d_h=d_h)
-        attention_layer = lambda: AttentionLayer(d_h, num_heads, d_ff)
+        attention_layer = lambda: AttentionLayer(d_h=d_h, num_heads=num_heads, d_ff=d_ff)
         self.pre_attention = nn.Sequential(
             attention_layer(),
             attention_layer(),
         )
-        self.message_passing = MessagePassingLayer(d_h, d_ff)
-        self.tour_encoding = TourEncodingLayer(d_h, d_ff)
+        self.neighbours_encoding = (
+            NeighboursEncodingLayer(d_h=d_h, d_ff=d_ff)
+            if with_neighbours_encoding
+            else nn.Identity()
+        )
+        self.tour_encoding = (
+            TourEncodingLayer(d_h=d_h, d_ff=d_ff) if with_tour_encoding else nn.Identity()
+        )
         self.post_attention = nn.Sequential(
             attention_layer(),
             attention_layer(),
@@ -44,10 +52,10 @@ class NDSEncoder(nn.Module):
         Returns:
             (B, N+1, d_h)
         """
-        h = self.embedding(depot_location, customer_features)
+        h = self.embedding(depot_location=depot_location, customer_features=customer_features)
         h = self.pre_attention(h)
-        h = self.message_passing(h, neighbours_index)
-        h = self.tour_encoding(h, tour_index)
+        h = self.neighbours_encoding(h, neighbours_index=neighbours_index)
+        h = self.tour_encoding(h, tour_index=tour_index)
         h = self.post_attention(h)
         return h
 
@@ -67,6 +75,7 @@ class CVRPInitialNodeEmbedding(nn.Module):
 
     def forward(
         self,
+        *,
         depot_location: torch.Tensor,
         customer_features: torch.Tensor,
     ) -> torch.Tensor:
@@ -86,6 +95,7 @@ class CVRPInitialNodeEmbedding(nn.Module):
 class AttentionLayer(nn.Module):
     def __init__(
         self,
+        *,
         d_h: int,
         num_heads: int,
         d_ff: int,
@@ -108,8 +118,12 @@ class AttentionLayer(nn.Module):
         return x
 
 
-class MessagePassingLayer(nn.Module):
-    def __init__(self, d_h: int, d_ff: int) -> None:
+class NeighboursEncodingLayer(nn.Module):
+    """
+    Named Message Passing Layer in the original paper.
+    """
+
+    def __init__(self, *, d_h: int, d_ff: int) -> None:
         super().__init__()
         self.W1 = nn.Linear(d_h, d_h, bias=False)  # previous neighbour projection
         self.W2 = nn.Linear(d_h, d_h, bias=False)  # next neighbour projection
@@ -124,6 +138,7 @@ class MessagePassingLayer(nn.Module):
     def forward(
         self,
         h: torch.Tensor,
+        *,
         neighbours_index: torch.Tensor,
     ) -> torch.Tensor:
         """
@@ -164,7 +179,7 @@ class MessagePassingLayer(nn.Module):
 
 # TODO: Rename to RouteEncodingLayer to unify naming
 class TourEncodingLayer(nn.Module):
-    def __init__(self, d_h: int, d_ff: int) -> None:
+    def __init__(self, *, d_h: int, d_ff: int) -> None:
         super().__init__()
         self.tour_combiner = nn.Linear(2 * d_h, d_h, bias=False)
         self.FF = nn.Sequential(
@@ -177,6 +192,7 @@ class TourEncodingLayer(nn.Module):
     def forward(
         self,
         node_embeddings: torch.Tensor,
+        *,
         tour_index: torch.Tensor,
     ) -> torch.Tensor:
         """

@@ -35,7 +35,7 @@ class Encoder(nn.Module):
 
         # N attention layers
         self.layers = nn.ModuleList(
-            [AttentionLayer(d_h, num_heads, d_ff) for _ in range(num_layers)]
+            [AttentionLayer(d_h=d_h, num_heads=num_heads, d_ff=d_ff) for _ in range(num_layers)]
         )
 
     def forward(
@@ -78,7 +78,7 @@ class TSPInitialNodeEmbedding(nn.Module):
 
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_h: int, num_heads: int = 8, d_ff: int = 512) -> None:
+    def __init__(self, *, d_h: int, num_heads: int = 8, d_ff: int = 512) -> None:
         super().__init__()
         assert d_h % num_heads == 0
 
@@ -92,7 +92,7 @@ class AttentionLayer(nn.Module):
             bias=True,
         )
         self.BN1 = nn.BatchNorm1d(d_h)
-        self.FF = FeedForward(d_h, d_ff)
+        self.FF = FeedForward(d_h=d_h, d_ff=d_ff)
         self.BN2 = nn.BatchNorm1d(d_h)
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
@@ -107,7 +107,7 @@ class AttentionLayer(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, d_h: int, d_ff: int = 512) -> None:
+    def __init__(self, *, d_h: int, d_ff: int = 512) -> None:
         """
         Args:
             d_h: The dimension denoted as $h$ in the paper.

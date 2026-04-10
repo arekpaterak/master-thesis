@@ -99,3 +99,28 @@ def test_deconstructed():
     solution[:, 1] = -1
 
     assert (solution.is_complete == False).all()
+
+
+@pytest.mark.parametrize(
+    "tour,to_remove,expected",
+    [
+        ([[0, 1, 2, 3]], [[[1, 3], [2, 1]]], [[[0, -1, 2, -1], [0, -1, -1, 3]]]),
+        ([[0, 1, 2, 3]], [[1]], [[0, -1, 2, 3]]),
+        ([[0, -1, 2, 3]], [[1, 2]], [[0, -1, -1, 3]]),
+        ([[0, 1, 2, 3]], [[0, 4]], [[-1, 1, 2, 3]]),
+    ],
+)
+def test_remove_nodes(tour, to_remove, expected):
+    tour = torch.tensor(tour, dtype=torch.long)
+    to_remove = torch.tensor(to_remove, dtype=torch.long)
+    expected = torch.tensor(expected, dtype=torch.long)
+    config = TSPConfig(num_locations=10)
+    instance = TSPSampler(config, seed=0)(tour.shape[0])
+    solution = TSPSolution.create(instance=instance, tour=tour)
+
+    deconstructed_solution = solution.remove_nodes(to_remove)
+
+    assert torch.equal(deconstructed_solution.tour, expected)
+    assert not deconstructed_solution.is_complete.any()
+    assert deconstructed_solution.instance.batch_size == deconstructed_solution.batch_size
+    assert deconstructed_solution.instance.locations.shape[:-2] == deconstructed_solution.batch_size

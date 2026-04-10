@@ -67,6 +67,10 @@ class CVRPSolution(BaseSolution):
         return (self.sequence == self.UNASSIGNED).any(dim=-1)
 
     @property
+    def num_unassigned(self) -> torch.Tensor:
+        return (self.sequence == self.UNASSIGNED).sum(dim=-1)
+
+    @property
     def is_complete(self) -> torch.Tensor:
         sequence = self.sequence
         num_customers = self.instance.num_customers
@@ -200,7 +204,7 @@ class CVRPSolution(BaseSolution):
             to_remove: (batch_size, deconstruction_size) or (batch_size, rollout_size, deconstruction_size)
 
         Returns:
-            A new CVRPSolution with the specified customers removed (set to -1 in the sequence).
+            A new solution with the specified customers removed (set to -1 in the sequence).
         """
         # 1. Determine the target batch shape by broadcasting the leading dimensions
         target_batch_shape = torch.broadcast_shapes(self.batch_size, to_remove.shape[:-1])

@@ -28,6 +28,8 @@ def test_initial_node_embedding() -> None:
     instance = sampler(4)
 
     initial_embedding = CVRPInitialNodeEmbedding(d_h=128)
-    initial_node_embeddings = initial_embedding(instance.depot_location, instance.customer_features)
+    initial_node_embeddings = initial_embedding.forward(
+        depot_location=instance.depot_location, customer_features=instance.customer_features
+    )
 
     assert initial_node_embeddings.shape == (4, N + 1, 128)
