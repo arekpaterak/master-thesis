@@ -196,6 +196,13 @@ class CVRPSolution(BaseSolution):
         # 5. Return only the customer indices (excluding trash bin)
         return buffer[..., :num_customers, :]
 
+    def node_degree(self) -> torch.Tensor:
+        """
+        Returns a tensor of shape (..., num_customers) representing the degree of each customer node.
+        """
+        neighbours = self.neighbours_per_customer()
+        return (neighbours != self.UNASSIGNED).sum(dim=-1)
+
     def remove_customers(self, to_remove: torch.Tensor) -> CVRPSolution:
         """
         Deconstruct the solution.

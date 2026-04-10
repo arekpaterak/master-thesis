@@ -75,6 +75,57 @@ class TSPSolution(BaseSolution):
             raise ValueError("Cannot calculate objective for incomplete TSP solutions.")
         return self.tour_length()
 
+    def neighbours_index(self) -> torch.Tensor:
+        b_size = self.batch_size
+        n = self.instance.num_locations
+        tour = self.tour
+
+        valid_mask = tour != self.UNASSIGNED
+        trash_bin_idx = n
+
+        neighbours_buffer = torch.full(
+            (*b_size, n + 1, 2), -1, dtype=torch.long, device=tour.device
+        )
+        target_indices = torch.where(
+            valid_mask, tour, torch.tensor(trash_bin_idx, device=tour.device)
+        )
+
+        # Valid inputs for successors and predecessors when the node itself is assigned
+        # But if a node is unassigned, it should be -1.
+        predecessors = torch.where(
+            valid_mask, tour.roll(1, dims=-1), torch.tensor(-1, device=tour.device)
+        )
+        successors = torch.where(
+            valid_mask, tour.roll(-1, dims=-1), torch.tensor(-1, device=tour.device)
+        )
+
+        neighbours_buffer[..., 0].scatter_(dim=-1, index=target_indices, src=predecessors)
+        neighbours_buffer[..., 1].scatter_(dim=-1, index=target_indices, src=successors)
+
+        return neighbours_buffer[..., :n, :]
+
+    def tour_index(self) -> torch.Tensor:
+        b_size = self.batch_size
+        n = self.instance.num_locations
+        tour = self.tour
+
+        valid_mask = tour != self.UNASSIGNED
+        trash_bin_idx = n
+        target_indices = torch.where(
+            valid_mask, tour, torch.tensor(trash_bin_idx, device=tour.device)
+        )
+
+        # For TSP there's only 1 tour! Nodes in tour have index 0, unassigned nodes have -1.
+        tour_index_buffer = torch.full((*b_size, n + 1), -1, dtype=torch.long, device=tour.device)
+        tour_id = torch.zeros_like(tour)
+        tour_index_buffer.scatter_(dim=-1, index=target_indices, src=tour_id)
+
+        return tour_index_buffer[..., :n]
+
+    def node_degree(self) -> torch.Tensor:
+        neighbours = self.neighbours_index()
+        return (neighbours != self.UNASSIGNED).sum(dim=-1)
+
     def remove_nodes(self, to_remove: torch.Tensor) -> TSPSolution:
         """
         Deconstruct the TSP tour.

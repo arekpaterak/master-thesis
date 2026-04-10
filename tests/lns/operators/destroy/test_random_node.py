@@ -3,6 +3,7 @@ import pytest
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.problems.cvrp import CVRPConfig, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import one_customer_per_route
+from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPConfig, TSPSampler
 from core.problems.tsp.solution import TSPSolution
 from core.problems.tsp.solve import random_permutation
@@ -47,7 +48,7 @@ def test_random_node_should_fail_on_creation(destruction_size: int):
 def test_random_node(solution_fixture: str, destruction_size: int, request):
     solution = request.getfixturevalue(solution_fixture)
     destroy = RandomNodeDestroy(destruction_size=destruction_size, seed=42)
-    destroyed = destroy(solution)
+    destroyed: BaseSolution = destroy(solution)
     actual_destruction_size = destroyed.num_unassigned
     assert (actual_destruction_size == destruction_size).all()
 

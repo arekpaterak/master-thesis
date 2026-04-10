@@ -16,7 +16,7 @@ class RandomNodeDestroy(DestroyOperator):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def destroy(self, solution: BaseSolution) -> BaseSolution:
+    def __call__(self, solution: BaseSolution) -> BaseSolution:
         num_nodes = solution.instance.num_nodes
         device = solution.device
         batch_size = solution.batch_size

@@ -20,7 +20,7 @@ class NDSModel(nn.Module):
 
         self.z_dim = seed_dim
 
-        self.encoder = NDSEncoder(d_h=hidden_dim, num_heads=num_heads, d_ff=ff_dim)
+        self.encoder = NDSEncoder(hidden_dim=hidden_dim, num_heads=num_heads, ff_dim=ff_dim)
         self.decoder = NDSDecoder(
             d_h=hidden_dim, num_heads=num_heads, seed_dim=seed_dim, d_poly=poly_dim
         )

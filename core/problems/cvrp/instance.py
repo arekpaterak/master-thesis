@@ -16,6 +16,13 @@ class CVRPInstance(BaseProblemInstance):
     capacity: torch.Tensor
     """(B, 1) or (1,)"""
 
+    @classmethod
+    def create(
+        cls, locations: torch.Tensor, demand: torch.Tensor, capacity: torch.Tensor
+    ) -> CVRPInstance:
+        batch_size = locations.shape[0] if locations.dim() == 3 else []
+        return cls(locations=locations, demand=demand, capacity=capacity, batch_size=batch_size)
+
     def __post_init__(self):
         b_ndim = len(self.batch_size)
 
