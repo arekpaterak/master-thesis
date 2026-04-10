@@ -159,9 +159,9 @@ def _(mo):
 
 @app.cell
 def _(D_FF, D_H):
-    from core.models.nds.encoder import MessagePassingLayer
+    from core.models.nds.encoder import NeighboursEncodingLayer
 
-    MessagePassingLayer(
+    NeighboursEncodingLayer(
         d_h=D_H,
         d_ff=D_FF,
     )

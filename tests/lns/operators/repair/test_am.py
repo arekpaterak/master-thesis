@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.lns.operators.repair import AttentionModelRepair, batched_roll_2d
+from core.lns.operators.repair.am import AttentionModelRepair, batched_roll_2d
 
 
 @pytest.mark.parametrize(

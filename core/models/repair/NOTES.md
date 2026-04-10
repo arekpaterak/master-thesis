@@ -21,7 +21,7 @@ Only the nodes that are free to be reinserted are present in the input, e.g. not
 TSP:
 - Node x coordinate.
 - Node y coordinate.
-- State of the solution: 1 if the node is not connected, 2 if the node is connected.
+- State of the solution: node degree; 0 if the node is not connected, 1 if the node is connected; nodes with degree 2 are not present in the input.
 
 CVRP:
 - Node x coordinate.

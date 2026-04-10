@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.lns.operators.destroy import RandomSegmentDestroy
+from core.lns.operators.destroy.random_segment import RandomSegmentDestroy
 from core.problems.tsp import TSPConfig, TSPSampler
 from core.problems.tsp.solution import TSPSolution
 

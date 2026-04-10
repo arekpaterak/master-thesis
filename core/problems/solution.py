@@ -21,6 +21,10 @@ class BaseSolution(TensorClass, ABC):
     @abstractmethod
     def is_feasible(self) -> torch.Tensor: ...
 
+    @property
+    @abstractmethod
+    def num_unassigned(self) -> torch.Tensor: ...
+
     @abstractmethod
     def objective(self) -> torch.Tensor: ...
 

@@ -37,3 +37,13 @@ class CVRPConfig:
             vehicle_capacity_raw=CAPACITY_PER_SIZE[num_customers],
             **kwargs,
         )
+
+    @classmethod
+    def without_capacity(cls, num_customers: int, **kwargs) -> CVRPConfig:
+        return cls(
+            num_customers=num_customers,
+            vehicle_capacity_raw=0,
+            min_demand_raw=0,
+            max_demand_raw=0,
+            **kwargs,
+        )

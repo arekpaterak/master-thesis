@@ -19,7 +19,7 @@ class AMRollout(NamedTuple):
 
 
 class AttentionModel(nn.Module):
-    def __init__(self, d_x: int = 2, d_h: int = 128, num_heads: int = 8, num_layers: int = 3):
+    def __init__(self, *, d_x: int = 2, d_h: int = 128, num_heads: int = 8, num_layers: int = 3):
         super().__init__()
         self.encoder = Encoder(
             d_x=d_x,

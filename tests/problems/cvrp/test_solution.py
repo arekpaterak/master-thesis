@@ -449,22 +449,35 @@ def test_neighbours_per_customer(sequence, expected):
     assert torch.equal(neighbours_per_customer, expected)
 
 
-def test_remove_customers():
-    # Initial sequence: D -> 1 -> 2 -> 3 -> D
-    sequence = torch.tensor([[0, 1, 2, 3, 0]])
+@pytest.mark.parametrize(
+    "sequence,to_remove,expected",
+    [
+        ([[0, 1, 2, 3, 0]], [[[1, 3], [2, 1]]], [[[0, -1, 2, -1, 0], [0, -1, -1, 3, 0]]]),
+        ([[0, 1, 2, 3, 0]], [[1]], [[0, -1, 2, 3, 0]]),
+        (
+            [[0, 1, 2, 0]],
+            [[0, 1]],  # Trying to remove depot (0) and customer (1)
+            [[0, -1, 2, 0]],  # Depot should remain 0
+        ),
+        ([[0, -1, 2, 3, 0]], [[1, 2, 4]], [[0, -1, -1, 3, 0]]),
+    ],
+)
+def test_remove_customers(sequence, to_remove, expected):
+    sequence = torch.tensor(sequence, dtype=torch.long)
+    to_remove = torch.tensor(to_remove, dtype=torch.long)
+    expected = torch.tensor(expected, dtype=torch.long)
     config = CVRPConfig(
-        num_customers=3,
-        vehicle_capacity_raw=3,
+        num_customers=10,
+        vehicle_capacity_raw=10,
         min_demand_raw=1,
         max_demand_raw=1,
     )
-    instance = CVRPSampler(config, seed=0)(1)
+    instance = CVRPSampler(config, seed=0)(sequence.shape[0])
     solution = CVRPSolution.create(instance=instance, sequence=sequence)
 
-    to_remove = torch.tensor([[[1, 3], [2, 1]]])
     deconstructed_solution = solution.remove_customers(to_remove)
 
-    expected = torch.tensor([[[0, -1, 2, -1, 0], [0, -1, -1, 3, 0]]])
-    assert deconstructed_solution.sequence.shape == (1, 2, 5)
     assert torch.equal(deconstructed_solution.sequence, expected)
     assert deconstructed_solution.is_deconstructed.all()
+    assert deconstructed_solution.instance.batch_size == deconstructed_solution.batch_size
+    assert deconstructed_solution.instance.locations.shape[:-2] == deconstructed_solution.batch_size
