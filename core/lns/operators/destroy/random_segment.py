@@ -14,7 +14,7 @@ class RandomSegmentDestroy(DestroyOperator[TSPSolution]):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def destroy(self, solution: TSPSolution) -> TSPSolution:
+    def __call__(self, solution: TSPSolution) -> TSPSolution:
         num_nodes = solution.instance.num_nodes
         if self.segment_size > num_nodes:
             raise ValueError("Expected problems bigger than destruction size.")

@@ -10,7 +10,7 @@ class AttentionModelRepair(RepairOperator[TSPSolution]):
         self.model = model
         self.greedy = greedy
 
-    def repair(self, partial_solution: TSPSolution) -> TSPSolution:
+    def __call__(self, partial_solution: TSPSolution) -> TSPSolution:
         partial_tour = self._extract_valid_tour(partial_solution.tour)
 
         result = self.model(
