@@ -38,7 +38,7 @@ class NDSModel(nn.Module):
         instance = solution.instance
 
         encoded_nodes = self.encoder(
-            depot_location=instance.depot_location,
+            depot_features=instance.depot_location,
             customer_features=instance.customer_features,
             neighbours_index=solution.neighbours_per_customer(),
             tour_index=solution.route_per_customer(),
