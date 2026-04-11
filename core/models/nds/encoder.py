@@ -3,12 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from core.models.embeddings.cvrp import CVRPInitialEmbedding
+from core.models.embeddings.tsp import TSPInitialEmbedding
 
 
 class NDSEncoder(nn.Module):
     def __init__(
         self,
         *,
+        problem_name: str,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -17,7 +19,13 @@ class NDSEncoder(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.initial_embedding = CVRPInitialEmbedding(hidden_dim=hidden_dim)
+        if problem_name == "cvrp":
+            self.initial_embedding = CVRPInitialEmbedding(hidden_dim=hidden_dim)
+        elif problem_name == "tsp":
+            self.initial_embedding = TSPInitialEmbedding(hidden_dim=hidden_dim)
+        else:
+            raise ValueError(f"Unknown problem_name: {problem_name}")
+
         attention_layer = lambda: AttentionLayer(d_h=hidden_dim, num_heads=num_heads, d_ff=ff_dim)
         self.pre_attention = nn.Sequential(
             attention_layer(),
@@ -26,40 +34,33 @@ class NDSEncoder(nn.Module):
         self.neighbours_encoding = (
             NeighboursEncodingLayer(d_h=hidden_dim, d_ff=ff_dim)
             if with_neighbours_encoding
-            else nn.Identity()
+            else None
         )
         self.tour_encoding = (
-            TourEncodingLayer(d_h=hidden_dim, d_ff=ff_dim) if with_tour_encoding else nn.Identity()
+            TourEncodingLayer(d_h=hidden_dim, d_ff=ff_dim) if with_tour_encoding else None
         )
         self.post_attention = nn.Sequential(
             attention_layer(),
             attention_layer(),
         )
 
-    def forward(
-        self,
-        *,
-        depot_features: torch.Tensor,
-        customer_features: torch.Tensor,
-        neighbours_index: torch.Tensor,
-        tour_index: torch.Tensor,
-    ) -> torch.Tensor:
+    def forward(self, **features: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            depot_features: (B, 2)
-            customer_features: (B, N, 3)
-            neighbours_index: (B, N, 2)
-            tour_index: (B, N)
+            **features: Problem-specific feature dictionary.
 
         Returns:
-            (B, N+1, d_h)
+            (B, N, d_h) or (B, N+1, d_h)
         """
-        h = self.initial_embedding(
-            depot_features=depot_features, customer_features=customer_features
-        )
+        h = self.initial_embedding(**features)
         h = self.pre_attention(h)
-        h = self.neighbours_encoding(h, neighbours_index=neighbours_index)
-        h = self.tour_encoding(h, tour_index=tour_index)
+
+        if self.neighbours_encoding is not None and "neighbours_index" in features:
+            h = self.neighbours_encoding(h, neighbours_index=features["neighbours_index"])
+
+        if self.tour_encoding is not None and "tour_index" in features:
+            h = self.tour_encoding(h, tour_index=features["tour_index"])
+
         h = self.post_attention(h)
         return h
 

@@ -14,7 +14,7 @@ from core.problems.cvrp.solve import one_customer_per_route
 def test_train():
     B, R, N = 4, 10, 20
     sampler = CVRPSampler(CVRPConfig.for_n(N))
-    model = NDSModel()
+    model = NDSModel(problem_name="cvrp")
     optimizer = torch.optim.AdamW(model.parameters())
 
     train(

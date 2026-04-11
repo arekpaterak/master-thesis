@@ -14,7 +14,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Neural Deconstruction Search for CVRP: Paper Reproduction
+    # Neural Deconstruction Search for Vehicle Routing Problems: Paper Reproduction
 
     **Paper:** *Neural Deconstruction Search for Vehicle Routing Problems* (Hottung et al., 2025)
 
@@ -110,7 +110,7 @@ def _(mo):
 
 @app.cell
 def _(D_H, example_batch):
-    from core.models.nds.encoder import CVRPInitialNodeEmbedding
+    from core.models.embeddings.cvrp import CVRPInitialEmbedding
 
     depot_location = example_batch.depot_location
     customer_features = example_batch.customer_features
@@ -118,8 +118,10 @@ def _(D_H, example_batch):
     print(f"Depot location shape: {depot_location.shape}")
     print(f"Customer features shape: {customer_features.shape}")
 
-    initial_embedding = CVRPInitialNodeEmbedding(d_h=D_H)
-    initial_node_embeddings = initial_embedding(depot_location, customer_features)
+    initial_embedding = CVRPInitialEmbedding(hidden_dim=D_H)
+    initial_node_embeddings = initial_embedding(
+        depot_features=depot_location, customer_features=customer_features
+    )
     print(f"Initial node embeddings shape: {initial_node_embeddings.shape}")
     return (initial_node_embeddings,)
 
@@ -211,7 +213,7 @@ def _(
     one_customer_per_route,
     summary,
 ):
-    encoder = NDSEncoder().to(DEVICE)
+    encoder = NDSEncoder(problem_name="cvrp").to(DEVICE)
     _example_sampler = CVRPSampler(CVRPConfig(num_customers=5, vehicle_capacity_raw=9), seed=42)
     batch = _example_sampler(2).to(DEVICE)
     depot = batch.depot_location
@@ -222,7 +224,7 @@ def _(
         solution.route_per_customer(),
     )
     _ = encoder(
-        depot_location=depot,
+        depot_features=depot,
         customer_features=customers,
         neighbours_index=neighbours_index,
         tour_index=tour_index,
@@ -233,7 +235,7 @@ def _(
         summary(
             encoder,
             input_data={
-                "depot_location": depot,
+                "depot_features": depot,
                 "customer_features": customers,
                 "neighbours_index": neighbours_index,
                 "tour_index": tour_index,
@@ -259,7 +261,9 @@ def _(DEVICE, D_H, D_POLY, N_HEADS, Z_DIM, sample_seed, torch):
     B, rollout_size, N = (2, 10, 4)
     z_dim = 10
     _M = 4
-    decoder = NDSDecoder(d_h=D_H, seed_dim=Z_DIM, d_poly=D_POLY, num_heads=N_HEADS).to(DEVICE)
+    decoder = NDSDecoder(hidden_dim=D_H, seed_dim=Z_DIM, poly_dim=D_POLY, num_heads=N_HEADS).to(
+        DEVICE
+    )
     h_nodes = torch.randn(B, N + 1, D_H).to(DEVICE)
     z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=z_dim, device=DEVICE)
     print(f"z: {z}")
@@ -294,7 +298,7 @@ def _(mo):
 
 @app.cell
 def _(DEVICE, NDSModel):
-    model = NDSModel().to(DEVICE)
+    model = NDSModel(problem_name="cvrp").to(DEVICE)
     return (model,)
 
 

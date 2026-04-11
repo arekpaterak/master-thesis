@@ -12,7 +12,7 @@ def test_encoder() -> None:
 
     neighbours_index, tour_index = solution.neighbours_per_customer(), solution.route_per_customer()
 
-    encoder = NDSEncoder()
+    encoder = NDSEncoder(problem_name="cvrp")
     embedded_nodes = encoder.forward(
         depot_features=instance.depot_location,
         customer_features=instance.customer_features,

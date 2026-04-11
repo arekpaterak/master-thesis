@@ -3,13 +3,13 @@ import torch.nn as nn
 
 from core.models.nds.decoder import DecoderCache, DecoderOutput, DecoderState, NDSDecoder
 from core.models.nds.encoder import NDSEncoder
-from core.problems.cvrp import CVRPSolution
 
 
 class NDSModel(nn.Module):
     def __init__(
         self,
         *,
+        problem_name: str,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -20,29 +20,25 @@ class NDSModel(nn.Module):
 
         self.z_dim = seed_dim
 
-        self.encoder = NDSEncoder(hidden_dim=hidden_dim, num_heads=num_heads, ff_dim=ff_dim)
+        self.encoder = NDSEncoder(
+            problem_name=problem_name, hidden_dim=hidden_dim, num_heads=num_heads, ff_dim=ff_dim
+        )
         self.decoder = NDSDecoder(
-            d_h=hidden_dim, num_heads=num_heads, seed_dim=seed_dim, d_poly=poly_dim
+            hidden_dim=hidden_dim, num_heads=num_heads, seed_dim=seed_dim, poly_dim=poly_dim
         )
 
     def pre_forward(
         self,
         *,
-        solution: CVRPSolution,
         seed: torch.Tensor,
         rollout_size: int,
+        **features: torch.Tensor,
     ) -> tuple[DecoderState, DecoderCache]:
-        B = solution.batch_size[0]
-        N = solution.instance.num_nodes
+        encoded_nodes = self.encoder(**features)
 
-        instance = solution.instance
+        B = encoded_nodes.shape[0]
+        N = encoded_nodes.shape[1]
 
-        encoded_nodes = self.encoder(
-            depot_features=instance.depot_location,
-            customer_features=instance.customer_features,
-            neighbours_index=solution.neighbours_per_customer(),
-            tour_index=solution.route_per_customer(),
-        )
         cache = self.decoder.build_cache(h_nodes=encoded_nodes, seed=seed)
         initial_state = self.decoder.build_initial_state(
             B=B,

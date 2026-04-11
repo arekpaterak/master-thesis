@@ -8,6 +8,7 @@ from core.models.nds.model import NDSModel
 from core.models.nds.seed_sampler import sample_seed
 from core.models.utils import get_model_device
 from core.problems.cvrp import CVRPSolution
+from core.problems.cvrp.features import CVRPFeatureExtractor
 from core.problems.solution import BaseSolution
 
 
@@ -60,10 +61,16 @@ def rollout_policy(
         device=get_model_device(model),
     )
 
+    extractor = CVRPFeatureExtractor()
+    features = extractor(solution)
+    # Move features to correct device
+    device = get_model_device(model)
+    features = {k: v.to(device) for k, v in features.items()}
+
     state, cache = model.pre_forward(
-        solution=solution,
         seed=seed,
         rollout_size=rollouts_per_solution,
+        **features,
     )
 
     selected = []
