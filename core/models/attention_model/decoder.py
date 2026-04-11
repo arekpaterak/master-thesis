@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from core.models.layers.single_head_scorer import CompatibilityScorer
+from core.models.layers.compatibility_scorer import CompatibilityScorer
 
 
 class Decoder(nn.Module):

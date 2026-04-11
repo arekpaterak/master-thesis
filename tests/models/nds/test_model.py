@@ -11,12 +11,17 @@ def test_model() -> None:
     solution = one_customer_per_route(instance)
     seed = sample_seed(batch_size=B, rollout_size=R, seed_dim=10)
 
-    model = NDSModel()
+    model = NDSModel(problem_name="cvrp")
+
+    from core.problems.cvrp.features import CVRPFeatureExtractor
+
+    extractor = CVRPFeatureExtractor()
+    features = extractor(solution)
 
     state, cache = model.pre_forward(
-        solution=solution,
         seed=seed,
         rollout_size=R,
+        **features,
     )
 
     log_p, gru_hidden_state = model.forward(state=state, cache=cache)

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from core.models.layers.cached_multi_head_attention import CachedMultiHeadAttention
-from core.models.layers.single_head_scorer import CompatibilityScorer
+from core.models.layers.compatibility_scorer import CompatibilityScorer
 
 
 class DecoderCache(NamedTuple):
@@ -57,9 +57,9 @@ class NDSDecoder(nn.Module):
     rollouts across the search.
 
     Args:
-        d_h: Node embedding dimension.
+        hidden_dim: Node embedding dimension.
         seed_dim: Seed vector dimension.
-        d_poly: Hidden dimension of the polynomial conditioning network.
+        poly_dim: Hidden dimension of the polynomial conditioning network.
         num_heads: Number of attention heads.
         C: Tanh clipping constant for final scorer logits.
     """
@@ -67,35 +67,35 @@ class NDSDecoder(nn.Module):
     def __init__(
         self,
         *,
-        d_h: int = 128,
+        hidden_dim: int = 128,
         seed_dim: int = 10,
-        d_poly: int = 512,
+        poly_dim: int = 512,
         num_heads: int = 8,
         C: float = 10.0,
     ) -> None:
         super().__init__()
-        assert d_h % num_heads == 0
+        assert hidden_dim % num_heads == 0
 
-        self.d_h = d_h
+        self.d_h = hidden_dim
         self.num_heads = num_heads
-        self.head_dim = d_h // num_heads
+        self.head_dim = hidden_dim // num_heads
 
-        self.start_token = nn.Parameter(torch.zeros(d_h), requires_grad=True)
+        self.start_token = nn.Parameter(torch.zeros(hidden_dim), requires_grad=True)
 
         self.MHA = CachedMultiHeadAttention(
-            embed_dim=d_h,
+            embed_dim=hidden_dim,
             num_heads=num_heads,
         )
 
-        self.GRU = nn.GRUCell(d_h, d_h)
+        self.GRU = nn.GRUCell(hidden_dim, hidden_dim)
 
         self.poly_net = nn.Sequential(
-            nn.Linear(d_h + seed_dim, d_poly),
+            nn.Linear(hidden_dim + seed_dim, poly_dim),
             nn.ReLU(),
-            nn.Linear(d_poly, d_h),
+            nn.Linear(poly_dim, hidden_dim),
         )
 
-        self.final_scorer = CompatibilityScorer(d_h=d_h, C=C, use_projections=False)
+        self.final_scorer = CompatibilityScorer(d_h=hidden_dim, C=C, use_projections=False)
 
     def build_initial_state(
         self,

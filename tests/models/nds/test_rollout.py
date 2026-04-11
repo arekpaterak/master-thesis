@@ -6,9 +6,9 @@ from core.problems.cvrp import CVRPConfig, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import one_customer_per_route
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def nds_test_model() -> NDSModel:
-    return NDSModel()
+    return NDSModel(problem_name="cvrp")
 
 
 @pytest.fixture
