@@ -16,6 +16,8 @@ It is possible to train the model in different ways.
 2. Repair training: The instances of the target sizes are randomly destroyed, and the model is trained to repair them. The reward is the improvement in objective compared to the destroyed solution. This approach may be more effective for training the model to perform repairs, as it directly optimises for the repair task. NOTE: Not applicable to the TSP, as there is no feasible solution after the destruction. In the case of the CVRP, the removed nodes can be treated as single-node tours, which makes a feasible solution.
 
 **Inputs:**
+A tuple of (X_t, f_t), where X_t contains the features of the nodes that are free to be reinserted, and f_t is the reference node input.
+
 Only the nodes that are free to be reinserted are present in the input, e.g. not the nodes that are connected to two other in the TSP.
 
 TSP:
@@ -29,3 +31,5 @@ CVRP:
 - Fulfilled demand of the node's tour. It is -1 (alternatively 0) for the depot.
 - State of the solution: -1 for the depot; otherwise node degree; 0 if the node is not connected, 1 if the node is connected; nodes with degree 2 are not present in the input.
 
+**Decoding:**
+Given the input tuple, the model outputs a probability distribution over the actions, where each action corresponds to reconnecting the reference node to one of the other free nodes. The model is autoregressive, so after each action, the input mask is updated and the model is called again until all nodes are reinserted.

@@ -9,6 +9,7 @@ from core.models.attention_model.encoder import Encoder
 from core.models.attention_model.preprocessing import make_complete_graph
 from core.models.entropy import entropy
 from core.problems.tsp import TSPInstance
+from core.states.constructive import TSPConstructiveState
 
 
 class AMRollout(NamedTuple):
@@ -27,7 +28,7 @@ class AttentionModel(nn.Module):
             num_heads=num_heads,
             num_layers=num_layers,
         )
-        self.decoder = Decoder(d_h=d_h, num_heads=num_heads)
+        self.decoder = Decoder(hidden_dim=d_h, num_heads=num_heads)
 
     # TODO: Change to single step, add rollout to produce full sequence
     def forward(
@@ -58,22 +59,36 @@ class AttentionModel(nn.Module):
         )
         h_nodes = h_nodes.view(batch_size, n, -1)
 
-        # Initialize tour_idx from partial tour if provided
+        # Initialize decoding state and output tour buffer from partial tour if provided.
         if partial_tour is None:
-            tour_idx = []
+            state = TSPConstructiveState.build_initial(
+                batch_size=batch_size,
+                num_nodes=n,
+                device=instances.locations.device,
+            )
+            tour_idx: list[torch.Tensor] = []
         else:
+            state = TSPConstructiveState.from_partial_tour(
+                partial_tour=partial_tour,
+                num_nodes=n,
+            )
             k = partial_tour.shape[1]
             tour_idx = [partial_tour[:, i] for i in range(k)]
 
         log_p_of_selected = []
         entropies, entropies_norm = [], []
 
-        steps_remaining = n - len(tour_idx)
+        steps_remaining = n - state.selected_count
         for _ in range(steps_remaining):
-            log_p: torch.Tensor = self.decoder(h_nodes=h_nodes, h_graph=h_graph, tour_idx=tour_idx)
+            log_p: torch.Tensor = self.decoder.forward(
+                node_embeddings=h_nodes,
+                graph_embedding=h_graph,
+                state=state,
+            )
             selected = log_p.argmax(-1) if greedy else log_p.exp().multinomial(1).squeeze(1)
             log_p_of_selected.append(log_p[torch.arange(batch_size), selected])
             tour_idx.append(selected)
+            state = state.transition(selected)
 
             step_entropy = entropy(log_p)
             entropies.append(step_entropy.entropy)

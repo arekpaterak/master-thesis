@@ -18,13 +18,17 @@ def test_model() -> None:
     extractor = CVRPFeatureExtractor()
     features = extractor(solution)
 
-    state, cache = model.pre_forward(
+    problem_state, decoder_state, cache = model.pre_forward(
         seed=seed,
         rollout_size=R,
         **features,
     )
 
-    log_p, gru_hidden_state = model.forward(state=state, cache=cache)
+    log_p, gru_hidden_state = model.forward(
+        problem_state=problem_state,
+        decoder_state=decoder_state,
+        cache=cache,
+    )
 
     assert log_p.shape == (B, R, N + 1)
     assert gru_hidden_state.shape == (B * R, 128)

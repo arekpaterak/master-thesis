@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import torch
 
 from core.models.entropy import entropy
-from core.models.nds.decoder import DecoderState
 from core.models.nds.model import NDSModel
 from core.models.nds.seed_sampler import sample_seed
 from core.models.utils import get_model_device
@@ -67,7 +66,7 @@ def rollout_policy(
     device = get_model_device(model)
     features = {k: v.to(device) for k, v in features.items()}
 
-    state, cache = model.pre_forward(
+    problem_state, decoder_state, cache = model.pre_forward(
         seed=seed,
         rollout_size=rollouts_per_solution,
         **features,
@@ -78,8 +77,12 @@ def rollout_policy(
     entropies = []
     entropies_norm = []
 
-    for m in range(deconstruction_size):
-        step_log_p, gru_hidden_state = model.forward(state=state, cache=cache)
+    for _ in range(deconstruction_size):
+        step_log_p, gru_hidden_state = model.forward(
+            problem_state=problem_state,
+            decoder_state=decoder_state,
+            cache=cache,
+        )
 
         if greedy:
             idx = step_log_p.argmax(dim=-1)
@@ -95,16 +98,8 @@ def rollout_policy(
         entropies.append(step_entropy.entropy.detach())
         entropies_norm.append(step_entropy.entropy_norm.detach())
 
-        # Transition DecoderState, TODO: Encapsulate
-        new_mask = state.selected_mask.clone()
-        new_mask.scatter_(2, idx.unsqueeze(-1), True)
-        new_h_last_node = cache.h_nodes_expanded.gather(
-            dim=2,
-            index=idx.unsqueeze(-1).unsqueeze(-1).expand(B, R, 1, cache.h_nodes_expanded.size(-1)),
-        ).squeeze(2)
-        state = DecoderState(
-            h_last_node=new_h_last_node, gru_hidden=gru_hidden_state, selected_mask=new_mask
-        )
+        problem_state = problem_state.transition(action=idx.unsqueeze(-1))
+        decoder_state = decoder_state.transition(gru_hidden_state)
 
     selected = torch.stack(selected, dim=-1).detach()
 

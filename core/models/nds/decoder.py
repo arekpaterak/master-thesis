@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from core.models.layers.cached_multi_head_attention import CachedMultiHeadAttention
 from core.models.layers.compatibility_scorer import CompatibilityScorer
+from core.states.destroy import DestroyState
 
 
 class DecoderCache(NamedTuple):
@@ -28,19 +29,18 @@ class DecoderCache(NamedTuple):
 
 
 class DecoderState(NamedTuple):
-    """Mutable state updated at each deconstruction step.
+    """Decoder-only recurrent state updated at each deconstruction step.
 
     Attributes:
         gru_hidden: GRU hidden state accumulating history of selected customers.
             Shape: (B*rollout, d_h).
-        selected_mask: Boolean mask of already selected customers.
-            True indicates the customer has been selected for removal.
-            Shape: (B, rollout, N+1).
     """
 
-    h_last_node: torch.Tensor
     gru_hidden: torch.Tensor
-    selected_mask: torch.Tensor
+
+    @staticmethod
+    def transition(gru_hidden: torch.Tensor) -> "DecoderState":
+        return DecoderState(gru_hidden=gru_hidden)
 
 
 class DecoderOutput(NamedTuple):
@@ -102,7 +102,6 @@ class NDSDecoder(nn.Module):
         *,
         B: int,
         rollout_size: int,
-        num_nodes: int,
         device: torch.device | None = None,
     ) -> DecoderState:
         """Build zeroed initial state before the first decoding step.
@@ -110,24 +109,16 @@ class NDSDecoder(nn.Module):
         Args:
             B: Batch size.
             rollout_size: Number of parallel rollouts per instance.
-            num_nodes: Number of all nodes (e.g. with the depot in the CVRP).
             device: Target device (optional).
 
         Returns:
-            DecoderState with zeroed GRU hidden state and empty selection mask.
+            DecoderState with zeroed GRU hidden state.
         """
         if not device:
             device = next(self.parameters()).device
 
-        selected_mask = torch.zeros(B, rollout_size, num_nodes, dtype=torch.bool, device=device)
-        selected_mask[:, :, 0] = True
-
-        h_start = self.start_token.view(1, 1, -1).expand(B, rollout_size, -1)
-
         return DecoderState(
-            h_last_node=h_start,
             gru_hidden=torch.zeros(B * rollout_size, self.d_h, device=device),
-            selected_mask=selected_mask,
         )
 
     def build_cache(
@@ -158,13 +149,15 @@ class NDSDecoder(nn.Module):
     def forward(
         self,
         *,
-        state: DecoderState,
+        problem_state: DestroyState,
+        decoder_state: DecoderState,
         cache: DecoderCache,
     ) -> DecoderOutput:
         """Score nodes for selection. A pure (stateless) function.
 
         Args:
-            state (DecoderState): Current state of the decoder.
+            problem_state: Problem state that provides action_mask and last_node_idx.
+            decoder_state (DecoderState): Current state of the decoder.
             cache: Precomputed keys, values, and seed vectors.
 
         Returns:
@@ -172,15 +165,25 @@ class NDSDecoder(nn.Module):
                 log_p: Log-probabilities over all nodes. Shape: (B, rollout_size, N+1).
                 gru_hidden_state: A new GRU hidden state.
         """
-        B, R, d_h = state.h_last_node.shape
+        B, R, _, _ = cache.h_nodes_expanded.shape
+        d_h = self.d_h
+
+        last_node_idx = problem_state.last_node_idx
+        if last_node_idx is None:
+            h_last_node = self.start_token.view(1, 1, -1).expand(B, R, -1)
+        else:
+            h_last_node = cache.h_nodes_expanded.gather(
+                dim=-2,
+                index=last_node_idx.unsqueeze(-1).expand(B, R, 1, d_h),
+            ).squeeze(-2)
 
         gru_hidden = self.GRU(
-            state.h_last_node.reshape(B * R, d_h),
-            state.gru_hidden,
+            h_last_node.reshape(B * R, d_h),
+            decoder_state.gru_hidden,
         )
         context = gru_hidden.reshape(B, R, d_h)
 
-        attention_mask = ~state.selected_mask
+        attention_mask = ~problem_state.action_mask
         mh_out = self.MHA(
             q=context, k_cached=cache.k, v_cached=cache.v, attention_mask=attention_mask
         ).reshape(B, R, self.d_h)
@@ -188,7 +191,9 @@ class NDSDecoder(nn.Module):
         context_out = mh_out + self.poly_net(torch.cat([mh_out, cache.seed], dim=-1))
 
         log_p = self.final_scorer(
-            h_c=context_out, h_nodes=cache.h_nodes_expanded, mask=state.selected_mask
+            h_c=context_out,
+            h_nodes=cache.h_nodes_expanded,
+            mask=problem_state.action_mask,
         )
 
         return DecoderOutput(
