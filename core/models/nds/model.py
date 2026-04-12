@@ -3,6 +3,7 @@ import torch.nn as nn
 
 from core.models.nds.decoder import DecoderCache, DecoderOutput, DecoderState, NDSDecoder
 from core.models.nds.encoder import NDSEncoder
+from core.states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
 
 
 class NDSModel(nn.Module):
@@ -18,6 +19,7 @@ class NDSModel(nn.Module):
     ) -> None:
         super().__init__()
 
+        self.problem_name = problem_name
         self.z_dim = seed_dim
 
         self.encoder = NDSEncoder(
@@ -33,24 +35,40 @@ class NDSModel(nn.Module):
         seed: torch.Tensor,
         rollout_size: int,
         **features: torch.Tensor,
-    ) -> tuple[DecoderState, DecoderCache]:
+    ) -> tuple[DestroyState, DecoderState, DecoderCache]:
         encoded_nodes = self.encoder(**features)
 
         B = encoded_nodes.shape[0]
         N = encoded_nodes.shape[1]
 
+        destroy_state_cls: type[DestroyState]
+        if self.problem_name == "cvrp":
+            destroy_state_cls = CVRPDestroyState
+        elif self.problem_name == "tsp":
+            destroy_state_cls = TSPDestroyState
+        else:
+            raise ValueError(f"Unsupported problem_name: {self.problem_name}")
+
         cache = self.decoder.build_cache(h_nodes=encoded_nodes, seed=seed)
+        problem_state = destroy_state_cls.build_initial(
+            batch_size=B,
+            rollout_size=rollout_size,
+            num_nodes=N,
+            device=encoded_nodes.device,
+        )
         initial_state = self.decoder.build_initial_state(
             B=B,
             rollout_size=rollout_size,
-            num_nodes=N,
         )
-        return initial_state, cache
+        return problem_state, initial_state, cache
 
     def forward(
         self,
         *,
-        state: DecoderState,
+        problem_state: DestroyState,
+        decoder_state: DecoderState,
         cache: DecoderCache,
     ) -> DecoderOutput:
-        return self.decoder(state=state, cache=cache)
+        return self.decoder.forward(
+            problem_state=problem_state, decoder_state=decoder_state, cache=cache
+        )

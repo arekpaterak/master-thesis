@@ -1,0 +1,4 @@
+1. The models should not be tied to a specific problem.
+2. The embedding of the initial problem features should be performed by a problem-specific modules, e.g. `core/models/embeddings/cvrp.py` and `core/models/embeddings/tsp.py`. The model should only receive the embedded features as input.
+3. However, there might exist custom layers that handle specific structural information of the problem, e.g. `neighbours_encoding` or `tour_encoding` in the NDS model (which originally focuses on the CVRP).
+4. During decoding, the masking of the available actions should be passed to models from the outside, so that the model does not need to know about the problem-specific logic of which actions are valid at each step. The model should only receive the masked input and output a probability distribution over the available actions.
