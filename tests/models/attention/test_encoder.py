@@ -14,12 +14,16 @@ def test_encoder_output_shape():
     num_layers = 1
     d_ff = 32
 
-    encoder = Encoder(d_x=d_x, d_h=d_h, num_heads=num_heads, num_layers=num_layers, d_ff=d_ff)
+    encoder = Encoder(d_h=d_h, num_heads=num_heads, num_layers=num_layers, d_ff=d_ff)
 
-    instances = torch.rand((batch_size, n, d_x))
-    data = Batch.from_data_list([make_complete_graph(instances[b]) for b in range(batch_size)])
+    node_features = torch.rand((batch_size, n, d_x))
+    data = Batch.from_data_list([make_complete_graph(node_features[b]) for b in range(batch_size)])
 
-    output = encoder(x=data["x"], edge_index=data["edge_index"], batch=data["batch"])
+    output = encoder(
+        edge_index=data["edge_index"],
+        batch=data["batch"],
+        node_features=node_features,
+    )
 
     assert output.h_nodes.shape == (batch_size * n, d_h), (
         f"Expected h_nodes shape {(batch_size * n, d_h)}"

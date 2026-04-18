@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import NamedTuple
 
 import torch
@@ -39,7 +41,7 @@ class DecoderState(NamedTuple):
     gru_hidden: torch.Tensor
 
     @staticmethod
-    def transition(gru_hidden: torch.Tensor) -> "DecoderState":
+    def transition(gru_hidden: torch.Tensor) -> DecoderState:
         return DecoderState(gru_hidden=gru_hidden)
 
 

@@ -1,6 +1,7 @@
 import copy
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from typing import NamedTuple
 
 import torch
@@ -9,8 +10,7 @@ from scipy import stats
 from tqdm.auto import tqdm
 
 from core.models.attention_model.model import AMRollout, AttentionModel
-from core.problems.tsp import TSPSampler
-from core.problems.tsp.solution import tour_length
+from core.problems.instance import BaseProblemInstance
 
 
 class EvaluationResult(NamedTuple):
@@ -29,7 +29,7 @@ class PairedTTestResult(NamedTuple):
 
 def evaluate(
     model: AttentionModel,
-    tsp_sampler: TSPSampler,
+    instance_sampler: Callable[[int], BaseProblemInstance],
     n_instances: int = 10_000,
     batch_size: int = 512,
     device: str | torch.types.Device = "cpu",
@@ -39,24 +39,25 @@ def evaluate(
     with torch.no_grad():
         for _ in range(0, n_instances, batch_size):
             bs = min(batch_size, n_instances - len(all_lengths) * batch_size)
-            instances = tsp_sampler(bs).to(device)  # (batch, n, 2)
+            instances = instance_sampler(bs).to(device)
             rollout = model(instances, greedy=True)
-            all_lengths.append(tour_length(instances.locations, rollout.tour).cpu())
+            solution = rollout.to_solution(instances)
+            all_lengths.append(solution.objective().cpu())
     return EvaluationResult(lengths=torch.cat(all_lengths))
 
 
 def one_sided_paired_ttest(
     model: AttentionModel,
     baseline: AttentionModel,
-    tsp_sampler: TSPSampler,
+    instance_sampler: Callable[[int], BaseProblemInstance],
     n_instances: int = 10_000,
     batch_size: int = 512,
     alpha: float = 0.05,
     device: str | torch.types.Device = "cpu",
 ) -> PairedTTestResult:
     """One-sided paired t-test: is model significantly better than baseline?"""
-    obj_model = evaluate(model, tsp_sampler, n_instances, batch_size, device).lengths
-    obj_baseline = evaluate(baseline, tsp_sampler, n_instances, batch_size, device).lengths
+    obj_model = evaluate(model, instance_sampler, n_instances, batch_size, device).lengths
+    obj_baseline = evaluate(baseline, instance_sampler, n_instances, batch_size, device).lengths
     # one-sided: H1 = model has lower (better) cost
     t, p = stats.ttest_rel(obj_model.numpy(), obj_baseline.numpy())
     p_one_sided = p / 2 if t < 0 else 1.0
@@ -95,7 +96,7 @@ class EpochSummary(NamedTuple):
 
 def train(
     model: AttentionModel,
-    tsp_sampler: TSPSampler,
+    instance_sampler: Callable[[int], BaseProblemInstance],
     n_epochs: int = 100,
     steps_per_epoch: int = 2500,
     batch_size: int = 512,
@@ -141,7 +142,7 @@ def train(
         )
         for _ in step_bar:
             # Sample batch of random instances (Algorithm 1, line 5)
-            instances = tsp_sampler(batch_size).to(device)  # (batch, n, 2)
+            instances = instance_sampler(batch_size).to(device)
 
             # Sample rollout from training policy (line 6)
             rollout: AMRollout = model(instances, greedy=False)
@@ -151,8 +152,8 @@ def train(
                 baseline_rollout = baseline(instances, greedy=True)
 
             # REINFORCE gradient (line 8)
-            L = tour_length(instances.locations, rollout.tour)  # (batch,)
-            L_baseline = tour_length(instances.locations, baseline_rollout.tour)  # (batch,)
+            L = rollout.to_solution(instances).objective()  # (batch,)
+            L_baseline = baseline_rollout.to_solution(instances).objective()  # (batch,)
 
             advantage = (L - L_baseline).detach()  # (batch,)
             loss = (advantage * rollout.log_p.sum(dim=1)).mean()
@@ -185,7 +186,7 @@ def train(
         test = one_sided_paired_ttest(
             model,
             baseline,
-            tsp_sampler,
+            instance_sampler,
             alpha=alpha,
             device=device,
         )

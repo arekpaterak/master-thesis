@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from core.models.layers.compatibility_scorer import CompatibilityScorer
-from core.states.constructive import TSPConstructiveState
+from core.states.constructive import ConstructiveState, CVRPConstructiveState, TSPConstructiveState
 
 
 class Decoder(nn.Module):
@@ -22,7 +22,8 @@ class Decoder(nn.Module):
         self.v_f = nn.Parameter(torch.zeros(hidden_dim))
 
         # MODIFICATION: Project 3*d_model context down to d_model upfront
-        self.context_projection = nn.Linear(3 * hidden_dim, hidden_dim, bias=False)
+        self.tsp_context_projection = nn.Linear(3 * hidden_dim, hidden_dim, bias=False)
+        self.cvrp_context_projection = nn.Linear(2 * hidden_dim + 1, hidden_dim, bias=False)
 
         self.MHA = nn.MultiheadAttention(
             embed_dim=hidden_dim,
@@ -37,30 +38,44 @@ class Decoder(nn.Module):
         *,
         node_embeddings: torch.Tensor,
         graph_embedding: torch.Tensor,
-        state: TSPConstructiveState,
+        state: ConstructiveState,
     ) -> torch.Tensor:
         batch_size, n, _ = node_embeddings.shape
 
-        # Initial context embeddings for first and last node in the tour
-        if state.is_initial:
-            h_last = self.v_l.expand(batch_size, -1)
-            h_first = self.v_f.expand(batch_size, -1)
+        if isinstance(state, TSPConstructiveState):
+            # TSP context uses first/last selected nodes.
+            if state.is_initial:
+                h_last = self.v_l.expand(batch_size, -1)
+                h_first = self.v_f.expand(batch_size, -1)
+            else:
+                hidden_dim = node_embeddings.size(-1)
+                assert state.first_node_idx is not None
+                assert state.last_node_idx is not None
+                h_first = node_embeddings.gather(
+                    dim=-2,
+                    index=state.first_node_idx.unsqueeze(-1).expand(batch_size, 1, hidden_dim),
+                ).squeeze(-2)
+                h_last = node_embeddings.gather(
+                    dim=-2,
+                    index=state.last_node_idx.unsqueeze(-1).expand(batch_size, 1, hidden_dim),
+                ).squeeze(-2)
+
+            context_embedding = torch.cat([graph_embedding, h_last, h_first], dim=-1)
+            context_embedding = self.tsp_context_projection(context_embedding)
         else:
+            # CVRP context uses last selected node and remaining capacity.
+            if not isinstance(state, CVRPConstructiveState):
+                raise TypeError(f"Unsupported constructive state type: {type(state)}")
             hidden_dim = node_embeddings.size(-1)
-            h_first = node_embeddings.gather(
-                dim=-2,
-                index=state.first_node_idx.unsqueeze(-1).expand(batch_size, 1, hidden_dim),
-            ).squeeze(-2)
+            assert state.last_node_idx is not None
             h_last = node_embeddings.gather(
                 dim=-2,
                 index=state.last_node_idx.unsqueeze(-1).expand(batch_size, 1, hidden_dim),
             ).squeeze(-2)
-
-        # Initial context embedding
-        context_embedding = torch.cat([graph_embedding, h_last, h_first], dim=-1)
-
-        # Project context to hidden dim
-        context_embedding = self.context_projection(context_embedding)
+            context_embedding = torch.cat(
+                [graph_embedding, h_last, state.remaining_capacity], dim=-1
+            )
+            context_embedding = self.cvrp_context_projection(context_embedding)
 
         action_mask = state.action_mask
 
