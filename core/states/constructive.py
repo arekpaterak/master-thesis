@@ -4,6 +4,8 @@ from typing import Self, cast
 
 import torch
 
+from core.problems.cvrp import CVRPSolution
+
 
 class ConstructiveState(ABC):
     @property
@@ -79,7 +81,7 @@ class TSPConstructiveState(ConstructiveState):
         )
 
     @classmethod
-    def from_partial_tour(
+    def from_partial(
         cls,
         *,
         partial_tour: torch.Tensor,
@@ -139,7 +141,6 @@ class CVRPConstructiveState(ConstructiveState):
     last_node_idx: torch.Tensor | None
     """(B, 1) - Last selected node; None before the first decode action."""
     _selected_count: int
-    max_decode_steps: int
 
     def __post_init__(self) -> None:
         if self.remaining_demand.dim() != 2:
@@ -150,8 +151,6 @@ class CVRPConstructiveState(ConstructiveState):
             raise ValueError("Batch dimension mismatch between demand and capacity.")
         if self._selected_count < 0:
             raise ValueError("selected_count must be non-negative.")
-        if self.max_decode_steps <= 0:
-            raise ValueError("max_decode_steps must be positive.")
         if self.last_node_idx is not None and self.last_node_idx.shape != (
             self.remaining_demand.size(0),
             1,
@@ -172,15 +171,38 @@ class CVRPConstructiveState(ConstructiveState):
 
         remaining_demand = demand.clone()
         remaining_demand[:, 0] = 0.0
-        num_customers = remaining_demand.size(-1) - 1
-        max_decode_steps = 2 * num_customers + 2
         return cls(
             remaining_demand=remaining_demand,
             remaining_capacity=capacity.clone(),
-            last_node_idx=torch.zeros((demand.size(0), 1), dtype=torch.long, device=demand.device),
+            last_node_idx=torch.full(
+                (demand.size(0), 1),
+                fill_value=CVRPSolution.DEPOT,
+                dtype=torch.long,
+                device=demand.device,
+            ),
             _selected_count=1,
-            max_decode_steps=max_decode_steps,
         )
+
+    @classmethod
+    def from_partial(
+        cls,
+        *,
+        demand: torch.Tensor,
+        capacity: torch.Tensor,
+        partial_actions: torch.Tensor,
+    ) -> Self:
+        remaining_demand = demand.clone()
+        remaining_demand[:, 0] = 0.0
+        state = cls(
+            remaining_demand=remaining_demand,
+            remaining_capacity=capacity.clone(),
+            last_node_idx=None,
+            _selected_count=0,
+        )
+        for step in range(partial_actions.size(1)):
+            state = state.transition(partial_actions[:, step])
+
+        return cast(Self, state)
 
     @property
     def action_mask(self) -> torch.Tensor:
@@ -192,11 +214,10 @@ class CVRPConstructiveState(ConstructiveState):
         customer_over_capacity = demand[:, 1:] > cap
         mask_customers = customer_done | customer_over_capacity
 
-        # Depot is forbidden on the first decision and after another depot.
         if self.last_node_idx is None:
             mask_depot = torch.ones((demand.size(0), 1), dtype=torch.bool, device=demand.device)
         else:
-            mask_depot = self.last_node_idx.eq(0)
+            mask_depot = self.last_node_idx.eq(CVRPSolution.DEPOT)
 
         # Once all customers are served, keep depot selectable to avoid an all-masked row.
         mask_depot = mask_depot & ~all_served
@@ -208,7 +229,11 @@ class CVRPConstructiveState(ConstructiveState):
         return (self.remaining_demand[:, 1:] <= 0).all(dim=-1, keepdim=True)
 
     def all_done(self) -> bool:
-        return bool(self.all_served.all())
+        if self.last_node_idx is None:
+            return False
+        all_served = bool(self.all_served.all())
+        back_at_depot = bool(self.last_node_idx.eq(CVRPSolution.DEPOT).all())
+        return all_served and back_at_depot
 
     @property
     def is_initial(self) -> bool:
@@ -247,6 +272,5 @@ class CVRPConstructiveState(ConstructiveState):
                 remaining_capacity=new_capacity,
                 last_node_idx=action_idx,
                 _selected_count=self._selected_count + 1,
-                max_decode_steps=self.max_decode_steps,
             ),
         )

@@ -18,7 +18,7 @@ class TestTSPConstructiveState:
 
     def test_from_partial_tour(self) -> None:
         partial_tour = torch.tensor([[1, 3], [2, 4]], dtype=torch.long)
-        state = TSPConstructiveState.from_partial_tour(partial_tour=partial_tour, num_nodes=5)
+        state = TSPConstructiveState.from_partial(partial_tour=partial_tour, num_nodes=5)
 
         assert state.first_node_idx is not None
         assert state.last_node_idx is not None

@@ -21,6 +21,7 @@ class CVRPSolution(BaseSolution):
     _instance: CVRPInstance
     sequence: torch.Tensor
     """(..., L) where L is the max sequence length in the batch. Starts and ends with 0 (depot). Padded with 0s if necessary. -1 for deconstructed slots."""
+    # TODO: Don't use leading 0?
 
     @property
     def instance(self) -> CVRPInstance:
@@ -32,23 +33,31 @@ class CVRPSolution(BaseSolution):
         return cls(_instance=instance, sequence=sequence, batch_size=batch_size)
 
     def __post_init__(self):
-        if self.sequence is not None:
+        if self.sequence is not None and self.sequence.numel() > 0:
             inferred_batch_size = self.sequence.shape[:-1]
             if self.batch_size != inferred_batch_size:
                 self.batch_size = inferred_batch_size
 
-        assert self.batch_size == self.instance.batch_size
+            assert self.batch_size == self.instance.batch_size
 
-        # Validate that sequence indices are within bounds
-        if self.sequence.numel() > 0:
+            if (self.sequence[..., 0] != self.DEPOT).any():
+                depot = torch.zeros(
+                    *self.sequence.shape[:-1],
+                    1,
+                    dtype=self.sequence.dtype,
+                    device=self.sequence.device,
+                )
+                self.sequence = torch.cat([depot, self.sequence], dim=-1)
+
+            # Validate that sequence indices are within bounds
             assert (self.sequence >= self.UNASSIGNED).all(), (
                 "Node indices must be non-negative or be -1."
             )
             assert (self.sequence <= self.instance.num_customers).all(), "Node index out of bounds."
 
-        assert (self.sequence[..., 0] == self.DEPOT).all() and (
-            self.sequence[..., -1] == self.DEPOT
-        ).all(), "Sequence must start and end at depot (0)."
+            assert (self.sequence[..., 0] == self.DEPOT).all() and (
+                self.sequence[..., -1] == self.DEPOT
+            ).all(), "Sequence must start and end at depot (0)."
 
     def objective(self) -> torch.Tensor:
         return self.total_distance()

@@ -12,7 +12,7 @@ def test_decoder_output_shape(problem: str):
     d_h = 16
     num_heads = 2
 
-    decoder = Decoder(hidden_dim=d_h, num_heads=num_heads)
+    decoder = Decoder(problem_name=problem, hidden_dim=d_h, num_heads=num_heads)
 
     h_nodes = torch.rand((batch_size, n, d_h))
     h_graph = torch.rand((batch_size, d_h))
@@ -36,7 +36,7 @@ def test_decoder_output_shape(problem: str):
 
     if problem == "tsp":
         partial_tour = torch.tensor([[0, 2], [0, 2]], dtype=torch.long)
-        state = TSPConstructiveState.from_partial_tour(partial_tour=partial_tour, num_nodes=n)
+        state = TSPConstructiveState.from_partial(partial_tour=partial_tour, num_nodes=n)
         log_p = decoder.forward(node_embeddings=h_nodes, graph_embedding=h_graph, state=state)
         assert log_p.shape == (batch_size, n), f"Expected log_p shape {(batch_size, n)}"
 
