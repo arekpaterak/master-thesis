@@ -231,7 +231,7 @@ def _(device, model_params):
 
     model = AttentionModel(
         problem_name=model_params.problem_name,
-        d_h=model_params.d_h,
+        d_h=model_params.hidden_dim,
         num_heads=model_params.num_heads,
         num_layers=model_params.num_layers,
     ).to(device)

@@ -23,6 +23,7 @@ class Decoder(nn.Module):
         self.v_f = nn.Parameter(torch.zeros(hidden_dim))
 
         # MODIFICATION: Project upfront, not inside Q projection in MHA
+        # TODO: Extract problem specific code
         match problem_name:
             case "tsp":
                 self.context_projection = nn.Linear(
@@ -52,6 +53,7 @@ class Decoder(nn.Module):
     ) -> torch.Tensor:
         batch_size, n, _ = node_embeddings.shape
 
+        # TODO: Extract problem specific code
         if isinstance(state, TSPConstructiveState):
             # TSP context uses first and last selected nodes.
             if state.is_initial:

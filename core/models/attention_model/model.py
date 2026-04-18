@@ -69,7 +69,7 @@ class AttentionModel(nn.Module):
             raise ValueError(f"Unsupported problem_name: {problem_name}")
         self.encoder = Encoder(
             problem_name=problem_name,
-            d_h=d_h,
+            hidden_dim=d_h,
             num_heads=num_heads,
             num_layers=num_layers,
         )

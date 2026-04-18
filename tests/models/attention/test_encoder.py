@@ -14,7 +14,7 @@ def test_encoder_output_shape():
     num_layers = 1
     d_ff = 32
 
-    encoder = Encoder(d_h=d_h, num_heads=num_heads, num_layers=num_layers, d_ff=d_ff)
+    encoder = Encoder(hidden_dim=d_h, num_heads=num_heads, num_layers=num_layers, ff_dim=d_ff)
 
     node_features = torch.rand((batch_size, n, d_x))
     data = Batch.from_data_list([make_complete_graph(node_features[b]) for b in range(batch_size)])
