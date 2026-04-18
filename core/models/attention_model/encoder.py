@@ -19,36 +19,35 @@ class Encoder(nn.Module):
         self,
         *,
         problem_name: str = "tsp",
-        d_x: int = 2,
-        d_h: int = 128,
+        hidden_dim: int = 128,
         num_heads: int = 8,
         num_layers: int = 3,
-        d_ff: int = 512,
+        ff_dim: int = 512,
     ) -> None:
         """
         Args:
-            d_x: input feature dimensionality (2 for TSP: x, y coordinates)
-            d_h: hidden embedding dimensionality (paper: 128)
+            hidden_dim: hidden embedding dimensionality (paper: 128)
             num_heads: attention heads (paper: 8)
             num_layers: number of attention layers N (paper: 3)
-            d_ff: FF hidden dimensionality (paper: 512)
+            ff_dim: FF hidden dimensionality (paper: 512)
         """
         super().__init__()
 
         self.problem_name = problem_name
         if problem_name == "tsp":
             self.initial_embedding = TSPInitialEmbedding(
-                hidden_dim=d_h,
-                node_features_dim=d_x,
+                hidden_dim=hidden_dim,
             )
         elif problem_name == "cvrp":
-            self.initial_embedding = CVRPInitialEmbedding(hidden_dim=d_h)
+            self.initial_embedding = CVRPInitialEmbedding(hidden_dim=hidden_dim)
         else:
             raise ValueError(f"Unknown problem_name: {problem_name}")
 
-        # N attention layers
         self.layers = nn.ModuleList(
-            [AttentionLayer(d_h=d_h, num_heads=num_heads, d_ff=d_ff) for _ in range(num_layers)]
+            [
+                AttentionLayer(hidden_dim=hidden_dim, num_heads=num_heads, ff_dim=ff_dim)
+                for _ in range(num_layers)
+            ]
         )
 
     def forward(
@@ -68,18 +67,8 @@ class Encoder(nn.Module):
             h_nodes: (total_nodes, d_model)
             h_graph: (batch_size, d_model)
         """
-
-        # Initial projection
-        if self.problem_name == "cvrp":
-            if "depot_features" not in features or "customer_features" not in features:
-                raise ValueError("CVRP encoder requires depot_features and customer_features.")
-            cvrp_nodes = self.initial_embedding(**features)
-            h = cvrp_nodes.reshape(-1, cvrp_nodes.size(-1))
-        else:
-            if "node_features" not in features:
-                raise ValueError("TSP encoder requires node_features.")
-            tsp_nodes = self.initial_embedding(**features)
-            h = tsp_nodes.reshape(-1, tsp_nodes.size(-1))
+        h = self.initial_embedding(**features)
+        h = h.reshape(-1, h.size(-1))
 
         for layer in self.layers:
             h = layer(h, edge_index)
@@ -91,22 +80,26 @@ class Encoder(nn.Module):
 
 
 class AttentionLayer(nn.Module):
-    def __init__(self, *, d_h: int, num_heads: int = 8, d_ff: int = 512) -> None:
+    def __init__(self, *, hidden_dim: int, num_heads: int = 8, ff_dim: int = 512) -> None:
         super().__init__()
-        assert d_h % num_heads == 0
+        assert hidden_dim % num_heads == 0
 
         # TODO: Use simple nn.MultiheadAttention instead of torch_geometric's TransformerConv
         self.MHA = TransformerConv(
-            in_channels=d_h,
-            out_channels=d_h // num_heads,
+            in_channels=hidden_dim,
+            out_channels=hidden_dim // num_heads,
             heads=num_heads,
             concat=True,
             dropout=0.0,
             bias=True,
         )
-        self.BN1 = nn.BatchNorm1d(d_h)
-        self.FF = FeedForward(d_h=d_h, d_ff=d_ff)
-        self.BN2 = nn.BatchNorm1d(d_h)
+        self.BN1 = nn.BatchNorm1d(hidden_dim)
+        self.FF = nn.Sequential(
+            nn.Linear(hidden_dim, ff_dim),
+            nn.ReLU(),
+            nn.Linear(ff_dim, hidden_dim),
+        )
+        self.BN2 = nn.BatchNorm1d(hidden_dim)
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         # MHA sublayer (Eq. 2)
@@ -117,21 +110,3 @@ class AttentionLayer(nn.Module):
         x = self.BN2(x + self.FF(x))
 
         return x
-
-
-class FeedForward(nn.Module):
-    def __init__(self, *, d_h: int, d_ff: int = 512) -> None:
-        """
-        Args:
-            d_h: The dimension denoted as $h$ in the paper.
-            d_ff: The dimension of the hidden layer in the feedforward network. Equal to 512 in the paper.
-        """
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(d_h, d_ff),
-            nn.ReLU(),
-            nn.Linear(d_ff, d_h),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.layers(x)

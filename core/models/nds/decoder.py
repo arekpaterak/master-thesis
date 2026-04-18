@@ -78,9 +78,8 @@ class NDSDecoder(nn.Module):
         super().__init__()
         assert hidden_dim % num_heads == 0
 
-        self.d_h = hidden_dim
+        self.hidden_dim = hidden_dim
         self.num_heads = num_heads
-        self.head_dim = hidden_dim // num_heads
 
         self.start_token = nn.Parameter(torch.zeros(hidden_dim), requires_grad=True)
 
@@ -120,7 +119,7 @@ class NDSDecoder(nn.Module):
             device = next(self.parameters()).device
 
         return DecoderState(
-            gru_hidden=torch.zeros(B * rollout_size, self.d_h, device=device),
+            gru_hidden=torch.zeros(B * rollout_size, self.hidden_dim, device=device),
         )
 
     def build_cache(
@@ -168,7 +167,7 @@ class NDSDecoder(nn.Module):
                 gru_hidden_state: A new GRU hidden state.
         """
         B, R, _, _ = cache.h_nodes_expanded.shape
-        d_h = self.d_h
+        d_h = self.hidden_dim
 
         last_node_idx = problem_state.last_node_idx
         if last_node_idx is None:
@@ -188,7 +187,7 @@ class NDSDecoder(nn.Module):
         attention_mask = ~problem_state.action_mask
         mh_out = self.MHA(
             q=context, k_cached=cache.k, v_cached=cache.v, attention_mask=attention_mask
-        ).reshape(B, R, self.d_h)
+        ).reshape(B, R, self.hidden_dim)
 
         context_out = mh_out + self.poly_net(torch.cat([mh_out, cache.seed], dim=-1))
 

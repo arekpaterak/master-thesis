@@ -141,9 +141,9 @@ def _(D_FF, D_H, N_HEADS, initial_node_embeddings):
     from core.models.nds.encoder import AttentionLayer
 
     att_layer = AttentionLayer(
-        d_h=D_H,
+        hidden_dim=D_H,
         num_heads=N_HEADS,
-        d_ff=D_FF,
+        ff_dim=D_FF,
     )
     refined_embeddings = att_layer(initial_node_embeddings)
 
