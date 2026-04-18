@@ -16,17 +16,31 @@ class NDSEncoder(nn.Module):
         ff_dim: int = 512,
         with_neighbours_encoding: bool = True,
         with_tour_encoding: bool = True,
+        initial_embedding: nn.Module | None = None,
     ) -> None:
         super().__init__()
 
-        if problem_name == "cvrp":
+        self.problem_name = problem_name
+        if initial_embedding is not None:
+            if problem_name == "cvrp" and not isinstance(initial_embedding, CVRPInitialEmbedding):
+                raise TypeError(
+                    f"Expected CVRPInitialEmbedding for problem_name='cvrp', got {type(initial_embedding).__name__}"
+                )
+            if problem_name == "tsp" and not isinstance(initial_embedding, TSPInitialEmbedding):
+                raise TypeError(
+                    f"Expected TSPInitialEmbedding for problem_name='tsp', got {type(initial_embedding).__name__}"
+                )
+            self.initial_embedding = initial_embedding
+        elif problem_name == "cvrp":
             self.initial_embedding = CVRPInitialEmbedding(hidden_dim=hidden_dim)
         elif problem_name == "tsp":
             self.initial_embedding = TSPInitialEmbedding(hidden_dim=hidden_dim)
         else:
             raise ValueError(f"Unknown problem_name: {problem_name}")
 
-        attention_layer = lambda: AttentionLayer(d_h=hidden_dim, num_heads=num_heads, d_ff=ff_dim)
+        attention_layer = lambda: AttentionLayer(
+            hidden_dim=hidden_dim, num_heads=num_heads, ff_dim=ff_dim
+        )
         self.pre_attention = nn.Sequential(
             attention_layer(),
             attention_layer(),
@@ -69,31 +83,35 @@ class AttentionLayer(nn.Module):
     def __init__(
         self,
         *,
-        d_h: int,
+        hidden_dim: int,
         num_heads: int,
-        d_ff: int,
+        ff_dim: int,
     ) -> None:
         super().__init__()
-        self.MHA = nn.MultiheadAttention(d_h, num_heads, batch_first=True)
-        self.norm1 = nn.BatchNorm1d(d_h)
+        self.MHA = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
+        self.norm1 = nn.BatchNorm1d(hidden_dim)
         self.FF = nn.Sequential(
-            nn.Linear(d_h, d_ff),
+            nn.Linear(hidden_dim, ff_dim),
             nn.ReLU(),
-            nn.Linear(d_ff, d_h),
+            nn.Linear(ff_dim, hidden_dim),
         )
-        self.norm2 = nn.BatchNorm1d(d_h)
+        self.norm2 = nn.BatchNorm1d(hidden_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, L, d = x.shape
+        B, num_nodes, hidden_dim = x.shape
         attn_out, _ = self.MHA(x, x, x)
-        x = self.norm1((x + attn_out).reshape(B * L, d)).reshape(B, L, d)
-        x = self.norm2((x + self.FF(x)).reshape(B * L, d)).reshape(B, L, d)
+        x = self.norm1((x + attn_out).reshape(B * num_nodes, hidden_dim)).reshape(
+            B, num_nodes, hidden_dim
+        )
+        x = self.norm2((x + self.FF(x)).reshape(B * num_nodes, hidden_dim)).reshape(
+            B, num_nodes, hidden_dim
+        )
         return x
 
 
 class NeighboursEncodingLayer(nn.Module):
     """
-    Named Message Passing Layer in the original paper.
+    Named Message Passing Layer in the original paper (Hottung et al. 2025).
     """
 
     def __init__(self, *, d_h: int, d_ff: int) -> None:
