@@ -3,8 +3,12 @@ import marimo
 __generated_with = "0.22.5"
 app = marimo.App(width="columns")
 
+with app.setup:
+    import torch
+    import torch.nn
 
-@app.cell(column=0, hide_code=True)
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Notebook Description
@@ -107,25 +111,38 @@ def _():
     from pydantic import BaseModel, Field, computed_field
 
     class ModelParams(BaseModel):
-        epochs: int = Field(default=25, description="Number of training epochs.")
+        problem_name: str = Field(default="tsp", description="Problem to solve (tsp or cvrp).")
+        problem_size: int = Field(default=20, description="Number of nodes in the problem.")
+        epochs: int = Field(default=1, description="Number of training epochs.")
+        steps_per_epoch: int = Field(default=2500, description="Steps (batches) per epoch.")
         batch_size: int = Field(default=32, description="Training batch size.")
         learning_rate: float = Field(default=1e-4, description="Learning rate for AdamW.")
+        d_h: int = Field(default=128, description="Hidden dimension.")
+        num_heads: int = Field(default=8, description="Number of attention heads.")
+        num_layers: int = Field(default=3, description="Number of attention layers.")
         wandb_project: str = Field(
-            default="batch-sizes", description="W&B project name (empty to skip)."
+            default="attention-model", description="W&B project name (empty to skip)."
         )
 
         @computed_field
         @property
         def run_name(self) -> str:
             parts = [
+                f"{self.problem_name}{self.problem_size}",
                 f"e{self.epochs}",
                 f"bs{self.batch_size}",
                 f"lr{self.learning_rate:.0e}",
             ]
             params_dict = {
+                "problem_name": self.problem_name,
+                "problem_size": self.problem_size,
                 "epochs": self.epochs,
+                "steps_per_epoch": self.steps_per_epoch,
                 "batch_size": self.batch_size,
                 "learning_rate": self.learning_rate,
+                "d_h": self.d_h,
+                "num_heads": self.num_heads,
+                "num_layers": self.num_layers,
             }
             h = hashlib.md5(json.dumps(params_dict, sort_keys=True).encode()).hexdigest()[:6]
             return "-".join(parts) + f"-{h}"
@@ -138,15 +155,26 @@ def _(mo):
     params_form = (
         mo.md("""
     ## Model parameters
-
+    {problem_name}
+    {problem_size}
     {epochs}
+    {steps_per_epoch}
     {batch_size}
     {learning_rate}
+    {d_h}
+    {num_heads}
+    {num_layers}
     """)
         .batch(
-            epochs=mo.ui.slider(10, 50, value=50, step=1, label="epochs"),
+            problem_name=mo.ui.dropdown(["tsp", "cvrp"], value="tsp", label="Problem Name"),
+            problem_size=mo.ui.number(10, 100, value=20, step=1, label="Problem Size"),
+            epochs=mo.ui.slider(1, 100, value=1, step=1, label="epochs"),
+            steps_per_epoch=mo.ui.number(100, 10000, value=2500, step=100, label="steps_per_epoch"),
             batch_size=mo.ui.slider(8, 512, value=32, step=8, label="batch size"),
             learning_rate=mo.ui.slider(1e-5, 5e-4, value=1e-4, step=1e-5, label="learning rate"),
+            d_h=mo.ui.dropdown([64, 128, 256, 512], value=128, label="d_h"),
+            num_heads=mo.ui.slider(1, 16, value=8, step=1, label="num_heads"),
+            num_layers=mo.ui.slider(1, 6, value=3, step=1, label="num_layers"),
         )
         .form()
     )
@@ -167,36 +195,7 @@ def _(ModelParams, is_script_mode, mo, params_form):
     return (model_params,)
 
 
-@app.cell
-def _():
-    import torch
-    import torch.nn as nn
-
-    return nn, torch
-
-
 @app.cell(column=2, hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Data Setup
-    """)
-    return
-
-
-@app.cell
-def _(model_params, torch):
-    X = torch.randn(1000, 10)
-    w_true = torch.randn(10, 1)
-    y = X @ w_true + 0.1 * torch.randn(1000, 1)
-
-    dataset = torch.utils.data.TensorDataset(X, y)
-    train_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=model_params.batch_size, shuffle=True
-    )
-    return (train_loader,)
-
-
-@app.cell(column=3, hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Model Setup
@@ -205,18 +204,43 @@ def _(mo):
 
 
 @app.cell
-def _(nn):
-    model = nn.Sequential(
-        nn.Linear(10, 32),
-        nn.ReLU(),
-        nn.Linear(32, 1),
-    )
+def _(model_params):
+    from core.problems.cvrp import CVRPConfig, CVRPSampler
+    from core.problems.tsp import TSPConfig, TSPSampler
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if model_params.problem_name == "tsp":
+        sampler = TSPSampler(TSPConfig(num_locations=model_params.problem_size))
+    elif model_params.problem_name == "cvrp":
+        sampler = CVRPSampler(CVRPConfig.for_n(model_params.problem_size))
+    else:
+        raise ValueError(f"Unknown problem name: {model_params.problem_name}")
+    return device, sampler
+
+
+@app.cell
+def _(device):
+    device
+    return
+
+
+@app.cell
+def _(device, model_params):
+    from core.models.attention_model.model import AttentionModel
+
+    model = AttentionModel(
+        problem_name=model_params.problem_name,
+        d_h=model_params.d_h,
+        num_heads=model_params.num_heads,
+        num_layers=model_params.num_layers,
+    ).to(device)
 
     model
     return (model,)
 
 
-@app.cell(column=4, hide_code=True)
+@app.cell(column=3, hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Training
@@ -225,7 +249,9 @@ def _(mo):
 
 
 @app.cell
-def _(mo, model, model_params, nn, torch, train_loader, wandb):
+def _(mo, model, model_params, sampler, wandb):
+    from core.models.attention_model.training import EpochSummary, train
+
     if model_params.wandb_project:
         wandb.init(
             project=model_params.wandb_project,
@@ -233,32 +259,40 @@ def _(mo, model, model_params, nn, torch, train_loader, wandb):
             config=model_params.model_dump(),
         )
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=model_params.learning_rate)
-    loss_fn = nn.MSELoss()
+    with (
+        mo.status.progress_bar(total=model_params.epochs, title="Epochs") as epoch_bar,
+        mo.status.progress_bar(
+            total=model_params.epochs * model_params.steps_per_epoch, title="Batches"
+        ) as step_bar,
+    ):
 
-    with mo.status.progress_bar(total=model_params.epochs) as bar:
-        for epoch in range(model_params.epochs):
-            epoch_loss = 0.0
-            for xb, yb in train_loader:
-                pred = model(xb)
-                loss = loss_fn(pred, yb)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()
-            avg_loss = epoch_loss / len(train_loader)
+        def on_batch_end(step_idx: int, loss: float):
+            step_bar.update(subtitle=f"Loss: {loss:.4f}")
+
+        def on_epoch_end(summary: EpochSummary):
             if model_params.wandb_project:
-                wandb.log({"epoch": epoch, "loss": avg_loss})
-            bar.update()
+                wandb.log(summary._asdict())
+            epoch_bar.update(subtitle=f"Avg Loss: {summary.loss:.4f}")
+
+        _ = train(
+            model=model,
+            instance_sampler=sampler,
+            n_epochs=model_params.epochs,
+            steps_per_epoch=model_params.steps_per_epoch,
+            batch_size=model_params.batch_size,
+            lr=model_params.learning_rate,
+            on_epoch_end=on_epoch_end,
+            on_batch_end=on_batch_end,
+        )
 
     if model_params.wandb_project:
         wandb.finish()
 
-    mo.md(f"**Training complete.** Final loss: `{avg_loss:.6f}`")
+    mo.md("**Training complete.**")
     return
 
 
-@app.cell(column=5, hide_code=True)
+@app.cell(column=4, hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Evaluation
@@ -267,8 +301,7 @@ def _(mo):
 
 
 @app.cell
-def _(torch):
-    torch.randint(1, 21, size=(10, 4))
+def _():
     return
 
 

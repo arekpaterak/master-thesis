@@ -102,13 +102,15 @@ def train(
     batch_size: int = 512,
     lr: float = 1e-4,
     alpha: float = 0.05,
+    on_epoch_end: Callable[[EpochSummary], None] | None = None,
+    on_batch_end: Callable[[int, float], None] | None = None,
 ) -> list[EpochSummary]:
     """
     Train the Attention Model using REINFORCE with a greedy rollout baseline,
     as described in Algorithm 1 "Attention, Learn to Solve Routing Problems!" (Kool et al., 2019).
 
     Returns:
-        (model, epoch_summaries)
+        epoch_summaries
     """
     device = next(model.parameters()).device
 
@@ -179,6 +181,9 @@ def train(
                 )
             )
 
+            if on_batch_end is not None:
+                on_batch_end(_, loss.item())
+
         elapsed = time.perf_counter() - epoch_start
         instances_per_sec = (steps_per_epoch * batch_size) / elapsed
 
@@ -207,6 +212,9 @@ def train(
             instances_per_sec=instances_per_sec,
         )
         epoch_summaries.append(summary)
+
+        if on_epoch_end is not None:
+            on_epoch_end(summary)
 
         epoch_bar.set_postfix(
             OrderedDict(

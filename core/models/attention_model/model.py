@@ -73,21 +73,25 @@ class AttentionModel(nn.Module):
             num_heads=num_heads,
             num_layers=num_layers,
         )
-        self.decoder = Decoder(hidden_dim=d_h, num_heads=num_heads)
+        self.decoder = Decoder(
+            problem_name=problem_name,
+            hidden_dim=d_h,
+            num_heads=num_heads,
+        )
 
     # TODO: Change to single step, add rollout to produce full sequence
     def forward(
         self,
-        instance: TSPInstance | CVRPInstance,
+        instance: BaseProblemInstance,
         *,
         greedy: bool = False,
-        partial_tour: torch.Tensor | None = None,
+        previous_actions: torch.Tensor | None = None,
     ) -> AMRollout:
         """
         Args:
             instance: (batch, n, d_x)
             greedy: if True, argmax; if False, sample
-            partial_tour: (batch, k) optional pre-placed nodes. Assumes same number of pre-placed nodes across batch.
+            previous_actions: (batch, k) optional pre-placed nodes. Assumes same number of pre-placed nodes across batch.
         Returns:
             RolloutResult
         """
@@ -114,57 +118,42 @@ class AttentionModel(nn.Module):
 
         log_p_of_selected = []
         entropies, entropies_norm = [], []
+
         actions: list[torch.Tensor]
 
         if self.problem_name == "tsp":
-            if partial_tour is None:
-                state: TSPConstructiveState | CVRPConstructiveState = TSPConstructiveState.initial(
+            if previous_actions is None:
+                state = TSPConstructiveState.initial(
                     batch_size=batch_size,
                     num_nodes=n,
                     device=instance.locations.device,
                 )
                 actions = []
             else:
-                state = TSPConstructiveState.from_partial_tour(
-                    partial_tour=partial_tour,
+                state = TSPConstructiveState.from_partial(
+                    partial_tour=previous_actions,
                     num_nodes=n,
                 )
-                actions = [partial_tour[:, i] for i in range(partial_tour.shape[1])]
-
-            while not state.all_done():
-                log_p = self.decoder(node_embeddings=h_nodes, graph_embedding=h_graph, state=state)
-                selected = log_p.argmax(-1) if greedy else log_p.exp().multinomial(1).squeeze(-1)
-                log_p_of_selected.append(log_p.gather(-1, selected.unsqueeze(-1)).squeeze(-1))
-                actions.append(selected)
-                state = state.transition(selected)
-
-                step_entropy = entropy(log_p)
-                entropies.append(step_entropy.entropy)
-                entropies_norm.append(step_entropy.entropy_norm)
+                actions = [previous_actions[:, i] for i in range(previous_actions.shape[1])]
         elif self.problem_name == "cvrp":
-            # Start from depot so the produced action sequence can be used directly as CVRP sequence.
             state = CVRPConstructiveState.initial(
                 demand=instance.demand,
                 capacity=instance.capacity,
             )
-            actions = [torch.zeros(batch_size, dtype=torch.long, device=instance.device)]
-
-            while not state.all_done():
-                log_p = self.decoder(node_embeddings=h_nodes, graph_embedding=h_graph, state=state)
-                selected = log_p.argmax(-1) if greedy else log_p.exp().multinomial(1).squeeze(-1)
-                log_p_of_selected.append(log_p.gather(-1, selected.unsqueeze(-1)).squeeze(-1))
-                actions.append(selected)
-                state = state.transition(selected)
-
-                step_entropy = entropy(log_p)
-                entropies.append(step_entropy.entropy)
-                entropies_norm.append(step_entropy.entropy_norm)
-
-            # Finalize sequence at depot.
-            if (actions[-1] != 0).any():
-                actions.append(torch.zeros_like(actions[-1]))
+            actions = []
         else:
             raise ValueError("Unknown problem type.")
+
+        while not state.all_done():
+            log_p = self.decoder(node_embeddings=h_nodes, graph_embedding=h_graph, state=state)
+            selected = log_p.argmax(-1) if greedy else log_p.exp().multinomial(1).squeeze(-1)
+            log_p_of_selected.append(log_p.gather(-1, selected.unsqueeze(-1)).squeeze(-1))
+            actions.append(selected)
+            state = state.transition(selected)
+
+            step_entropy = entropy(log_p)
+            entropies.append(step_entropy.entropy)
+            entropies_norm.append(step_entropy.entropy_norm)
 
         mean_entropy = torch.stack(entropies, dim=-1).mean().item() if entropies else 0.0
         mean_entropy_norm = (
