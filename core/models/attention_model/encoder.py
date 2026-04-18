@@ -5,6 +5,9 @@ import torch.nn as nn
 from torch_geometric.nn.conv import TransformerConv
 from torch_geometric.nn.pool import global_mean_pool
 
+from core.models.embeddings.cvrp import CVRPInitialEmbedding
+from core.models.embeddings.tsp import TSPInitialEmbedding
+
 
 class EncoderOutput(NamedTuple):
     h_nodes: torch.Tensor
@@ -15,6 +18,7 @@ class Encoder(nn.Module):
     def __init__(
         self,
         *,
+        problem_name: str = "tsp",
         d_x: int = 2,
         d_h: int = 128,
         num_heads: int = 8,
@@ -31,7 +35,16 @@ class Encoder(nn.Module):
         """
         super().__init__()
 
-        self.input_projection = TSPInitialNodeEmbedding(d_x=d_x, d_h=d_h)
+        self.problem_name = problem_name
+        if problem_name == "tsp":
+            self.initial_embedding = TSPInitialEmbedding(
+                hidden_dim=d_h,
+                node_features_dim=d_x,
+            )
+        elif problem_name == "cvrp":
+            self.initial_embedding = CVRPInitialEmbedding(hidden_dim=d_h)
+        else:
+            raise ValueError(f"Unknown problem_name: {problem_name}")
 
         # N attention layers
         self.layers = nn.ModuleList(
@@ -40,14 +53,14 @@ class Encoder(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,
         *,
         batch: torch.Tensor,
         edge_index: torch.Tensor,
+        **features: torch.Tensor,
     ) -> EncoderOutput:
         """
         Args:
-            x: (total_nodes, d_x)
+            **features: Feature dictionary consumed by the selected initial embedding.
             batch: (total_nodes,)
             edge_index: (2, total_edges)
 
@@ -57,7 +70,16 @@ class Encoder(nn.Module):
         """
 
         # Initial projection
-        h = self.input_projection(x)  # (total_nodes, d_h)
+        if self.problem_name == "cvrp":
+            if "depot_features" not in features or "customer_features" not in features:
+                raise ValueError("CVRP encoder requires depot_features and customer_features.")
+            cvrp_nodes = self.initial_embedding(**features)
+            h = cvrp_nodes.reshape(-1, cvrp_nodes.size(-1))
+        else:
+            if "node_features" not in features:
+                raise ValueError("TSP encoder requires node_features.")
+            tsp_nodes = self.initial_embedding(**features)
+            h = tsp_nodes.reshape(-1, tsp_nodes.size(-1))
 
         for layer in self.layers:
             h = layer(h, edge_index)
@@ -66,15 +88,6 @@ class Encoder(nn.Module):
         h_graph = global_mean_pool(h, batch)  # (B, d_h)
 
         return EncoderOutput(h, h_graph)
-
-
-class TSPInitialNodeEmbedding(nn.Module):
-    def __init__(self, *, d_x: int = 2, d_h: int = 128) -> None:
-        super().__init__()
-        self.input_projection = nn.Linear(d_x, d_h)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.input_projection(x)
 
 
 class AttentionLayer(nn.Module):

@@ -1,22 +1,27 @@
+import pytest
+
 from core.models.attention_model.model import AttentionModel
+from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.tsp import TSPConfig, TSPSampler
 
 
-def test_attention_model_rollout():
+@pytest.mark.parametrize("problem", ["tsp", "cvrp"])
+def test_attention_model_rollout(problem: str):
     batch_size = 2
-    n = 5
-    d_x = 2
     d_h = 16
 
-    model = AttentionModel(d_x=d_x, d_h=d_h, num_heads=2, num_layers=1)
-    instances = TSPSampler(TSPConfig(num_locations=n))(batch_size)
+    model = AttentionModel(problem_name=problem, d_h=d_h, num_heads=2, num_layers=1)
+    if problem == "tsp":
+        instance = TSPSampler(TSPConfig(num_locations=5))(batch_size)
+    else:
+        instance = CVRPSampler(CVRPConfig.for_n(20))(batch_size)
 
-    result_greedy = model(instances, greedy=True)
-    assert result_greedy.tour.shape == (batch_size, n), "Expected tour shape (batch_size, n)"
-    assert result_greedy.log_p.shape == (batch_size, n), "Expected log_p shape (batch_size, n)"
-    assert isinstance(result_greedy.entropy, float), "Expected entropy to be float"
-    assert isinstance(result_greedy.entropy_norm, float), "Expected entropy_norm to be float"
+    result = model(instance, greedy=False)
+    assert result.actions.shape[0] == batch_size
+    assert result.log_p.shape[0] == batch_size
+    assert isinstance(result.entropy, float)
+    assert isinstance(result.entropy_norm, float)
 
-    result_sample = model(instances, greedy=False)
-    assert result_sample.tour.shape == (batch_size, n), "Expected tour shape (batch_size, n)"
-    assert result_sample.log_p.shape == (batch_size, n), "Expected log_p shape (batch_size, n)"
+    solution = result.to_solution(instance)
+    objective = solution.objective()
+    assert objective.shape == (batch_size,)

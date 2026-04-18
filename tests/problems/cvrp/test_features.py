@@ -72,7 +72,7 @@ class TestRepairCVRPFeatureExtractor:
             assert torch.equal(padding_mask, expected_padding)
 
     @pytest.mark.parametrize(
-        "sequence, expected_indices, expected_padding",
+        ("sequence", "expected_indices", "expected_padding"),
         [
             (
                 [

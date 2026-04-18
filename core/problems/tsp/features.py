@@ -1,6 +1,7 @@
 import torch
 
-from core.problems.features import FeatureExtractor
+from core.problems.features import FeatureExtractor, InstanceFeatureExtractor
+from core.problems.tsp.instance import TSPInstance
 from core.problems.tsp.solution import TSPSolution
 
 
@@ -14,6 +15,15 @@ class TSPFeatureExtractor(FeatureExtractor[TSPSolution]):
         return {
             "node_features": solution.instance.locations,
             "neighbours_index": solution.neighbours_index(),
+        }
+
+
+class TSPInstanceFeatureExtractor(InstanceFeatureExtractor[TSPInstance]):
+    """Feature extractor for instance-level AM-style TSP encoding."""
+
+    def __call__(self, instance: TSPInstance) -> dict[str, torch.Tensor]:
+        return {
+            "node_features": instance.locations,
         }
 
 

@@ -1,7 +1,8 @@
 import torch
 
+from core.problems.cvrp.instance import CVRPInstance
 from core.problems.cvrp.solution import CVRPSolution
-from core.problems.features import FeatureExtractor
+from core.problems.features import FeatureExtractor, InstanceFeatureExtractor
 
 
 class CVRPFeatureExtractor(FeatureExtractor[CVRPSolution]):
@@ -16,6 +17,16 @@ class CVRPFeatureExtractor(FeatureExtractor[CVRPSolution]):
             "customer_features": solution.instance.customer_features,
             "neighbours_index": solution.neighbours_per_customer(),
             "tour_index": solution.route_per_customer(),
+        }
+
+
+class CVRPInstanceFeatureExtractor(InstanceFeatureExtractor[CVRPInstance]):
+    """Feature extractor for instance-level AM-style CVRP encoding."""
+
+    def __call__(self, instance: CVRPInstance) -> dict[str, torch.Tensor]:
+        return {
+            "depot_features": instance.depot_location,
+            "customer_features": instance.customer_features,
         }
 
 
