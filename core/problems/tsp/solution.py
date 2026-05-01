@@ -11,30 +11,13 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
-# TODO: Use solution method instead
-def tour_length(instances, solutions) -> torch.Tensor:
-    """
-    Args:
-        instances: (batch, n, 2)
-        solutions: (batch, n) - permutation of node indices
-    Returns:
-        lengths: (batch,)
-    """
-    batch_size, n = solutions.shape
-    # gather coordinates in tour order
-    ordered = instances[torch.arange(batch_size).unsqueeze(1), solutions]  # (batch, n, 2)
-    # distance from each node to the next, wrapping around
-    rolled = torch.roll(ordered, -1, dims=1)
-    return (ordered - rolled).norm(dim=-1).sum(dim=-1)  # (batch,)
-
-
 class TSPSolution(BaseSolution):
     """
     Canonical representation of single or batched TSP solution.
     """
 
     _instance: TSPInstance
-    tour: torch.Tensor
+    _tour: torch.Tensor
     """(..., n), -1 for unvisited slots."""
 
     UNASSIGNED = -1
@@ -43,20 +26,44 @@ class TSPSolution(BaseSolution):
     def instance(self) -> TSPInstance:
         return self._instance
 
+    @property
+    def tour(self) -> torch.Tensor:
+        return self._tour
+
     @classmethod
     def create(cls, instance: TSPInstance, tour: torch.Tensor) -> TSPSolution:
-        return cls(_instance=instance, tour=tour, batch_size=instance.batch_size)
+        return cls(_instance=instance, _tour=tour, batch_size=instance.batch_size)
 
     def __post_init__(self):
-        # Validate that tour indices are within bounds of the instance
         mask = self.tour != self.UNASSIGNED
         if mask.any():
-            assert self.tour[mask].max() < self.instance.num_locations, "Tour index out of bounds."
-            assert self.tour[mask].min() >= 0, "Tour index (excluding -1) must be non-negative."
+            assert self.tour[mask].max() < self.instance.num_locations, (
+                "Indices in tour should be less than the number of locations in the instance."
+            )
+            assert self.tour[mask].min() >= 0, "Indices in tour should be non-negative."
+
+        unassigned_count = self.unassigned_mask.sum(dim=-1)
+        assert (unassigned_count == unassigned_count.flatten()[0]).all(), (
+            "Expected all instances to have the same number of unassigned nodes."
+        )
 
     @property
     def num_visited(self) -> torch.Tensor:
         return (self.tour != self.UNASSIGNED).sum(dim=-1)
+
+    @property
+    def unassigned_mask(self) -> torch.Tensor:
+        return self.tour == self.UNASSIGNED
+
+    def unassigned_nodes(self) -> torch.Tensor:
+        b_size = self.batch_size
+        n = self.instance.num_locations
+        all_nodes = torch.arange(n, device=self.tour.device).expand(*b_size, n)
+
+        mask = self.tour_index() == self.UNASSIGNED
+        unassigned_flat = all_nodes[mask]
+
+        return unassigned_flat.view(*b_size, -1)
 
     @property
     def num_unassigned(self) -> torch.Tensor:
@@ -73,11 +80,11 @@ class TSPSolution(BaseSolution):
     def objective(self) -> torch.Tensor:
         if (self.is_complete == False).any():
             raise ValueError("Cannot calculate objective for incomplete TSP solutions.")
-        return self.tour_length()
+        return self._tour_length()
 
     def neighbours_index(self) -> torch.Tensor:
         b_size = self.batch_size
-        n = self.instance.num_locations
+        n = self.instance.num_nodes
         tour = self.tour
 
         valid_mask = tour != self.UNASSIGNED
@@ -106,7 +113,7 @@ class TSPSolution(BaseSolution):
 
     def tour_index(self) -> torch.Tensor:
         b_size = self.batch_size
-        n = self.instance.num_locations
+        n = self.instance.num_nodes
         tour = self.tour
 
         valid_mask = tour != self.UNASSIGNED
@@ -152,17 +159,16 @@ class TSPSolution(BaseSolution):
 
         return TSPSolution.create(instance=instance, tour=new_tour)
 
-    def tour_length(self) -> torch.Tensor:
+    def _tour_length(self) -> torch.Tensor:
         """
-        Calculates tour length for single or batched instances.
-        Handles both open paths (partial) and closed loops (complete).
+        Handles both complete and partial solutions.
         """
-        locs = self.instance.locations
+        locations = self.instance.locations
 
         safe_tour = self.tour.clamp(min=0)
 
         # (..., N, 2) coordinates in tour order
-        ordered_locs = locs.gather(
+        ordered_locs = locations.gather(
             dim=-2, index=safe_tour.unsqueeze(-1).expand(*safe_tour.shape, 2)
         )
 

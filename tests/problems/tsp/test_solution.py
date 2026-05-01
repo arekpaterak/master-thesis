@@ -80,7 +80,7 @@ def test_tour_length(locations, tour, expected):
         tour=tour,
     )
 
-    tour_length = solution.tour_length()
+    tour_length = solution._tour_length()
 
     expected = torch.tensor(expected, dtype=torch.float)
     assert (tour_length > 0).all()
