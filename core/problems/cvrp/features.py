@@ -90,7 +90,7 @@ class RepairCVRPFeatureExtractor(FeatureExtractor[CVRPSolution]):
             [
                 solution.instance.depot_location,
                 torch.zeros((*b_size, 1, 1), device=device),
-                torch.full((*b_size, 1, 1), -1.0, device=device),
+                torch.full((*b_size, 1, 1), 0.0, device=device),
                 torch.full((*b_size, 1, 1), -1.0, device=device),
             ],
             dim=-1,

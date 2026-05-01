@@ -27,7 +27,7 @@ def cvrp_solution() -> CVRPSolution:
 
 
 @pytest.mark.parametrize("destruction_size", [-1])
-def test_random_node_should_fail_on_creation(destruction_size: int):
+def test_random_node_should_fail_on_creation_with_bad_size(destruction_size: int):
     with pytest.raises(ValueError):
         RandomNodeDestroy(destruction_size=destruction_size, seed=42)
 

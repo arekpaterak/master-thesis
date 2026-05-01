@@ -28,7 +28,7 @@ TSP:
 CVRP:
 - Node x coordinate.
 - Node y coordinate.
-- Fulfilled demand of the node's tour. It is -1 (alternatively 0) for the depot.
+- Fulfilled demand of the node's tour. It is 0 for the depot.
 - State of the solution: -1 for the depot; otherwise node degree; 0 if the node is not connected, 1 if the node is connected; nodes with degree 2 are not present in the input.
 
 **Decoding:**

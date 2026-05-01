@@ -6,7 +6,7 @@ from core.problems.solution import BaseSolution
 from core.problems.tsp.solution import TSPSolution
 
 
-class RandomNodeDestroy(DestroyOperator):
+class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
     def __init__(self, destruction_size: int, *, seed: int | None = None) -> None:
         if not destruction_size >= 0:
             raise ValueError("Expected non-negative destruction size.")
@@ -16,7 +16,7 @@ class RandomNodeDestroy(DestroyOperator):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def __call__(self, solution: BaseSolution) -> BaseSolution:
+    def __call__(self, solution: S) -> S:
         num_nodes = solution.instance.num_nodes
         device = solution.device
         batch_size = solution.batch_size
@@ -33,7 +33,7 @@ class RandomNodeDestroy(DestroyOperator):
                     .topk(self.destruction_size, dim=-1)
                     .indices
                 )
-                return s.remove_nodes(to_remove)
+                return s.remove_nodes(to_remove)  # type: ignore
 
             case CVRPSolution() as s:
                 num_customers = s.instance.num_customers
@@ -50,7 +50,7 @@ class RandomNodeDestroy(DestroyOperator):
                     .indices
                     + 1
                 )
-                return s.remove_customers(to_remove)
+                return s.remove_customers(to_remove)  # type: ignore
 
             case _:
                 raise NotImplementedError(f"Operator not implemented for {type(solution)}")
