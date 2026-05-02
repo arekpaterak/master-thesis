@@ -30,6 +30,9 @@ class TSPInstance(BaseProblemInstance):
     def num_nodes(self) -> int:
         return self.num_locations
 
+    def distances(self) -> torch.Tensor:
+        return torch.cdist(self.locations, self.locations)
+
     def visualize(
         self,
         *,

@@ -32,6 +32,7 @@ class TSPGraphSolution(BaseSolution):
                     dtype=torch.long,
                     device=instance.device,
                 ),
+                batch_size=instance.batch_size,
             )
 
         assert not (sequence == cls.UNASSIGNED).any(), "Expected complete tours"
@@ -48,7 +49,10 @@ class TSPGraphSolution(BaseSolution):
         next_nodes.scatter_(-1, sequence, sequence.roll(-1, dims=-1))
         prev_nodes.scatter_(-1, sequence, sequence.roll(1, dims=-1))
 
-        return cls(_instance=instance, _next=next_nodes, _prev=prev_nodes)
+        return cls(_instance=instance, _next=next_nodes, _prev=prev_nodes, batch_size=b_size)
+
+    def __post_init__(self) -> None:
+        assert (self.num_unassigned == self.num_unassigned[0]).all()
 
     @property
     def instance(self) -> TSPInstance:
@@ -64,44 +68,46 @@ class TSPGraphSolution(BaseSolution):
 
     @property
     def is_feasible(self) -> torch.Tensor:
-        pass
+        raise NotImplementedError()
 
     @property
     def num_unassigned(self) -> torch.Tensor:
         return (self._next == self.UNASSIGNED).sum(dim=-1)
 
     def objective(self) -> torch.Tensor:
-        pass
+        locations = self._instance.locations
+        next_locations = locations.gather(1, self._next.unsqueeze(-1).expand(-1, -1, 2))
+        length = torch.linalg.norm(locations - next_locations, dim=-1)
+        return length.sum(dim=-1)
 
     def node_degree(self) -> torch.Tensor:
-        pass
+        return (self._next != self.UNASSIGNED).long() + (self._prev != self.UNASSIGNED).long()
 
     def visualize(self, **kwargs) -> None:
         pass
 
     @property
     def is_complete(self) -> torch.Tensor:
-        pass
+        return self.num_unassigned == 0
 
-    def remove_edges(self, *, to_nodes: torch.Tensor) -> None:
-        if to_nodes.shape == self._next.shape[:-1]:
-            to_nodes = to_nodes.unsqueeze(-1)
-        from_node = self._prev.gather(-1, to_nodes)
+    def remove_edges(self, *, end_nodes: torch.Tensor) -> None:
+        if end_nodes.shape == self._next.shape[:-1]:
+            end_nodes = end_nodes.unsqueeze(-1)
+        start_nodes = self._prev.gather(-1, end_nodes)
 
-        self._next.scatter_(-1, from_node, self.UNASSIGNED)
-        self._prev.scatter_(-1, to_nodes, self.UNASSIGNED)
-        return
+        self._next.scatter_(-1, start_nodes, self.UNASSIGNED)
+        self._prev.scatter_(-1, end_nodes, self.UNASSIGNED)
 
     def add_edges(self, edges: torch.Tensor) -> None:
-        from_nodes = edges[..., 0]
-        to_nodes = edges[..., 1]
+        start_nodes = edges[..., 0]
+        end_nodes = edges[..., 1]
 
-        assert (self._next.gather(-1, from_nodes) == self.UNASSIGNED).all(), (
+        assert (self._next.gather(-1, start_nodes) == self.UNASSIGNED).all(), (
             "from_node already has a successor"
         )
-        assert (self._prev.gather(-1, to_nodes) == self.UNASSIGNED).all(), (
+        assert (self._prev.gather(-1, end_nodes) == self.UNASSIGNED).all(), (
             "to_node already has a predecessor"
         )
 
-        self._next.scatter_(-1, index=from_nodes, src=to_nodes)
-        self._prev.scatter_(-1, index=to_nodes, src=from_nodes)
+        self._next.scatter_(-1, index=start_nodes, src=end_nodes)
+        self._prev.scatter_(-1, index=end_nodes, src=start_nodes)
