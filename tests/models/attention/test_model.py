@@ -16,9 +16,10 @@ def test_attention_model_rollout(problem: str):
     else:
         instance = CVRPSampler(CVRPConfig.for_n(20))(batch_size)
 
-    result = model(instance, greedy=False)
+    result = model.rollout(instance, greedy=False)
     assert result.actions.shape[0] == batch_size
-    assert result.log_p.shape[0] == batch_size
+    assert result.log_p_of_actions.shape[0] == batch_size
+    assert result.overall_log_p.shape == (batch_size,)
     assert isinstance(result.entropy, float)
     assert isinstance(result.entropy_norm, float)
 

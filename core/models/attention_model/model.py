@@ -22,9 +22,17 @@ from core.states.constructive import CVRPConstructiveState, TSPConstructiveState
 @dataclass(frozen=True)
 class AMRollout:
     actions: torch.Tensor
-    log_p: torch.Tensor
+    log_p_of_actions: torch.Tensor
     entropy: float | None
     entropy_norm: float | None
+
+    def __post_init__(self) -> None:
+        assert self.actions.shape[0] == self.log_p_of_actions.shape[0]
+        assert self.log_p_of_actions.shape[-1] <= self.actions.shape[-1]
+
+    @property
+    def overall_log_p(self) -> torch.Tensor:
+        return self.log_p_of_actions.sum(dim=-1)
 
     @property
     def tour(self) -> torch.Tensor:
@@ -79,8 +87,20 @@ class AttentionModel(nn.Module):
             num_heads=num_heads,
         )
 
-    # TODO: Change to single step, add rollout to produce full sequence
     def forward(
+        self,
+        instance: BaseProblemInstance,
+        *,
+        greedy: bool = False,
+        previous_actions: torch.Tensor | None = None,
+    ) -> AMRollout:
+        return self.rollout(
+            instance,
+            greedy=greedy,
+            previous_actions=previous_actions,
+        )
+
+    def rollout(
         self,
         instance: BaseProblemInstance,
         *,
@@ -167,7 +187,7 @@ class AttentionModel(nn.Module):
 
         return AMRollout(
             actions=torch.stack(actions, dim=-1),
-            log_p=log_p_tensor,
+            log_p_of_actions=log_p_tensor,
             entropy=mean_entropy,
             entropy_norm=mean_entropy_norm,
         )

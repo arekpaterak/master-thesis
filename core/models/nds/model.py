@@ -3,6 +3,7 @@ import torch.nn as nn
 
 from core.models.nds.decoder import DecoderCache, DecoderOutput, DecoderState, NDSDecoder
 from core.models.nds.encoder import NDSEncoder
+from core.problems.solution import BaseSolution
 from core.states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
 
 
@@ -71,4 +72,22 @@ class NDSModel(nn.Module):
     ) -> DecoderOutput:
         return self.decoder.forward(
             problem_state=problem_state, decoder_state=decoder_state, cache=cache
+        )
+
+    def rollout(
+        self,
+        solution: BaseSolution,
+        *,
+        rollouts_per_solution: int,
+        deconstruction_size: int,
+        greedy: bool = False,
+    ):
+        from core.models.nds.rollout import _rollout_solution
+
+        return _rollout_solution(
+            self,
+            solution,
+            rollouts_per_solution=rollouts_per_solution,
+            deconstruction_size=deconstruction_size,
+            greedy=greedy,
         )
