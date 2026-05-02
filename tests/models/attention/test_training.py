@@ -6,9 +6,8 @@ import torch
 from core.models.attention_model.model import AttentionModel
 from core.models.attention_model.training import (
     configure_train_epoch,
-    prepare_baseline,
-    sync_baseline_,
 )
+from core.models.attention_model.training_helpers import prepare_baseline, sync_baseline_
 from core.models.train import Trainer
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.tsp.config import TSPConfig

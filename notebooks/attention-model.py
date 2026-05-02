@@ -242,10 +242,11 @@ def _(mo):
 @app.cell
 def _(mo, model, model_params, sampler):
     from core.models.attention_model.training import (
+        BatchSummary,
         EpochSummary,
         configure_train_epoch,
-        prepare_baseline,
     )
+    from core.models.attention_model.training_helpers import prepare_baseline
     from core.models.train import Trainer
 
     if model_params.wandb_project:
@@ -262,8 +263,8 @@ def _(mo, model, model_params, sampler):
         ) as step_bar,
     ):
 
-        def on_batch_end(step_idx: int, loss: float):
-            step_bar.update(subtitle=f"Loss: {loss:.4f}")
+        def on_batch_end(step_idx: int, summary: BatchSummary):
+            step_bar.update(subtitle=f"Loss: {summary.loss:.4f}")
 
         def on_epoch_end(summary: EpochSummary):
             if model_params.wandb_project:
