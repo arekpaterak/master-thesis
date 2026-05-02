@@ -1,4 +1,3 @@
-import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
@@ -36,27 +35,14 @@ class EpochSummary:
     objective_before: float
     objective_after: float
     grad_norm: float
-    batches: int
-    iterations: int
-    elapsed_seconds: float
-
-    @property
-    def total_iterations(self) -> int:
-        return self.batches * self.iterations
 
     @property
     def improvement(self) -> float:
         return self.objective_before - self.objective_after
 
-    @property
-    def iterations_per_sec(self) -> float:
-        return self.total_iterations / self.elapsed_seconds
-
     def asdict(self) -> dict[str, float | int]:
         data = asdict(self)
-        data["total_iterations"] = self.total_iterations
         data["improvement"] = self.improvement
-        data["iterations_per_sec"] = self.iterations_per_sec
         return data
 
 
@@ -81,6 +67,8 @@ def _training_step(
         solution = improvement_step(solution, model)
 
     objective_before = solution.objective().mean().item()
+
+    # Metrics across steps
     total_loss = 0.0
     total_reward = 0.0
     total_reward_baseline = 0.0
@@ -127,6 +115,7 @@ def _training_step(
     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
     optimizer.step()
 
+    # TODO: Think if average metrics over number of improvement steps
     return BatchSummary(
         loss=total_loss,
         reward=total_reward,
@@ -163,7 +152,6 @@ def configure_train_epoch(
         device = next(model.parameters()).device
         model.train()
 
-        epoch_start = time.perf_counter()
         total_loss = 0.0
         total_reward = 0.0
         total_reward_baseline = 0.0
@@ -211,9 +199,6 @@ def configure_train_epoch(
             objective_before=total_objective_before / batches_per_epoch,
             objective_after=total_objective_after / batches_per_epoch,
             grad_norm=total_grad_norm / batches_per_epoch,
-            batches=batches_per_epoch,
-            iterations=num_main_improvement_steps,
-            elapsed_seconds=time.perf_counter() - epoch_start,
         )
 
     return train_epoch

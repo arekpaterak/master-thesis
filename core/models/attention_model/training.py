@@ -1,76 +1,15 @@
-import copy
 import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from typing import NamedTuple
+from typing import Any
 
 import torch
-import torch.nn as nn
-from scipy import stats
 from tqdm.auto import tqdm
 
 from core.models.attention_model.model import AttentionModel, Rollout
+from core.models.attention_model.training_helpers import one_sided_paired_ttest, sync_baseline_
 from core.problems.instance import BaseProblemInstance
-
-
-class EvaluationResult(NamedTuple):
-    lengths: torch.Tensor
-
-    @property
-    def mean(self) -> float:
-        return self.lengths.mean().item()
-
-
-class PairedTTestResult(NamedTuple):
-    improved: bool
-    obj_model_mean: float
-    obj_baseline_mean: float
-
-
-def evaluate(
-    model: AttentionModel,
-    instance_sampler: Callable[[int], BaseProblemInstance],
-    n_instances: int = 10_000,
-    batch_size: int = 512,
-    device: str | torch.types.Device = "cpu",
-) -> EvaluationResult:
-    model.eval()
-    all_lengths = []
-    with torch.no_grad():
-        for _ in range(0, n_instances, batch_size):
-            bs = min(batch_size, n_instances - len(all_lengths) * batch_size)
-            instances = instance_sampler(bs).to(device)
-            rollout = model.rollout(instances, greedy=True)
-            solution = rollout.to_solution(instances)
-            all_lengths.append(solution.objective().cpu())
-    return EvaluationResult(lengths=torch.cat(all_lengths))
-
-
-def one_sided_paired_ttest(
-    model: AttentionModel,
-    baseline: AttentionModel,
-    instance_sampler: Callable[[int], BaseProblemInstance],
-    n_instances: int = 10_000,
-    batch_size: int = 512,
-    alpha: float = 0.05,
-    device: str | torch.types.Device = "cpu",
-) -> PairedTTestResult:
-    """One-sided paired t-test: is model significantly better than baseline?"""
-    obj_model = evaluate(model, instance_sampler, n_instances, batch_size, device).lengths
-    obj_baseline = evaluate(baseline, instance_sampler, n_instances, batch_size, device).lengths
-    t, p = stats.ttest_rel(obj_model.numpy(), obj_baseline.numpy())
-    p_one_sided = p / 2 if t < 0 else 1.0
-    return PairedTTestResult(
-        improved=(p_one_sided < alpha),
-        obj_model_mean=obj_model.mean().item(),
-        obj_baseline_mean=obj_baseline.mean().item(),
-    )
-
-
-def freeze_parameters_(model: nn.Module) -> None:
-    for p in model.parameters():
-        p.requires_grad_(False)
 
 
 @dataclass(frozen=True)
@@ -92,24 +31,13 @@ class EpochSummary:
     entropy_norm: float
     grad_norm: float
     log_p: float
-    batches: int
-    batch_size: int
     obj_model: float
     obj_baseline: float
     baseline_updated: bool
-    elapsed_seconds: float
+    instances_per_sec: float
 
-    @property
-    def instances(self) -> int:
-        return self.batches * self.batch_size
-
-    @property
-    def instances_per_sec(self) -> float:
-        return self.instances / self.elapsed_seconds
-
-    def asdict(self) -> dict[str, float | int | bool]:
+    def asdict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["instances_per_sec"] = self.instances_per_sec
         return data
 
 
@@ -120,6 +48,8 @@ def _training_step(
     optimizer: torch.optim.Optimizer,
     instance: BaseProblemInstance,
 ) -> BatchSummary:
+    optimizer.zero_grad()
+
     rollout: Rollout = model.rollout(instance, greedy=False)
 
     with torch.no_grad():
@@ -130,7 +60,6 @@ def _training_step(
     advantage = (obj_model - obj_baseline).detach()
     loss = (advantage * rollout.overall_log_p).mean()
 
-    optimizer.zero_grad()
     loss.backward()
     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
     optimizer.step()
@@ -153,7 +82,7 @@ def configure_train_epoch(
     alpha: float = 0.05,
     eval_n_instances: int = 10_000,
     eval_batch_size: int = 512,
-    on_batch_end: Callable[[int, float], None] | None = None,
+    on_batch_end: Callable[[int, BatchSummary], None] | None = None,
 ) -> Callable[..., EpochSummary]:
     def train_epoch(
         *,
@@ -204,9 +133,9 @@ def configure_train_epoch(
             )
 
             if on_batch_end is not None:
-                on_batch_end(batch_idx, batch_summary.loss)
+                on_batch_end(batch_idx, batch_summary)
 
-        elapsed = time.perf_counter() - epoch_start
+        elapsed_time = time.perf_counter() - epoch_start
 
         test = one_sided_paired_ttest(
             model,
@@ -228,24 +157,10 @@ def configure_train_epoch(
             entropy_norm=total_entropy_norm / batches_per_epoch,
             grad_norm=total_grad_norm / batches_per_epoch,
             log_p=total_log_p / batches_per_epoch,
-            batches=batches_per_epoch,
-            batch_size=batch_size,
             obj_model=test.obj_model_mean,
             obj_baseline=test.obj_baseline_mean,
             baseline_updated=test.improved,
-            elapsed_seconds=elapsed,
+            instances_per_sec=(batches_per_epoch * batch_size) / elapsed_time,
         )
 
     return train_epoch
-
-
-def sync_baseline_(baseline: AttentionModel, model: AttentionModel) -> None:
-    baseline.load_state_dict(copy.deepcopy(model.state_dict()))
-    baseline.eval()
-    freeze_parameters_(baseline)
-
-
-def prepare_baseline(model: AttentionModel) -> AttentionModel:
-    baseline = copy.deepcopy(model)
-    sync_baseline_(baseline, model)
-    return baseline
