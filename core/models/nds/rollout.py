@@ -12,14 +12,6 @@ from core.problems.solution import BaseSolution
 
 @dataclass
 class NDSRollout:
-    """
-    Attributes:
-        actions: A sequence of actions that specify the indices of the customers to be removed.
-        log_p_of_actions: A sequence of log probabilities of the actions.
-        entropy: A mean entropy of the distributions at each step of the rollout, averaged over the rollout steps and batch.
-        entropy_norm: A mean normalized entropy.
-    """
-
     actions: torch.Tensor
     """(B, R, M)"""
     log_p_of_actions: torch.Tensor

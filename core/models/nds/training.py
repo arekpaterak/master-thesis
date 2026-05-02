@@ -27,15 +27,15 @@ class BatchSummary:
 @dataclass(frozen=True)
 class EpochSummary:
     epoch: int
-    total_loss: float
-    total_reward: float
-    total_reward_baseline: float
-    total_entropy: float
-    total_entropy_norm: float
-    total_log_p: float
+    loss: float
+    reward: float
+    reward_baseline: float
+    entropy: float
+    entropy_norm: float
+    log_p: float
     objective_before: float
     objective_after: float
-    total_grad_norm: float
+    grad_norm: float
     batches: int
     iterations: int
     elapsed_seconds: float
@@ -45,36 +45,8 @@ class EpochSummary:
         return self.batches * self.iterations
 
     @property
-    def loss(self) -> float:
-        return self.total_loss / self.total_iterations
-
-    @property
-    def reward(self) -> float:
-        return self.total_reward / self.total_iterations
-
-    @property
-    def reward_baseline(self) -> float:
-        return self.total_reward_baseline / self.total_iterations
-
-    @property
-    def entropy(self) -> float:
-        return self.total_entropy / self.total_iterations
-
-    @property
-    def entropy_norm(self) -> float:
-        return self.total_entropy_norm / self.total_iterations
-
-    @property
-    def log_p(self) -> float:
-        return self.total_log_p / self.total_iterations
-
-    @property
     def improvement(self) -> float:
         return self.objective_before - self.objective_after
-
-    @property
-    def grad_norm(self) -> float:
-        return self.total_grad_norm / self.batches
 
     @property
     def iterations_per_sec(self) -> float:
@@ -82,26 +54,13 @@ class EpochSummary:
 
     def asdict(self) -> dict[str, float | int]:
         data = asdict(self)
-        data.update(
-            {
-                "loss": self.loss,
-                "reward": self.reward,
-                "reward_baseline": self.reward_baseline,
-                "total_iterations": self.total_iterations,
-                "entropy": self.entropy,
-                "entropy_norm": self.entropy_norm,
-                "log_p": self.log_p,
-                "objective_before": self.objective_before,
-                "objective_after": self.objective_after,
-                "improvement": self.improvement,
-                "grad_norm": self.grad_norm,
-                "iterations_per_sec": self.iterations_per_sec,
-            }
-        )
+        data["total_iterations"] = self.total_iterations
+        data["improvement"] = self.improvement
+        data["iterations_per_sec"] = self.iterations_per_sec
         return data
 
 
-def _train_batch(
+def _training_step(
     *,
     model: NDSModel,
     optimizer: optim.Optimizer,
@@ -201,6 +160,7 @@ def configure_train_epoch(
         model: NDSModel,
         optimizer: optim.Optimizer,
     ) -> EpochSummary:
+        device = next(model.parameters()).device
         model.train()
 
         epoch_start = time.perf_counter()
@@ -215,8 +175,8 @@ def configure_train_epoch(
         total_grad_norm = 0.0
 
         for _ in range(batches_per_epoch):
-            instance = instance_sampler(batch_size)
-            batch_summary = _train_batch(
+            instance = instance_sampler(batch_size).to(device)
+            batch_summary = _training_step(
                 model=model,
                 optimizer=optimizer,
                 instance=instance,
@@ -242,15 +202,15 @@ def configure_train_epoch(
 
         return EpochSummary(
             epoch=epoch,
-            total_loss=total_loss,
-            total_reward=total_reward,
-            total_reward_baseline=total_reward_baseline,
-            total_entropy=total_entropy,
-            total_entropy_norm=total_entropy_norm,
-            total_log_p=total_log_p,
+            loss=total_loss / batches_per_epoch,
+            reward=total_reward / batches_per_epoch,
+            reward_baseline=total_reward_baseline / batches_per_epoch,
+            entropy=total_entropy / batches_per_epoch,
+            entropy_norm=total_entropy_norm / batches_per_epoch,
+            log_p=total_log_p / batches_per_epoch,
             objective_before=total_objective_before / batches_per_epoch,
             objective_after=total_objective_after / batches_per_epoch,
-            total_grad_norm=total_grad_norm,
+            grad_norm=total_grad_norm / batches_per_epoch,
             batches=batches_per_epoch,
             iterations=num_main_improvement_steps,
             elapsed_seconds=time.perf_counter() - epoch_start,

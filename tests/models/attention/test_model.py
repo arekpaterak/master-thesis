@@ -10,7 +10,7 @@ def test_attention_model_rollout(problem: str):
     batch_size = 2
     d_h = 16
 
-    model = AttentionModel(problem_name=problem, d_h=d_h, num_heads=2, num_layers=1)
+    model = AttentionModel(problem_name=problem, hidden_dim=d_h, num_heads=2, num_layers=1)
     if problem == "tsp":
         instance = TSPSampler(TSPConfig(num_locations=5))(batch_size)
     else:

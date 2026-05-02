@@ -35,6 +35,6 @@ def test_train():
     history = Trainer(
         max_epochs=2,
         train_epoch=train_epoch,
-    ).train(model=model, optimizer=optimizer)
+    ).fit(model=model, optimizer=optimizer)
 
     assert [summary.epoch for summary in history] == [1, 2]

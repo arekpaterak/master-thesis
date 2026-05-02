@@ -20,27 +20,18 @@ from core.states.constructive import CVRPConstructiveState, TSPConstructiveState
 
 
 @dataclass(frozen=True)
-class AMRollout:
+class Rollout:
     actions: torch.Tensor
     log_p_of_actions: torch.Tensor
     entropy: float | None
     entropy_norm: float | None
 
     def __post_init__(self) -> None:
-        assert self.actions.shape[0] == self.log_p_of_actions.shape[0]
-        assert self.log_p_of_actions.shape[-1] <= self.actions.shape[-1]
+        assert self.actions.size() == self.log_p_of_actions.size()
 
     @property
     def overall_log_p(self) -> torch.Tensor:
         return self.log_p_of_actions.sum(dim=-1)
-
-    @property
-    def tour(self) -> torch.Tensor:
-        return self.actions
-
-    @property
-    def sequence(self) -> torch.Tensor:
-        return self.actions
 
     def to_solution(self, instance: BaseProblemInstance):
         if isinstance(instance, TSPInstance):
@@ -55,7 +46,7 @@ class AttentionModel(nn.Module):
         self,
         *,
         problem_name: str = "tsp",
-        d_h: int = 128,
+        hidden_dim: int = 128,
         num_heads: int = 8,
         num_layers: int = 3,
         feature_extractor: Callable[[BaseProblemInstance], dict[str, torch.Tensor]] | None = None,
@@ -75,15 +66,16 @@ class AttentionModel(nn.Module):
             self._feature_extractor_override = TSPInstanceFeatureExtractor()
         else:
             raise ValueError(f"Unsupported problem_name: {problem_name}")
+
         self.encoder = Encoder(
             problem_name=problem_name,
-            hidden_dim=d_h,
+            hidden_dim=hidden_dim,
             num_heads=num_heads,
             num_layers=num_layers,
         )
         self.decoder = Decoder(
             problem_name=problem_name,
-            hidden_dim=d_h,
+            hidden_dim=hidden_dim,
             num_heads=num_heads,
         )
 
@@ -93,7 +85,7 @@ class AttentionModel(nn.Module):
         *,
         greedy: bool = False,
         previous_actions: torch.Tensor | None = None,
-    ) -> AMRollout:
+    ) -> Rollout:
         return self.rollout(
             instance,
             greedy=greedy,
@@ -106,15 +98,7 @@ class AttentionModel(nn.Module):
         *,
         greedy: bool = False,
         previous_actions: torch.Tensor | None = None,
-    ) -> AMRollout:
-        """
-        Args:
-            instance: (batch, n, d_x)
-            greedy: if True, argmax; if False, sample
-            previous_actions: (batch, k) optional pre-placed nodes. Assumes same number of pre-placed nodes across batch.
-        Returns:
-            RolloutResult
-        """
+    ) -> Rollout:
         batch_size, n, _ = instance.locations.shape
 
         data = Batch.from_data_list(
@@ -185,7 +169,7 @@ class AttentionModel(nn.Module):
             else torch.zeros(batch_size, 0, device=h_nodes.device)
         )
 
-        return AMRollout(
+        return Rollout(
             actions=torch.stack(actions, dim=-1),
             log_p_of_actions=log_p_tensor,
             entropy=mean_entropy,

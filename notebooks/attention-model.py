@@ -7,21 +7,20 @@ with app.setup:
     import torch
     import torch.nn
 
+    import wandb
+
+
+@app.cell
+def _():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device
+    return (device,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Notebook Description
-
-    ...
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Environment Setup
+    ## Setup
     """)
     return
 
@@ -36,20 +35,14 @@ def _():
 
 
 @app.cell
-def _(env_config, is_script_mode, wandb):
-    env_config if not is_script_mode and not wandb.login() else None
-    return
-
-
-@app.cell
-def _(ModelParams, mo, wandb):
+def _(ModelParams, mo):
     import sys
 
     from wigglystuff import EnvConfig
 
     is_script_mode = mo.app_meta().mode == "script"
 
-    env_config = mo.ui.anywidget(
+    env_config_widget = mo.ui.anywidget(
         EnvConfig(
             {
                 "WANDB_API_KEY": lambda k: wandb.login(key=k, verify=True),
@@ -79,14 +72,13 @@ def _(ModelParams, mo, wandb):
 
         Console().print(table)
         sys.exit(0)
-    return env_config, is_script_mode
+    return env_config_widget, is_script_mode
 
 
 @app.cell
-def _():
-    import wandb
-
-    return (wandb,)
+def _(env_config_widget, is_script_mode):
+    env_config_widget if not is_script_mode and not wandb.login() else None
+    return
 
 
 @app.cell(column=1, hide_code=True)
@@ -114,10 +106,10 @@ def _():
         problem_name: str = Field(default="tsp", description="Problem to solve (tsp or cvrp).")
         problem_size: int = Field(default=20, description="Number of nodes in the problem.")
         epochs: int = Field(default=1, description="Number of training epochs.")
-        batches_per_epoch: int = Field(default=2500, description="Batches per epoch.")
-        batch_size: int = Field(default=32, description="Training batch size.")
-        learning_rate: float = Field(default=1e-4, description="Learning rate for AdamW.")
-        d_h: int = Field(default=128, description="Hidden dimension.")
+        batches_per_epoch: int = Field(default=500, description="Batches per epoch.")
+        batch_size: int = Field(default=256, description="Training batch size.")
+        learning_rate: float = Field(default=1e-4, description="Learning rate.")
+        hidden_dim: int = Field(default=128, description="Hidden dimension.")
         num_heads: int = Field(default=8, description="Number of attention heads.")
         num_layers: int = Field(default=3, description="Number of attention layers.")
         wandb_project: str = Field(
@@ -129,9 +121,6 @@ def _():
         def run_name(self) -> str:
             parts = [
                 f"{self.problem_name}{self.problem_size}",
-                f"e{self.epochs}",
-                f"bs{self.batch_size}",
-                f"lr{self.learning_rate:.0e}",
             ]
             params_dict = {
                 "problem_name": self.problem_name,
@@ -140,7 +129,7 @@ def _():
                 "batches_per_epoch": self.batches_per_epoch,
                 "batch_size": self.batch_size,
                 "learning_rate": self.learning_rate,
-                "d_h": self.d_h,
+                "d_h": self.hidden_dim,
                 "num_heads": self.num_heads,
                 "num_layers": self.num_layers,
             }
@@ -151,32 +140,40 @@ def _():
 
 
 @app.cell
-def _(mo):
+def _(ModelParams, mo):
+    defaults = ModelParams()
     params_form = (
         mo.md("""
-    ## Model parameters
     {problem_name}
     {problem_size}
     {epochs}
     {batches_per_epoch}
     {batch_size}
     {learning_rate}
-    {d_h}
+    {hidden_dim}
     {num_heads}
     {num_layers}
     """)
         .batch(
-            problem_name=mo.ui.dropdown(["tsp", "cvrp"], value="tsp", label="Problem Name"),
-            problem_size=mo.ui.number(10, 100, value=20, step=1, label="Problem Size"),
-            epochs=mo.ui.slider(1, 100, value=1, step=1, label="epochs"),
-            batches_per_epoch=mo.ui.number(
-                100, 10000, value=2500, step=100, label="batches_per_epoch"
+            problem_name=mo.ui.dropdown(
+                ["tsp", "cvrp"], value=defaults.problem_name, label="Problem name"
             ),
-            batch_size=mo.ui.slider(8, 512, value=32, step=8, label="batch size"),
-            learning_rate=mo.ui.slider(1e-5, 5e-4, value=1e-4, step=1e-5, label="learning rate"),
-            d_h=mo.ui.dropdown([64, 128, 256, 512], value=128, label="d_h"),
-            num_heads=mo.ui.slider(1, 16, value=8, step=1, label="num_heads"),
-            num_layers=mo.ui.slider(1, 6, value=3, step=1, label="num_layers"),
+            problem_size=mo.ui.number(
+                10, 100, value=defaults.problem_size, step=1, label="Problem size"
+            ),
+            epochs=mo.ui.slider(1, 100, value=defaults.epochs, step=1, label="Epochs"),
+            batches_per_epoch=mo.ui.number(
+                100, 10000, value=defaults.batches_per_epoch, step=100, label="Batches per epoch"
+            ),
+            batch_size=mo.ui.slider(8, 512, value=defaults.batch_size, step=8, label="Batch size"),
+            learning_rate=mo.ui.slider(
+                1e-5, 5e-4, value=defaults.learning_rate, step=1e-5, label="Learning rate"
+            ),
+            hidden_dim=mo.ui.dropdown(
+                [64, 128, 256, 512], value=defaults.hidden_dim, label="Hidden dim"
+            ),
+            num_heads=mo.ui.slider(1, 16, value=defaults.num_heads, step=1, label="Num heads"),
+            num_layers=mo.ui.slider(1, 6, value=defaults.num_layers, step=1, label="Num layers"),
         )
         .form()
     )
@@ -210,21 +207,13 @@ def _(model_params):
     from core.problems.cvrp import CVRPConfig, CVRPSampler
     from core.problems.tsp import TSPConfig, TSPSampler
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     if model_params.problem_name == "tsp":
         sampler = TSPSampler(TSPConfig(num_locations=model_params.problem_size))
     elif model_params.problem_name == "cvrp":
         sampler = CVRPSampler(CVRPConfig.for_n(model_params.problem_size))
     else:
         raise ValueError(f"Unknown problem name: {model_params.problem_name}")
-    return device, sampler
-
-
-@app.cell
-def _(device):
-    device
-    return
+    return (sampler,)
 
 
 @app.cell
@@ -233,7 +222,7 @@ def _(device, model_params):
 
     model = AttentionModel(
         problem_name=model_params.problem_name,
-        d_h=model_params.d_h,
+        hidden_dim=model_params.hidden_dim,
         num_heads=model_params.num_heads,
         num_layers=model_params.num_layers,
     ).to(device)
@@ -251,7 +240,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo, model, model_params, sampler, wandb):
+def _(mo, model, model_params, sampler):
     from core.models.attention_model.training import (
         EpochSummary,
         configure_train_epoch,
@@ -279,7 +268,7 @@ def _(mo, model, model_params, sampler, wandb):
         def on_epoch_end(summary: EpochSummary):
             if model_params.wandb_project:
                 wandb.log(summary.asdict())
-            epoch_bar.update(subtitle=f"Avg Loss: {summary.loss:.4f}")
+            epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
 
         baseline = prepare_baseline(model)
         optimizer = torch.optim.AdamW(
@@ -298,7 +287,7 @@ def _(mo, model, model_params, sampler, wandb):
             max_epochs=model_params.epochs,
             train_epoch=train_epoch,
             on_epoch_end=on_epoch_end,
-        ).train(model=model, optimizer=optimizer, baseline=baseline)
+        ).fit(model=model, optimizer=optimizer, baseline=baseline)
 
     if model_params.wandb_project:
         wandb.finish()

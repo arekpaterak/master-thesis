@@ -10,7 +10,7 @@ import torch.nn as nn
 from scipy import stats
 from tqdm.auto import tqdm
 
-from core.models.attention_model.model import AMRollout, AttentionModel
+from core.models.attention_model.model import AttentionModel, Rollout
 from core.problems.instance import BaseProblemInstance
 
 
@@ -73,18 +73,6 @@ def freeze_parameters_(model: nn.Module) -> None:
         p.requires_grad_(False)
 
 
-def sync_baseline_(baseline: AttentionModel, model: AttentionModel) -> None:
-    baseline.load_state_dict(copy.deepcopy(model.state_dict()))
-    baseline.eval()
-    freeze_parameters_(baseline)
-
-
-def prepare_baseline(model: AttentionModel) -> AttentionModel:
-    baseline = copy.deepcopy(model)
-    sync_baseline_(baseline, model)
-    return baseline
-
-
 @dataclass(frozen=True)
 class BatchSummary:
     loss: float
@@ -98,42 +86,18 @@ class BatchSummary:
 @dataclass(frozen=True)
 class EpochSummary:
     epoch: int
-    total_loss: float
-    total_advantage: float
-    total_entropy: float
-    total_entropy_norm: float
-    total_grad_norm: float
-    total_log_p: float
+    loss: float
+    advantage: float
+    entropy: float
+    entropy_norm: float
+    grad_norm: float
+    log_p: float
     batches: int
     batch_size: int
     obj_model: float
     obj_baseline: float
     baseline_updated: bool
     elapsed_seconds: float
-
-    @property
-    def loss(self) -> float:
-        return self.total_loss / self.batches
-
-    @property
-    def advantage(self) -> float:
-        return self.total_advantage / self.batches
-
-    @property
-    def entropy(self) -> float:
-        return self.total_entropy / self.batches
-
-    @property
-    def entropy_norm(self) -> float:
-        return self.total_entropy_norm / self.batches
-
-    @property
-    def grad_norm(self) -> float:
-        return self.total_grad_norm / self.batches
-
-    @property
-    def log_p(self) -> float:
-        return self.total_log_p / self.batches
 
     @property
     def instances(self) -> int:
@@ -145,34 +109,24 @@ class EpochSummary:
 
     def asdict(self) -> dict[str, float | int | bool]:
         data = asdict(self)
-        data.update(
-            {
-                "loss": self.loss,
-                "advantage": self.advantage,
-                "entropy": self.entropy,
-                "entropy_norm": self.entropy_norm,
-                "grad_norm": self.grad_norm,
-                "log_p": self.log_p,
-                "instances_per_sec": self.instances_per_sec,
-            }
-        )
+        data["instances_per_sec"] = self.instances_per_sec
         return data
 
 
-def _train_batch(
+def _training_step(
     *,
     model: AttentionModel,
     baseline: AttentionModel,
     optimizer: torch.optim.Optimizer,
-    instances: BaseProblemInstance,
+    instance: BaseProblemInstance,
 ) -> BatchSummary:
-    rollout: AMRollout = model.rollout(instances, greedy=False)
+    rollout: Rollout = model.rollout(instance, greedy=False)
 
     with torch.no_grad():
-        baseline_rollout = baseline.rollout(instances, greedy=True)
+        baseline_rollout = baseline.rollout(instance, greedy=True)
 
-    obj_model = rollout.to_solution(instances).objective()
-    obj_baseline = baseline_rollout.to_solution(instances).objective()
+    obj_model = rollout.to_solution(instance).objective()
+    obj_baseline = baseline_rollout.to_solution(instance).objective()
     advantage = (obj_model - obj_baseline).detach()
     loss = (advantage * rollout.overall_log_p).mean()
 
@@ -226,12 +180,12 @@ def configure_train_epoch(
             leave=False,
         )
         for batch_idx in step_bar:
-            instances = instance_sampler(batch_size).to(device)
-            batch_summary = _train_batch(
+            instance = instance_sampler(batch_size).to(device)
+            batch_summary = _training_step(
                 model=model,
                 baseline=baseline,
                 optimizer=optimizer,
-                instances=instances,
+                instance=instance,
             )
 
             total_loss += batch_summary.loss
@@ -268,12 +222,12 @@ def configure_train_epoch(
 
         return EpochSummary(
             epoch=epoch,
-            total_loss=total_loss,
-            total_advantage=total_advantage,
-            total_entropy=total_entropy,
-            total_entropy_norm=total_entropy_norm,
-            total_grad_norm=total_grad_norm,
-            total_log_p=total_log_p,
+            loss=total_loss / batches_per_epoch,
+            advantage=total_advantage / batches_per_epoch,
+            entropy=total_entropy / batches_per_epoch,
+            entropy_norm=total_entropy_norm / batches_per_epoch,
+            grad_norm=total_grad_norm / batches_per_epoch,
+            log_p=total_log_p / batches_per_epoch,
             batches=batches_per_epoch,
             batch_size=batch_size,
             obj_model=test.obj_model_mean,
@@ -283,3 +237,15 @@ def configure_train_epoch(
         )
 
     return train_epoch
+
+
+def sync_baseline_(baseline: AttentionModel, model: AttentionModel) -> None:
+    baseline.load_state_dict(copy.deepcopy(model.state_dict()))
+    baseline.eval()
+    freeze_parameters_(baseline)
+
+
+def prepare_baseline(model: AttentionModel) -> AttentionModel:
+    baseline = copy.deepcopy(model)
+    sync_baseline_(baseline, model)
+    return baseline

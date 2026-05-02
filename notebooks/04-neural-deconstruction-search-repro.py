@@ -346,7 +346,7 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
     Trainer(
         max_epochs=1,
         train_epoch=train_epoch,
-    ).train(model=model, optimizer=optimizer)
+    ).fit(model=model, optimizer=optimizer)
     return
 
 

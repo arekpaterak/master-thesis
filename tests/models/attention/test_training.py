@@ -22,7 +22,7 @@ def test_train_one_epoch(problem: str):
     else:
         sampler = CVRPSampler(CVRPConfig.for_n(20), seed=0)
 
-    model = AttentionModel(problem_name=problem, d_h=8, num_layers=1)
+    model = AttentionModel(problem_name=problem, hidden_dim=8, num_layers=1)
     baseline = prepare_baseline(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.0)
     params_before = copy.deepcopy([p.detach().clone() for p in model.parameters()])
@@ -38,7 +38,7 @@ def test_train_one_epoch(problem: str):
     Trainer(
         max_epochs=1,
         train_epoch=train_epoch,
-    ).train(model=model, optimizer=optimizer, baseline=baseline)
+    ).fit(model=model, optimizer=optimizer, baseline=baseline)
 
     params_after = list(model.parameters())
     assert any(
@@ -48,7 +48,7 @@ def test_train_one_epoch(problem: str):
 
 
 def test_sync_baseline_updates_in_place():
-    model = AttentionModel(problem_name="tsp", d_h=8, num_layers=1)
+    model = AttentionModel(problem_name="tsp", hidden_dim=8, num_layers=1)
     baseline = prepare_baseline(model)
     baseline_id = id(baseline)
 
