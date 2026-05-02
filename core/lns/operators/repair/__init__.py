@@ -1,7 +1,9 @@
-from core.lns.operators.repair.greedy import GreedyRepair
-from core.lns.operators.repair.random import RandomRepair
+from .greedy import GreedyNodeRepair
+from .greedy_edge import GreedyEdgeRepair
+from .random import RandomRepair
 
 __all__ = [
-    "GreedyRepair",
+    "GreedyNodeRepair",
     "RandomRepair",
+    "GreedyEdgeRepair",
 ]

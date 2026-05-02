@@ -88,7 +88,7 @@ def test_remove_edges(sequence, to_nodes, expected_next, expected_prev):
     instance = TSPSampler(TSPConfig(num_locations=4))(len(sequence))
     solution = TSPGraphSolution.create(instance=instance, sequence=torch.tensor(sequence))
 
-    solution.remove_edges(to_nodes=torch.tensor(to_nodes))
+    solution.remove_edges(end_nodes=torch.tensor(to_nodes))
 
     assert torch.allclose(solution.next_nodes, torch.tensor(expected_next))
     assert torch.allclose(solution.prev_nodes, torch.tensor(expected_prev))

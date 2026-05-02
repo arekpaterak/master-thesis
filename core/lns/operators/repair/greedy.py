@@ -5,7 +5,7 @@ from core.problems.solution import BaseSolution
 from core.problems.tsp.solution import TSPSolution
 
 
-class GreedyRepair[S: BaseSolution](RepairOperator[S]):
+class GreedyNodeRepair[S: BaseSolution](RepairOperator[S]):
     def __call__(self, partial_solution: S) -> S:
         match partial_solution:
             case TSPSolution() as s:
