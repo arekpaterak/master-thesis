@@ -12,7 +12,10 @@ class TSPSolveStrategy(Protocol):
     def __call__(self, instance: TSPInstance) -> TSPSolution: ...
 
 
-def random_permutation(instance: TSPInstance) -> TSPSolution:
+def random_permutation(instance: TSPInstance, *, seed: int | None = None) -> TSPSolution:
+    generator = torch.Generator()
+    if seed:
+        generator.manual_seed(seed)
     was_batched = True
     if len(instance.batch_size) == 0:
         instance = instance.unsqueeze(0)
@@ -23,7 +26,7 @@ def random_permutation(instance: TSPInstance) -> TSPSolution:
     device = instance.locations.device
 
     random_permutations = torch.argsort(
-        torch.rand(batch_size, num_locations, device=device), dim=-1
+        torch.rand(batch_size, num_locations, device=device, generator=generator), dim=-1
     )
 
     if not was_batched:
