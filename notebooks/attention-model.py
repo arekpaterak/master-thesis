@@ -114,7 +114,7 @@ def _():
         problem_name: str = Field(default="tsp", description="Problem to solve (tsp or cvrp).")
         problem_size: int = Field(default=20, description="Number of nodes in the problem.")
         epochs: int = Field(default=1, description="Number of training epochs.")
-        steps_per_epoch: int = Field(default=2500, description="Steps (batches) per epoch.")
+        batches_per_epoch: int = Field(default=2500, description="Batches per epoch.")
         batch_size: int = Field(default=32, description="Training batch size.")
         learning_rate: float = Field(default=1e-4, description="Learning rate for AdamW.")
         d_h: int = Field(default=128, description="Hidden dimension.")
@@ -137,7 +137,7 @@ def _():
                 "problem_name": self.problem_name,
                 "problem_size": self.problem_size,
                 "epochs": self.epochs,
-                "steps_per_epoch": self.steps_per_epoch,
+                "batches_per_epoch": self.batches_per_epoch,
                 "batch_size": self.batch_size,
                 "learning_rate": self.learning_rate,
                 "d_h": self.d_h,
@@ -158,7 +158,7 @@ def _(mo):
     {problem_name}
     {problem_size}
     {epochs}
-    {steps_per_epoch}
+    {batches_per_epoch}
     {batch_size}
     {learning_rate}
     {d_h}
@@ -169,7 +169,9 @@ def _(mo):
             problem_name=mo.ui.dropdown(["tsp", "cvrp"], value="tsp", label="Problem Name"),
             problem_size=mo.ui.number(10, 100, value=20, step=1, label="Problem Size"),
             epochs=mo.ui.slider(1, 100, value=1, step=1, label="epochs"),
-            steps_per_epoch=mo.ui.number(100, 10000, value=2500, step=100, label="steps_per_epoch"),
+            batches_per_epoch=mo.ui.number(
+                100, 10000, value=2500, step=100, label="batches_per_epoch"
+            ),
             batch_size=mo.ui.slider(8, 512, value=32, step=8, label="batch size"),
             learning_rate=mo.ui.slider(1e-5, 5e-4, value=1e-4, step=1e-5, label="learning rate"),
             d_h=mo.ui.dropdown([64, 128, 256, 512], value=128, label="d_h"),
@@ -250,7 +252,11 @@ def _(mo):
 
 @app.cell
 def _(mo, model, model_params, sampler, wandb):
-    from core.models.attention_model.training import EpochSummary, prepare_baseline, train_epoch
+    from core.models.attention_model.training import (
+        EpochSummary,
+        configure_train_epoch,
+        prepare_baseline,
+    )
     from core.models.train import Trainer
 
     if model_params.wandb_project:
@@ -263,7 +269,7 @@ def _(mo, model, model_params, sampler, wandb):
     with (
         mo.status.progress_bar(total=model_params.epochs, title="Epochs") as epoch_bar,
         mo.status.progress_bar(
-            total=model_params.epochs * model_params.steps_per_epoch, title="Batches"
+            total=model_params.epochs * model_params.batches_per_epoch, title="Batches"
         ) as step_bar,
     ):
 
@@ -272,7 +278,7 @@ def _(mo, model, model_params, sampler, wandb):
 
         def on_epoch_end(summary: EpochSummary):
             if model_params.wandb_project:
-                wandb.log(summary._asdict())
+                wandb.log(summary.asdict())
             epoch_bar.update(subtitle=f"Avg Loss: {summary.loss:.4f}")
 
         baseline = prepare_baseline(model)
@@ -281,21 +287,18 @@ def _(mo, model, model_params, sampler, wandb):
             lr=model_params.learning_rate,
             weight_decay=0.0,
         )
+        train_epoch = configure_train_epoch(
+            instance_sampler=sampler,
+            batches_per_epoch=model_params.batches_per_epoch,
+            batch_size=model_params.batch_size,
+            on_batch_end=on_batch_end,
+        )
 
         _ = Trainer(
             max_epochs=model_params.epochs,
-            train_epoch=lambda epoch: train_epoch(
-                epoch=epoch,
-                model=model,
-                baseline=baseline,
-                optimizer=optimizer,
-                instance_sampler=sampler,
-                steps_per_epoch=model_params.steps_per_epoch,
-                batch_size=model_params.batch_size,
-                on_batch_end=on_batch_end,
-            ),
+            train_epoch=train_epoch,
             on_epoch_end=on_epoch_end,
-        ).train()
+        ).train(model=model, optimizer=optimizer, baseline=baseline)
 
     if model_params.wandb_project:
         wandb.finish()
