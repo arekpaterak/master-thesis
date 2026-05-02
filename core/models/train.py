@@ -15,7 +15,7 @@ class Trainer[ModelT, EpochSummaryT]:
         self.train_epoch = train_epoch
         self.on_epoch_end = on_epoch_end
 
-    def train(
+    def fit(
         self,
         *,
         model: ModelT,
