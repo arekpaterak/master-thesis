@@ -319,37 +319,34 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
         noop_repair,
         only_expanding_apply_rollout,
     )
-    from core.models.nds.training import train_epoch
+    from core.models.nds.training import configure_train_epoch
     from core.models.train import Trainer
 
     cfg = CVRPConfig.for_n(20)
     sampler = CVRPSampler(cfg, seed=123)
 
-    def generate_instance():
-        return sampler(batch_size=32).to(DEVICE)
-
     def generate_start_solution(instance):
         return one_customer_per_route(instance)
 
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    train_epoch = configure_train_epoch(
+        instance_sampler=lambda batch_size: sampler(batch_size=batch_size).to(DEVICE),
+        batches_per_epoch=1,
+        batch_size=32,
+        num_main_improvement_steps=2,
+        rollouts_per_solution=4,
+        num_initial_improvement_steps=0,
+        deconstruction_size=5,
+        generate_start_solution=generate_start_solution,
+        improvement_step=noop_improvement_step,
+        apply_rollout=only_expanding_apply_rollout,
+        repair=noop_repair,
+    )
 
     Trainer(
         max_epochs=1,
-        train_epoch=lambda epoch: train_epoch(
-            epoch=epoch,
-            model=model,
-            optimizer=optimizer,
-            num_iterations=2,
-            rollouts_per_solution=4,
-            num_initial_improvement_steps=0,
-            deconstruction_size=5,
-            generate_instance=generate_instance,
-            generate_start_solution=generate_start_solution,
-            improvement_step=noop_improvement_step,
-            apply_rollout=only_expanding_apply_rollout,
-            repair=noop_repair,
-        ),
-    ).train()
+        train_epoch=train_epoch,
+    ).train(model=model, optimizer=optimizer)
     return
 
 

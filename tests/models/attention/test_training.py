@@ -4,7 +4,11 @@ import pytest
 import torch
 
 from core.models.attention_model.model import AttentionModel
-from core.models.attention_model.training import prepare_baseline, sync_baseline_, train_epoch
+from core.models.attention_model.training import (
+    configure_train_epoch,
+    prepare_baseline,
+    sync_baseline_,
+)
 from core.models.train import Trainer
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.tsp.config import TSPConfig
@@ -23,20 +27,18 @@ def test_train_one_epoch(problem: str):
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.0)
     params_before = copy.deepcopy([p.detach().clone() for p in model.parameters()])
 
+    train_epoch = configure_train_epoch(
+        instance_sampler=sampler,
+        batches_per_epoch=1,
+        batch_size=8,
+        eval_n_instances=8,
+        eval_batch_size=8,
+    )
+
     Trainer(
         max_epochs=1,
-        train_epoch=lambda epoch: train_epoch(
-            epoch=epoch,
-            model=model,
-            baseline=baseline,
-            optimizer=optimizer,
-            instance_sampler=sampler,
-            steps_per_epoch=1,
-            batch_size=8,
-            eval_n_instances=8,
-            eval_batch_size=8,
-        ),
-    ).train()
+        train_epoch=train_epoch,
+    ).train(model=model, optimizer=optimizer, baseline=baseline)
 
     params_after = list(model.parameters())
     assert any(

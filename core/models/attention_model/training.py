@@ -2,6 +2,7 @@ import copy
 import time
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from typing import NamedTuple
 
 import torch
@@ -67,7 +68,7 @@ def one_sided_paired_ttest(
     )
 
 
-def freeze_parameters(model: nn.Module) -> None:
+def freeze_parameters_(model: nn.Module) -> None:
     for p in model.parameters():
         p.requires_grad_(False)
 
@@ -75,7 +76,7 @@ def freeze_parameters(model: nn.Module) -> None:
 def sync_baseline_(baseline: AttentionModel, model: AttentionModel) -> None:
     baseline.load_state_dict(copy.deepcopy(model.state_dict()))
     baseline.eval()
-    freeze_parameters(baseline)
+    freeze_parameters_(baseline)
 
 
 def prepare_baseline(model: AttentionModel) -> AttentionModel:
@@ -84,115 +85,201 @@ def prepare_baseline(model: AttentionModel) -> AttentionModel:
     return baseline
 
 
-class EpochSummary(NamedTuple):
-    epoch: int
+@dataclass(frozen=True)
+class BatchSummary:
     loss: float
     advantage: float
-    obj_model: float
-    obj_baseline: float
-    baseline_updated: bool
     entropy: float
     entropy_norm: float
     grad_norm: float
     log_p: float
-    instances_per_sec: float | None = None
 
 
-def train_epoch(
+@dataclass(frozen=True)
+class EpochSummary:
+    epoch: int
+    total_loss: float
+    total_advantage: float
+    total_entropy: float
+    total_entropy_norm: float
+    total_grad_norm: float
+    total_log_p: float
+    batches: int
+    batch_size: int
+    obj_model: float
+    obj_baseline: float
+    baseline_updated: bool
+    elapsed_seconds: float
+
+    @property
+    def loss(self) -> float:
+        return self.total_loss / self.batches
+
+    @property
+    def advantage(self) -> float:
+        return self.total_advantage / self.batches
+
+    @property
+    def entropy(self) -> float:
+        return self.total_entropy / self.batches
+
+    @property
+    def entropy_norm(self) -> float:
+        return self.total_entropy_norm / self.batches
+
+    @property
+    def grad_norm(self) -> float:
+        return self.total_grad_norm / self.batches
+
+    @property
+    def log_p(self) -> float:
+        return self.total_log_p / self.batches
+
+    @property
+    def instances(self) -> int:
+        return self.batches * self.batch_size
+
+    @property
+    def instances_per_sec(self) -> float:
+        return self.instances / self.elapsed_seconds
+
+    def asdict(self) -> dict[str, float | int | bool]:
+        data = asdict(self)
+        data.update(
+            {
+                "loss": self.loss,
+                "advantage": self.advantage,
+                "entropy": self.entropy,
+                "entropy_norm": self.entropy_norm,
+                "grad_norm": self.grad_norm,
+                "log_p": self.log_p,
+                "instances_per_sec": self.instances_per_sec,
+            }
+        )
+        return data
+
+
+def _train_batch(
     *,
-    epoch: int,
     model: AttentionModel,
     baseline: AttentionModel,
     optimizer: torch.optim.Optimizer,
+    instances: BaseProblemInstance,
+) -> BatchSummary:
+    rollout: AMRollout = model.rollout(instances, greedy=False)
+
+    with torch.no_grad():
+        baseline_rollout = baseline.rollout(instances, greedy=True)
+
+    obj_model = rollout.to_solution(instances).objective()
+    obj_baseline = baseline_rollout.to_solution(instances).objective()
+    advantage = (obj_model - obj_baseline).detach()
+    loss = (advantage * rollout.overall_log_p).mean()
+
+    optimizer.zero_grad()
+    loss.backward()
+    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    optimizer.step()
+
+    return BatchSummary(
+        loss=loss.item(),
+        advantage=advantage.mean().item(),
+        entropy=rollout.entropy or 0.0,
+        entropy_norm=rollout.entropy_norm or 0.0,
+        grad_norm=grad_norm.item(),
+        log_p=rollout.log_p_of_actions.mean().item(),
+    )
+
+
+def configure_train_epoch(
+    *,
     instance_sampler: Callable[[int], BaseProblemInstance],
-    steps_per_epoch: int = 2500,
+    batches_per_epoch: int = 2500,
     batch_size: int = 512,
     alpha: float = 0.05,
     eval_n_instances: int = 10_000,
     eval_batch_size: int = 512,
     on_batch_end: Callable[[int, float], None] | None = None,
-) -> EpochSummary:
-    """
-    Train one Attention Model epoch using REINFORCE with a greedy rollout baseline.
-    """
-    device = next(model.parameters()).device
-    model.train()
+) -> Callable[..., EpochSummary]:
+    def train_epoch(
+        *,
+        epoch: int,
+        model: AttentionModel,
+        optimizer: torch.optim.Optimizer,
+        baseline: AttentionModel,
+    ) -> EpochSummary:
+        device = next(model.parameters()).device
+        model.train()
 
-    epoch_start = time.perf_counter()
-    epoch_loss = 0.0
-    epoch_entropy = 0.0
-    epoch_entropy_norm = 0.0
-    epoch_grad_norm = 0.0
-    epoch_advantage = 0.0
-    epoch_log_p = 0.0
+        epoch_start = time.perf_counter()
+        total_loss = 0.0
+        total_entropy = 0.0
+        total_entropy_norm = 0.0
+        total_grad_norm = 0.0
+        total_advantage = 0.0
+        total_log_p = 0.0
 
-    step_bar = tqdm(
-        range(1, steps_per_epoch + 1),
-        desc=f"Epoch {epoch}",
-        unit="step",
-        leave=False,
-    )
-    for step in step_bar:
-        instances = instance_sampler(batch_size).to(device)
-
-        rollout: AMRollout = model.rollout(instances, greedy=False)
-
-        with torch.no_grad():
-            baseline_rollout = baseline.rollout(instances, greedy=True)
-
-        obj_model = rollout.to_solution(instances).objective()
-        obj_baseline = baseline_rollout.to_solution(instances).objective()
-        advantage = (obj_model - obj_baseline).detach()
-        loss = (advantage * rollout.overall_log_p).mean()
-
-        optimizer.zero_grad()
-        loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
-
-        epoch_loss += loss.item()
-        epoch_entropy += rollout.entropy or 0.0
-        epoch_entropy_norm += rollout.entropy_norm or 0.0
-        epoch_grad_norm += grad_norm.item()
-        epoch_advantage += advantage.mean().item()
-        epoch_log_p += rollout.log_p_of_actions.mean().item()
-
-        step_bar.set_postfix(
-            OrderedDict(
-                loss=f"{loss.item():.4f}",
-                entropy=f"{rollout.entropy:.3f}",
-                entropy_norm=f"{rollout.entropy_norm:.3f}",
+        step_bar = tqdm(
+            range(1, batches_per_epoch + 1),
+            desc=f"Epoch {epoch}",
+            unit="batch",
+            leave=False,
+        )
+        for batch_idx in step_bar:
+            instances = instance_sampler(batch_size).to(device)
+            batch_summary = _train_batch(
+                model=model,
+                baseline=baseline,
+                optimizer=optimizer,
+                instances=instances,
             )
+
+            total_loss += batch_summary.loss
+            total_entropy += batch_summary.entropy
+            total_entropy_norm += batch_summary.entropy_norm
+            total_grad_norm += batch_summary.grad_norm
+            total_advantage += batch_summary.advantage
+            total_log_p += batch_summary.log_p
+
+            step_bar.set_postfix(
+                OrderedDict(
+                    loss=f"{batch_summary.loss:.4f}",
+                    entropy=f"{batch_summary.entropy:.3f}",
+                    entropy_norm=f"{batch_summary.entropy_norm:.3f}",
+                )
+            )
+
+            if on_batch_end is not None:
+                on_batch_end(batch_idx, batch_summary.loss)
+
+        elapsed = time.perf_counter() - epoch_start
+
+        test = one_sided_paired_ttest(
+            model,
+            baseline,
+            instance_sampler,
+            n_instances=eval_n_instances,
+            batch_size=eval_batch_size,
+            alpha=alpha,
+            device=device,
+        )
+        if test.improved:
+            sync_baseline_(baseline, model)
+
+        return EpochSummary(
+            epoch=epoch,
+            total_loss=total_loss,
+            total_advantage=total_advantage,
+            total_entropy=total_entropy,
+            total_entropy_norm=total_entropy_norm,
+            total_grad_norm=total_grad_norm,
+            total_log_p=total_log_p,
+            batches=batches_per_epoch,
+            batch_size=batch_size,
+            obj_model=test.obj_model_mean,
+            obj_baseline=test.obj_baseline_mean,
+            baseline_updated=test.improved,
+            elapsed_seconds=elapsed,
         )
 
-        if on_batch_end is not None:
-            on_batch_end(step, loss.item())
-
-    elapsed = time.perf_counter() - epoch_start
-    instances_per_sec = (steps_per_epoch * batch_size) / elapsed
-
-    test = one_sided_paired_ttest(
-        model,
-        baseline,
-        instance_sampler,
-        n_instances=eval_n_instances,
-        batch_size=eval_batch_size,
-        alpha=alpha,
-        device=device,
-    )
-    if test.improved:
-        sync_baseline_(baseline, model)
-
-    return EpochSummary(
-        epoch=epoch,
-        loss=(epoch_loss / steps_per_epoch),
-        advantage=(epoch_advantage / steps_per_epoch),
-        obj_model=test.obj_model_mean,
-        obj_baseline=test.obj_baseline_mean,
-        baseline_updated=test.improved,
-        entropy=(epoch_entropy / steps_per_epoch),
-        entropy_norm=(epoch_entropy_norm / steps_per_epoch),
-        grad_norm=(epoch_grad_norm / steps_per_epoch),
-        log_p=(epoch_log_p / steps_per_epoch),
-        instances_per_sec=instances_per_sec,
-    )
+    return train_epoch
