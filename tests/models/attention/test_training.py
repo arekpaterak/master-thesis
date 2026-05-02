@@ -4,7 +4,8 @@ import pytest
 import torch
 
 from core.models.attention_model.model import AttentionModel
-from core.models.attention_model.training import train
+from core.models.attention_model.training import prepare_baseline, sync_baseline_, train_epoch
+from core.models.train import Trainer
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.tsp.config import TSPConfig
 from core.problems.tsp.sampler import TSPSampler
@@ -18,19 +19,44 @@ def test_train_one_epoch(problem: str):
         sampler = CVRPSampler(CVRPConfig.for_n(20), seed=0)
 
     model = AttentionModel(problem_name=problem, d_h=8, num_layers=1)
+    baseline = prepare_baseline(model)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.0)
     params_before = copy.deepcopy([p.detach().clone() for p in model.parameters()])
 
-    train(
-        model=model,
-        instance_sampler=sampler,
-        n_epochs=1,
-        steps_per_epoch=1,
-        batch_size=8,
-        lr=1e-4,
-    )
+    Trainer(
+        max_epochs=1,
+        train_epoch=lambda epoch: train_epoch(
+            epoch=epoch,
+            model=model,
+            baseline=baseline,
+            optimizer=optimizer,
+            instance_sampler=sampler,
+            steps_per_epoch=1,
+            batch_size=8,
+            eval_n_instances=8,
+            eval_batch_size=8,
+        ),
+    ).train()
 
     params_after = list(model.parameters())
     assert any(
         not torch.equal(before, after.detach())
         for before, after in zip(params_before, params_after)
     ), "Expected at least one parameter to change after training."
+
+
+def test_sync_baseline_updates_in_place():
+    model = AttentionModel(problem_name="tsp", d_h=8, num_layers=1)
+    baseline = prepare_baseline(model)
+    baseline_id = id(baseline)
+
+    with torch.no_grad():
+        for p in model.parameters():
+            p.add_(1.0)
+
+    sync_baseline_(baseline, model)
+
+    assert id(baseline) == baseline_id
+    for baseline_param, model_param in zip(baseline.parameters(), model.parameters()):
+        assert torch.equal(baseline_param, model_param)
+        assert not baseline_param.requires_grad

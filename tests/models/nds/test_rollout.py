@@ -1,7 +1,6 @@
 import pytest
 
 from core.models.nds.model import NDSModel
-from core.models.nds.rollout import rollout_policy
 from core.problems.cvrp import CVRPConfig, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import one_customer_per_route
 
@@ -26,8 +25,7 @@ def test_if_can_produce_rollout(
     ROLLOUTS_PER_SOLUTION = 10
     DECONSTRUCTION_SIZE = 15
 
-    rollout = rollout_policy(
-        nds_test_model,
+    rollout = nds_test_model.rollout(
         example_solution,
         rollouts_per_solution=ROLLOUTS_PER_SOLUTION,
         deconstruction_size=DECONSTRUCTION_SIZE,

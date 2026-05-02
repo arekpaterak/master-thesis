@@ -231,7 +231,7 @@ def _(device, model_params):
 
     model = AttentionModel(
         problem_name=model_params.problem_name,
-        d_h=model_params.hidden_dim,
+        d_h=model_params.d_h,
         num_heads=model_params.num_heads,
         num_layers=model_params.num_layers,
     ).to(device)
@@ -250,7 +250,8 @@ def _(mo):
 
 @app.cell
 def _(mo, model, model_params, sampler, wandb):
-    from core.models.attention_model.training import EpochSummary, train
+    from core.models.attention_model.training import EpochSummary, prepare_baseline, train_epoch
+    from core.models.train import Trainer
 
     if model_params.wandb_project:
         wandb.init(
@@ -274,16 +275,27 @@ def _(mo, model, model_params, sampler, wandb):
                 wandb.log(summary._asdict())
             epoch_bar.update(subtitle=f"Avg Loss: {summary.loss:.4f}")
 
-        _ = train(
-            model=model,
-            instance_sampler=sampler,
-            n_epochs=model_params.epochs,
-            steps_per_epoch=model_params.steps_per_epoch,
-            batch_size=model_params.batch_size,
+        baseline = prepare_baseline(model)
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
             lr=model_params.learning_rate,
-            on_epoch_end=on_epoch_end,
-            on_batch_end=on_batch_end,
+            weight_decay=0.0,
         )
+
+        _ = Trainer(
+            max_epochs=model_params.epochs,
+            train_epoch=lambda epoch: train_epoch(
+                epoch=epoch,
+                model=model,
+                baseline=baseline,
+                optimizer=optimizer,
+                instance_sampler=sampler,
+                steps_per_epoch=model_params.steps_per_epoch,
+                batch_size=model_params.batch_size,
+                on_batch_end=on_batch_end,
+            ),
+            on_epoch_end=on_epoch_end,
+        ).train()
 
     if model_params.wandb_project:
         wandb.finish()

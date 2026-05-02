@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import torch
 
 from core.models.entropy import entropy
-from core.models.nds.model import NDSModel
 from core.models.nds.seed_sampler import sample_seed
 from core.models.utils import get_model_device
 from core.problems.cvrp import CVRPSolution
@@ -37,8 +36,8 @@ class NDSRollout:
         return self.log_p_of_actions.sum(dim=-1)
 
 
-def rollout_policy(
-    model: NDSModel,
+def _rollout_solution(
+    model,
     solution: BaseSolution,
     *,
     rollouts_per_solution: int,
