@@ -35,7 +35,7 @@ def _():
 
 
 @app.cell
-def _(Config, mo):
+def _(TrainConfig, mo):
     import sys
 
     from wigglystuff import EnvConfig
@@ -62,46 +62,46 @@ def _(Config, mo):
         table.add_column("Description")
 
         # Flatten nested config for CLI
-        config = Config()
+        _config = TrainConfig()
         cli_fields = {
             "problem_name": (
                 str,
-                config.problem.name,
+                _config.problem.name,
                 "Problem to solve (currently only cvrp is supported).",
             ),
-            "problem_size": (int, config.problem.size, "Number of customers."),
-            "epochs": (int, config.trainer.epochs, "Number of training epochs."),
-            "batches_per_epoch": (int, config.trainer.batches_per_epoch, "Batches per epoch."),
-            "batch_size": (int, config.trainer.batch_size, "Training batch size."),
-            "learning_rate": (float, config.optimizer.learning_rate, "Learning rate."),
-            "hidden_dim": (int, config.model.hidden_dim, "Hidden dimension."),
-            "num_heads": (int, config.model.num_heads, "Number of attention heads."),
-            "ff_dim": (int, config.model.ff_dim, "Feed-forward dimension."),
-            "poly_dim": (int, config.model.poly_dim, "Polynomial dimension."),
-            "seed_dim": (int, config.model.seed_dim, "Seed (latent) dimension."),
+            "problem_size": (int, _config.problem.size, "Number of customers."),
+            "epochs": (int, _config.trainer.epochs, "Number of training epochs."),
+            "batches_per_epoch": (int, _config.trainer.batches_per_epoch, "Batches per epoch."),
+            "batch_size": (int, _config.trainer.batch_size, "Training batch size."),
+            "learning_rate": (float, _config.optimizer.learning_rate, "Learning rate."),
+            "hidden_dim": (int, _config.model.hidden_dim, "Hidden dimension."),
+            "num_heads": (int, _config.model.num_heads, "Number of attention heads."),
+            "ff_dim": (int, _config.model.ff_dim, "Feed-forward dimension."),
+            "poly_dim": (int, _config.model.poly_dim, "Polynomial dimension."),
+            "seed_dim": (int, _config.model.seed_dim, "Seed (latent) dimension."),
             "num_initial_improvement_steps": (
                 int,
-                config.trainer.num_initial_improvement_steps,
+                _config.trainer.num_initial_improvement_steps,
                 "Initial improvement steps before training.",
             ),
             "num_main_improvement_steps": (
                 int,
-                config.trainer.num_main_improvement_steps,
+                _config.trainer.num_main_improvement_steps,
                 "Number of improvement steps per batch.",
             ),
             "rollouts_per_solution": (
                 int,
-                config.trainer.rollouts_per_instance,
+                _config.trainer.rollouts_per_instance,
                 "Rollouts per solution.",
             ),
             "deconstruction_size": (
                 int,
-                config.trainer.deconstruction_size,
+                _config.trainer.deconstruction_size,
                 "Number of customers removed per rollout.",
             ),
             "wandb_project": (
                 str,
-                config.logging.wandb_project,
+                _config.logging.wandb_project,
                 "W&B project name (empty to skip).",
             ),
         }
@@ -143,8 +143,8 @@ def _():
 
 
 @app.cell
-def _(Config, mo):
-    defaults = Config()
+def _(TrainConfig, mo):
+    defaults = TrainConfig()
     params_form = (
         mo.md(
             """
@@ -232,7 +232,7 @@ def _(Config, mo):
 
 
 @app.cell
-def _(Config, is_script_mode, mo, params_form):
+def _(TrainConfig, is_script_mode, mo, params_form):
     from core.models.nds.config import (
         LoggingConfig,
         ModelParams,
@@ -251,8 +251,7 @@ def _(Config, is_script_mode, mo, params_form):
     else:
         form_data = params_form.value
 
-    # Reconstruct nested config from flat form data
-    config = Config(
+    config = TrainConfig(
         problem=ProblemParams(
             name=form_data.get("problem_name", "cvrp"),
             size=form_data.get("problem_size", 20),
@@ -283,15 +282,7 @@ def _(Config, is_script_mode, mo, params_form):
     return (config,)
 
 
-@app.cell(column=2, hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Model Setup
-    """)
-    return
-
-
-@app.cell
+@app.cell(column=2)
 def _(config):
     from core.problems.cvrp import CVRPConfig, CVRPSampler
 
@@ -302,8 +293,16 @@ def _(config):
     return (sampler,)
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Model Setup
+    """)
+    return
+
+
 @app.cell
-def _(device, config):
+def _(config, device):
     from core.models.nds.model import NDSModel
 
     model = NDSModel(
@@ -328,7 +327,7 @@ def _(mo):
 
 
 @app.cell
-def _(device, mo, model, config, sampler):
+def _(config, device, mo, model, sampler):
     import torch.optim as optim
 
     from core.models.nds.functions import (

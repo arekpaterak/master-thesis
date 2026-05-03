@@ -37,8 +37,8 @@ class TrainerParams(BaseModel):
 
     epochs: int = Field(default=1, description="Number of training epochs.")
     batches_per_epoch: int = Field(default=500, description="Batches per epoch.")
-    batch_size: int = Field(default=256, description="Training batch size.")
-    rollouts_per_instance: int = Field(default=4, description="Rollouts per instance.")
+    batch_size: int = Field(default=64, description="Training batch size.")
+    rollouts_per_instance: int = Field(default=128, description="Rollouts per instance.")
     num_initial_improvement_steps: int = Field(
         default=0, description="Initial improvement steps before training."
     )
