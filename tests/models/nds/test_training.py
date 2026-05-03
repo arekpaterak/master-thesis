@@ -6,8 +6,8 @@ from core.models.nds.functions import (
     only_expanding_apply_rollout,
 )
 from core.models.nds.model import NDSModel
-from core.models.nds.training import configure_train_epoch
-from core.models.train import Trainer
+from core.models.nds.training import EpochSummary, configure_training_step
+from core.models.trainer import Trainer
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.solve import one_customer_per_route
 
@@ -18,10 +18,7 @@ def test_train():
     model = NDSModel(problem_name="cvrp")
     optimizer = torch.optim.AdamW(model.parameters())
 
-    train_epoch = configure_train_epoch(
-        instance_sampler=sampler,
-        batches_per_epoch=2,
-        batch_size=B,
+    train_step = configure_training_step(
         num_main_improvement_steps=3,
         rollouts_per_solution=R,
         num_initial_improvement_steps=10,
@@ -34,7 +31,10 @@ def test_train():
 
     history = Trainer(
         max_epochs=2,
-        train_epoch=train_epoch,
-    ).fit(model=model, optimizer=optimizer)
+        batches_per_epoch=2,
+        batch_size=B,
+        train_step=train_step,
+        aggregate_epoch=EpochSummary.from_step_summaries,
+    ).fit(model=model, optimizer=optimizer, instance_sampler=sampler)
 
     assert [summary.epoch for summary in history] == [1, 2]

@@ -2,15 +2,15 @@ from collections.abc import Callable
 
 from core.lns.operators.repair.greedy import GreedyCVRPRepair
 from core.models.nds.model import NDSModel
-from core.models.nds.rollout import NDSRollout
+from core.models.rollout import Rollout
 from core.problems.cvrp import CVRPSolution
 from core.problems.solution import BaseSolution
 
 ImprovementStep = Callable[[BaseSolution, NDSModel], BaseSolution]
 
-ApplyRollout = Callable[[BaseSolution, NDSRollout], BaseSolution]
+ApplyRollout = Callable[[BaseSolution, Rollout], BaseSolution]
 
-Repair = Callable[[BaseSolution, NDSRollout], BaseSolution]
+Repair = Callable[[BaseSolution, Rollout], BaseSolution]
 
 
 def noop_improvement_step(
@@ -22,21 +22,21 @@ def noop_improvement_step(
 
 def apply_rollout(
     solution: CVRPSolution,
-    rollout: NDSRollout,
+    rollout: Rollout,
 ) -> CVRPSolution:
     return solution.remove_customers(rollout.actions)
 
 
-def only_expanding_apply_rollout(solution: BaseSolution, rollout: NDSRollout) -> BaseSolution:
+def only_expanding_apply_rollout(solution: BaseSolution, rollout: Rollout) -> BaseSolution:
     return solution.unsqueeze(1).expand(*solution.batch_size, rollout.log_p_of_actions.shape[1])
 
 
 def noop_repair(
     solution: BaseSolution,
-    rollout: NDSRollout,
+    rollout: Rollout,
 ) -> BaseSolution:
     return solution
 
 
-def greedy_cvrp_repair(solution: CVRPSolution, rollout: NDSRollout) -> CVRPSolution:
+def greedy_cvrp_repair(solution: CVRPSolution, rollout: Rollout) -> CVRPSolution:
     return GreedyCVRPRepair()(solution)

@@ -1,3 +1,0 @@
-- Prefer full variable names to abbreviations, e.g. use `instance` instead of `inst` for better readability. 
-- However, allow some common abbreviations like `num`, `dim`, and one letter constants like `B`, `N` when they make sense in the context.
-- 

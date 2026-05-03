@@ -6,6 +6,8 @@ from core.models.nds.encoder import NDSEncoder
 from core.problems.solution import BaseSolution
 from core.states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
 
+from .rollout import _rollout_solution
+
 
 class NDSModel(nn.Module):
     def __init__(
@@ -82,8 +84,6 @@ class NDSModel(nn.Module):
         deconstruction_size: int,
         greedy: bool = False,
     ):
-        from core.models.nds.rollout import _rollout_solution
-
         return _rollout_solution(
             self,
             solution,

@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
@@ -9,6 +8,7 @@ from core.models.attention_model.decoder import Decoder
 from core.models.attention_model.encoder import Encoder
 from core.models.attention_model.preprocessing import make_complete_graph
 from core.models.entropy import entropy
+from core.models.rollout import Rollout
 from core.problems.cvrp import CVRPInstance
 from core.problems.cvrp.features import CVRPInstanceFeatureExtractor
 from core.problems.cvrp.solution import CVRPSolution
@@ -19,26 +19,12 @@ from core.problems.tsp.solution import TSPSolution
 from core.states.constructive import CVRPConstructiveState, TSPConstructiveState
 
 
-@dataclass(frozen=True)
-class Rollout:
-    actions: torch.Tensor
-    log_p_of_actions: torch.Tensor
-    entropy: float | None
-    entropy_norm: float | None
-
-    def __post_init__(self) -> None:
-        assert self.actions.size() == self.log_p_of_actions.size()
-
-    @property
-    def overall_log_p(self) -> torch.Tensor:
-        return self.log_p_of_actions.sum(dim=-1)
-
-    def to_solution(self, instance: BaseProblemInstance):
-        if isinstance(instance, TSPInstance):
-            return TSPSolution.create(instance=instance, tour=self.actions)
-        if isinstance(instance, CVRPInstance):
-            return CVRPSolution.create(instance=instance, sequence=self.actions)
-        raise TypeError(f"Unsupported instance type: {type(instance)}")
+def rollout_to_solution(rollout: Rollout, instance: BaseProblemInstance):
+    if isinstance(instance, TSPInstance):
+        return TSPSolution.create(instance=instance, tour=rollout.actions)
+    if isinstance(instance, CVRPInstance):
+        return CVRPSolution.create(instance=instance, sequence=rollout.actions)
+    raise TypeError(f"Unsupported instance type: {type(instance)}")
 
 
 class AttentionModel(nn.Module):

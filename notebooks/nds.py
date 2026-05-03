@@ -290,8 +290,8 @@ def _(device, mo, model, model_params, sampler):
         greedy_cvrp_repair,
         noop_improvement_step,
     )
-    from core.models.nds.training import BatchSummary, EpochSummary, configure_train_epoch
-    from core.models.train import Trainer
+    from core.models.nds.training import BatchSummary, EpochSummary, configure_training_step
+    from core.models.trainer import Trainer
     from core.problems.cvrp.solve import one_customer_per_route
 
     if model_params.wandb_project:
@@ -320,10 +320,7 @@ def _(device, mo, model, model_params, sampler):
             epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
 
         optimizer = optim.Adam(model.parameters(), lr=model_params.learning_rate)
-        train_epoch = configure_train_epoch(
-            instance_sampler=lambda batch_size: sampler(batch_size).to(device),
-            batches_per_epoch=model_params.batches_per_epoch,
-            batch_size=model_params.batch_size,
+        train_step = configure_training_step(
             num_main_improvement_steps=model_params.num_main_improvement_steps,
             rollouts_per_solution=model_params.rollouts_per_solution,
             num_initial_improvement_steps=model_params.num_initial_improvement_steps,
@@ -332,14 +329,21 @@ def _(device, mo, model, model_params, sampler):
             improvement_step=noop_improvement_step,
             apply_rollout=apply_rollout,
             repair=greedy_cvrp_repair,
-            on_step_end=on_step_end,
         )
 
         _ = Trainer(
             max_epochs=model_params.epochs,
-            train_epoch=train_epoch,
+            batches_per_epoch=model_params.batches_per_epoch,
+            batch_size=model_params.batch_size,
+            train_step=train_step,
+            aggregate_epoch=EpochSummary.from_step_summaries,
+            on_step_end=on_step_end,
             on_epoch_end=on_epoch_end,
-        ).fit(model=model, optimizer=optimizer)
+        ).fit(
+            model=model,
+            optimizer=optimizer,
+            instance_sampler=lambda batch_size: sampler(batch_size).to(device),
+        )
 
     if model_params.wandb_project:
         wandb.finish()
