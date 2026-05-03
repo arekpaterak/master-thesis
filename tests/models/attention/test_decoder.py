@@ -9,13 +9,13 @@ from core.states.constructive import CVRPConstructiveState, TSPConstructiveState
 def test_decoder_output_shape(problem: str):
     batch_size = 2
     n = 5 if problem == "tsp" else 6
-    d_h = 16
+    hidden_dim = 16
     num_heads = 2
 
-    decoder = Decoder(problem_name=problem, hidden_dim=d_h, num_heads=num_heads)
+    decoder = Decoder(problem_name=problem, hidden_dim=hidden_dim, num_heads=num_heads)
 
-    h_nodes = torch.rand((batch_size, n, d_h))
-    h_graph = torch.rand((batch_size, d_h))
+    h_nodes = torch.rand((batch_size, n, hidden_dim))
+    h_graph = torch.rand((batch_size, hidden_dim))
 
     if problem == "tsp":
         state = TSPConstructiveState.initial(

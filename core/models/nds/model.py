@@ -21,7 +21,7 @@ class NDSModel(nn.Module):
         super().__init__()
 
         self.problem_name = problem_name
-        self.z_dim = seed_dim
+        self.seed_dim = seed_dim
 
         self.encoder = NDSEncoder(
             problem_name=problem_name, hidden_dim=hidden_dim, num_heads=num_heads, ff_dim=ff_dim

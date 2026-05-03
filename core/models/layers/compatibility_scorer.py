@@ -8,20 +8,22 @@ class CompatibilityScorer(nn.Module):
     Computes log-probability scores for a set of nodes relative to a context vector.
 
     Args:
-        d_h (int): The hidden dimension of the input embeddings. Defaults to 128.
+        hidden_dim (int): The hidden dimension of the input embeddings. Defaults to 128.
         C (float): Logit clipping coefficient. Defaults to 10.0.
         use_projections (bool, optional): Whether to use projections for query and keys. Defaults to False.
     """
 
-    def __init__(self, *, d_h: int = 128, C: float = 10.0, use_projections: bool = True) -> None:
+    def __init__(
+        self, *, hidden_dim: int = 128, C: float = 10.0, use_projections: bool = True
+    ) -> None:
         super().__init__()
-        self.scale = d_h**0.5
+        self.scale = hidden_dim**0.5
         self.C = C
         self.use_projections = use_projections
 
         if self.use_projections:
-            self.W_Q = nn.Linear(d_h, d_h, bias=False)
-            self.W_K = nn.Linear(d_h, d_h, bias=False)
+            self.W_Q = nn.Linear(hidden_dim, hidden_dim, bias=False)
+            self.W_K = nn.Linear(hidden_dim, hidden_dim, bias=False)
         else:
             self.W_Q = nn.Identity()
             self.W_K = nn.Identity()
@@ -36,8 +38,8 @@ class CompatibilityScorer(nn.Module):
     ) -> torch.Tensor:
         """
         Args:
-            h_c: Single context embedding to use as a query (..., d_h)
-            h_nodes: Node embeddings to use as keys (..., n, d_h)
+            h_c: Single context embedding to use as a query (..., hidden_dim)
+            h_nodes: Node embeddings to use as keys (..., n, hidden_dim)
             mask: Boolean mask (..., n)
             temperature (float): Softmax temperature. Defaults to 1.0.
 

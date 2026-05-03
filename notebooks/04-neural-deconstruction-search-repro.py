@@ -83,13 +83,13 @@ def _(mo):
 
 @app.cell
 def _():
-    D_H = 128
-    N_HEADS = 8
-    D_FF = 512
-    Z_DIM = 10
-    D_POLY = 256
+    HIDDEN_DIM = 128
+    NUM_HEADS = 8
+    FF_DIM = 512
+    SEED_DIM = 10
+    POLY_DIM = 256
     _M = 15
-    return D_FF, D_H, D_POLY, N_HEADS, Z_DIM
+    return FF_DIM, HIDDEN_DIM, POLY_DIM, NUM_HEADS, SEED_DIM
 
 
 @app.cell(hide_code=True)
@@ -109,7 +109,7 @@ def _(mo):
 
 
 @app.cell
-def _(D_H, example_batch):
+def _(HIDDEN_DIM, example_batch):
     from core.models.embeddings.cvrp import CVRPInitialEmbedding
 
     depot_location = example_batch.depot_location
@@ -118,7 +118,7 @@ def _(D_H, example_batch):
     print(f"Depot location shape: {depot_location.shape}")
     print(f"Customer features shape: {customer_features.shape}")
 
-    initial_embedding = CVRPInitialEmbedding(hidden_dim=D_H)
+    initial_embedding = CVRPInitialEmbedding(hidden_dim=HIDDEN_DIM)
     initial_node_embeddings = initial_embedding(
         depot_features=depot_location, customer_features=customer_features
     )
@@ -137,13 +137,13 @@ def _(mo):
 
 
 @app.cell
-def _(D_FF, D_H, N_HEADS, initial_node_embeddings):
+def _(FF_DIM, HIDDEN_DIM, NUM_HEADS, initial_node_embeddings):
     from core.models.nds.encoder import AttentionLayer
 
     att_layer = AttentionLayer(
-        hidden_dim=D_H,
-        num_heads=N_HEADS,
-        ff_dim=D_FF,
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+        ff_dim=FF_DIM,
     )
     refined_embeddings = att_layer(initial_node_embeddings)
 
@@ -160,12 +160,12 @@ def _(mo):
 
 
 @app.cell
-def _(D_FF, D_H):
+def _(FF_DIM, HIDDEN_DIM):
     from core.models.nds.encoder import NeighboursEncodingLayer
 
     NeighboursEncodingLayer(
-        d_h=D_H,
-        d_ff=D_FF,
+        hidden_dim=HIDDEN_DIM,
+        ff_dim=FF_DIM,
     )
     return
 
@@ -179,12 +179,12 @@ def _(mo):
 
 
 @app.cell
-def _(D_FF, D_H):
+def _(FF_DIM, HIDDEN_DIM):
     from core.models.nds.encoder import TourEncodingLayer
 
     TourEncodingLayer(
-        d_h=D_H,
-        d_ff=D_FF,
+        hidden_dim=HIDDEN_DIM,
+        ff_dim=FF_DIM,
     )
     return
 
@@ -255,29 +255,29 @@ def _(mo):
 
 
 @app.cell
-def _(DEVICE, D_H, D_POLY, N_HEADS, Z_DIM, sample_seed, torch):
+def _(DEVICE, HIDDEN_DIM, POLY_DIM, NUM_HEADS, SEED_DIM, sample_seed, torch):
     from core.models.nds.decoder import DecoderState, NDSDecoder
 
     B, rollout_size, N = (2, 10, 4)
-    z_dim = 10
-    _M = 4
-    decoder = NDSDecoder(hidden_dim=D_H, seed_dim=Z_DIM, poly_dim=D_POLY, num_heads=N_HEADS).to(
-        DEVICE
-    )
-    h_nodes = torch.randn(B, N + 1, D_H).to(DEVICE)
-    z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=z_dim, device=DEVICE)
+    seed_dim = 10
+    M = 4
+    decoder = NDSDecoder(
+        hidden_dim=HIDDEN_DIM, seed_dim=SEED_DIM, poly_dim=POLY_DIM, num_heads=NUM_HEADS
+    ).to(DEVICE)
+    h_nodes = torch.randn(B, N + 1, HIDDEN_DIM).to(DEVICE)
+    z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=seed_dim, device=DEVICE)
     print(f"z: {z}")
     state = decoder.build_initial_state(B=B, rollout_size=rollout_size, num_nodes=N + 1)
     cache = decoder.build_cache(h_nodes=h_nodes, seed=z)
     selected = []
-    for m in range(_M):
+    for m in range(M):
         log_p, gru_hidden_state = decoder(cache=cache, state=state)
         idx = torch.distributions.Categorical(logits=log_p).sample()
         selected.append(idx)
         new_mask = state.selected_mask.clone()
         new_mask.scatter_(2, idx.unsqueeze(-1), True)
         new_h_last_node = cache.h_nodes_expanded.gather(
-            dim=2, index=idx.unsqueeze(-1).unsqueeze(-1).expand(B, rollout_size, 1, D_H)
+            dim=2, index=idx.unsqueeze(-1).unsqueeze(-1).expand(B, rollout_size, 1, HIDDEN_DIM)
         ).squeeze(2)
         state = DecoderState(
             h_last_node=new_h_last_node, gru_hidden=gru_hidden_state, selected_mask=new_mask

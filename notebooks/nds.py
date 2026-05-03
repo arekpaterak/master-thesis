@@ -140,7 +140,7 @@ def _():
                 "batches_per_epoch": self.batches_per_epoch,
                 "batch_size": self.batch_size,
                 "learning_rate": self.learning_rate,
-                "d_h": self.hidden_dim,
+                "hidden_dim": self.hidden_dim,
                 "num_heads": self.num_heads,
                 "ff_dim": self.ff_dim,
                 "poly_dim": self.poly_dim,
@@ -282,16 +282,16 @@ def _(mo):
 
 
 @app.cell
-def _(mo, model, model_params, sampler, device):
+def _(device, mo, model, model_params, sampler):
     import torch.optim as optim
-    from core.models.train import Trainer
 
     from core.models.nds.functions import (
+        apply_rollout,
+        greedy_cvrp_repair,
         noop_improvement_step,
-        noop_repair,
-        only_expanding_apply_rollout,
     )
     from core.models.nds.training import BatchSummary, EpochSummary, configure_train_epoch
+    from core.models.train import Trainer
     from core.problems.cvrp.solve import one_customer_per_route
 
     if model_params.wandb_project:
@@ -311,12 +311,12 @@ def _(mo, model, model_params, sampler, device):
         ) as step_bar,
     ):
 
-        def on_batch_end(step_idx: int, summary: BatchSummary):
+        def on_step_end(summary: BatchSummary):
             step_bar.update(subtitle=f"Loss: {summary.loss:.4f}")
+            if model_params.wandb_project:
+                wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
 
         def on_epoch_end(summary: EpochSummary):
-            if model_params.wandb_project:
-                wandb.log(summary.asdict())
             epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
 
         optimizer = optim.Adam(model.parameters(), lr=model_params.learning_rate)
@@ -330,8 +330,9 @@ def _(mo, model, model_params, sampler, device):
             deconstruction_size=model_params.deconstruction_size,
             generate_start_solution=generate_start_solution,
             improvement_step=noop_improvement_step,
-            apply_rollout=only_expanding_apply_rollout,
-            repair=noop_repair,
+            apply_rollout=apply_rollout,
+            repair=greedy_cvrp_repair,
+            on_step_end=on_step_end,
         )
 
         _ = Trainer(

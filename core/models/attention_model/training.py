@@ -1,10 +1,9 @@
 import time
 from collections import OrderedDict
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
-from typing import Any
 
 import torch
+from pydantic import BaseModel
 from tqdm.auto import tqdm
 
 from core.models.attention_model.model import AttentionModel, Rollout
@@ -12,8 +11,9 @@ from core.models.attention_model.training_helpers import one_sided_paired_ttest,
 from core.problems.instance import BaseProblemInstance
 
 
-@dataclass(frozen=True)
-class BatchSummary:
+class BatchSummary(BaseModel):
+    model_config = {"frozen": True}
+
     loss: float
     advantage: float
     entropy: float
@@ -22,8 +22,9 @@ class BatchSummary:
     log_p: float
 
 
-@dataclass(frozen=True)
-class EpochSummary:
+class EpochSummary(BaseModel):
+    model_config = {"frozen": True}
+
     epoch: int
     loss: float
     advantage: float
@@ -35,10 +36,6 @@ class EpochSummary:
     obj_baseline: float
     baseline_updated: bool
     instances_per_sec: float
-
-    def asdict(self) -> dict[str, Any]:
-        data = asdict(self)
-        return data
 
 
 def _training_step(
@@ -82,7 +79,7 @@ def configure_train_epoch(
     alpha: float = 0.05,
     eval_n_instances: int = 10_000,
     eval_batch_size: int = 512,
-    on_batch_end: Callable[[int, BatchSummary], None] | None = None,
+    on_step_end: Callable[[BatchSummary], None] | None = None,
 ) -> Callable[..., EpochSummary]:
     def train_epoch(
         *,
@@ -108,7 +105,7 @@ def configure_train_epoch(
             unit="batch",
             leave=False,
         )
-        for batch_idx in step_bar:
+        for _ in step_bar:
             instance = instance_sampler(batch_size).to(device)
             batch_summary = _training_step(
                 model=model,
@@ -132,8 +129,8 @@ def configure_train_epoch(
                 )
             )
 
-            if on_batch_end is not None:
-                on_batch_end(batch_idx, batch_summary)
+            if on_step_end is not None:
+                on_step_end(batch_summary)
 
         elapsed_time = time.perf_counter() - epoch_start
 

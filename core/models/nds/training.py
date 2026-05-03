@@ -1,8 +1,8 @@
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
 
 import torch
 import torch.optim as optim
+from pydantic import BaseModel, computed_field
 
 from core.models.nds.model import NDSModel
 from core.models.nds.rollout import NDSRollout
@@ -10,8 +10,9 @@ from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 
 
-@dataclass(frozen=True)
-class BatchSummary:
+class BatchSummary(BaseModel):
+    model_config = {"frozen": True}
+
     loss: float
     reward: float
     reward_baseline: float
@@ -23,8 +24,9 @@ class BatchSummary:
     grad_norm: float
 
 
-@dataclass(frozen=True)
-class EpochSummary:
+class EpochSummary(BaseModel):
+    model_config = {"frozen": True}
+
     epoch: int
     loss: float
     reward: float
@@ -36,14 +38,10 @@ class EpochSummary:
     objective_after: float
     grad_norm: float
 
+    @computed_field
     @property
     def improvement(self) -> float:
         return self.objective_before - self.objective_after
-
-    def asdict(self) -> dict[str, float | int]:
-        data = asdict(self)
-        data["improvement"] = self.improvement
-        return data
 
 
 def _training_step(
@@ -60,6 +58,7 @@ def _training_step(
     apply_rollout: Callable[[BaseSolution, NDSRollout], BaseSolution],
     repair: Callable[[BaseSolution, NDSRollout], BaseSolution],
 ) -> BatchSummary:
+    # TODO: Think if only operate on one instance, expanded to many rollouts, instead of batch of instances
     optimizer.zero_grad()
     solution = generate_start_solution(instance)
 
@@ -142,6 +141,7 @@ def configure_train_epoch(
     improvement_step: Callable[[BaseSolution, NDSModel], BaseSolution],
     apply_rollout: Callable[[BaseSolution, NDSRollout], BaseSolution],
     repair: Callable[[BaseSolution, NDSRollout], BaseSolution],
+    on_step_end: Callable[[BatchSummary], None] | None = None,
 ) -> Callable[..., EpochSummary]:
     def train_epoch(
         *,
@@ -187,6 +187,9 @@ def configure_train_epoch(
             total_objective_before += batch_summary.objective_before
             total_objective_after += batch_summary.objective_after
             total_grad_norm += batch_summary.grad_norm
+
+            if on_step_end is not None:
+                on_step_end(batch_summary)
 
         return EpochSummary(
             epoch=epoch,
