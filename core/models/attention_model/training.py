@@ -7,12 +7,15 @@ import torch
 from pydantic import BaseModel
 
 from core.models.attention_model.model import AttentionModel, rollout_to_solution
-from core.models.attention_model.training_helpers import (
-    PairedTTestResult,
+from core.models.attention_model.statistical_test import (
+    OneSidedPairedTTestResult,
     one_sided_paired_ttest,
+)
+from core.models.attention_model.training_helpers import (
     sync_baseline_,
 )
 from core.problems.instance import BaseProblemInstance
+from core.problems.sampler import Sampler
 
 
 class BatchSummary(BaseModel):
@@ -106,11 +109,11 @@ def configure_baseline_sync_callback(
     *,
     model: AttentionModel,
     baseline: AttentionModel,
-    instance_sampler: Callable[[int], BaseProblemInstance],
+    instance_sampler: Sampler,
     eval_n_instances: int = 10_000,
     eval_batch_size: int = 512,
     alpha: float = 0.05,
-    on_test_end: Callable[[PairedTTestResult], None] | None = None,
+    on_test_end: Callable[[OneSidedPairedTTestResult], None] | None = None,
 ) -> Callable[[EpochSummary], None]:
     def on_epoch_end(_: EpochSummary) -> None:
         device = next(model.parameters()).device

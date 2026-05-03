@@ -6,7 +6,12 @@ from core.models.nds.encoder import NDSEncoder
 from core.problems.solution import BaseSolution
 from core.states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
 
-from .rollout import _rollout_solution
+from ...problems.cvrp.features import CVRPFeatureExtractor
+from ...problems.tsp.features import TSPFeatureExtractor
+from ..entropy import entropy
+from ..rollout import Rollout
+from ..utils import get_model_device
+from .seed_sampler import sample_seed
 
 
 class NDSModel(nn.Module):
@@ -31,6 +36,14 @@ class NDSModel(nn.Module):
         self.decoder = NDSDecoder(
             hidden_dim=hidden_dim, num_heads=num_heads, seed_dim=seed_dim, poly_dim=poly_dim
         )
+
+        match problem_name:
+            case "cvrp":
+                self.feature_extractor = CVRPFeatureExtractor()
+            case "tsp":
+                self.feature_extractor = TSPFeatureExtractor()
+            case _:
+                raise ValueError(f"Unsupported problem_name: {self.problem_name}")
 
     def pre_forward(
         self,
@@ -84,10 +97,66 @@ class NDSModel(nn.Module):
         deconstruction_size: int,
         greedy: bool = False,
     ):
-        return _rollout_solution(
-            self,
-            solution,
-            rollouts_per_solution=rollouts_per_solution,
-            deconstruction_size=deconstruction_size,
-            greedy=greedy,
+        instance = solution.instance
+
+        B = instance.batch_size[0]
+        R = rollouts_per_solution
+        device = get_model_device(self)
+
+        seed = sample_seed(
+            batch_size=B,
+            rollout_size=R,
+            seed_dim=self.seed_dim,
+            device=device,
+        )
+
+        features = self.feature_extractor(solution)
+        # Move features to correct device
+        features = {k: v.to(device) for k, v in features.items()}
+
+        problem_state, decoder_state, cache = self.pre_forward(
+            seed=seed,
+            rollout_size=rollouts_per_solution,
+            **features,
+        )
+
+        selected = []
+        log_p_of_selected = []
+        entropies = []
+        entropies_norm = []
+
+        for _ in range(deconstruction_size):
+            step_log_p, gru_hidden_state = self.forward(
+                problem_state=problem_state,
+                decoder_state=decoder_state,
+                cache=cache,
+            )
+
+            if greedy:
+                idx = step_log_p.argmax(dim=-1)
+            else:
+                distribution = torch.distributions.Categorical(logits=step_log_p)
+                idx = distribution.sample()
+            selected.append(idx)
+
+            step_log_p_of_selected = step_log_p.gather(-1, idx.unsqueeze(-1)).squeeze(-1)
+            log_p_of_selected.append(step_log_p_of_selected)
+
+            step_entropy = entropy(step_log_p)
+            entropies.append(step_entropy.entropy.detach())
+            entropies_norm.append(step_entropy.entropy_norm.detach())
+
+            problem_state = problem_state.transition(action=idx.unsqueeze(-1))
+            decoder_state = decoder_state.transition(gru_hidden_state)
+
+        selected = torch.stack(selected, dim=-1).detach()
+
+        mean_entropy = torch.stack(entropies, dim=-1).mean().item()
+        mean_entropy_norm = torch.stack(entropies_norm, dim=-1).mean().item()
+
+        return Rollout(
+            actions=selected,
+            log_p_of_actions=torch.stack(log_p_of_selected, dim=-1),
+            entropy=mean_entropy,
+            entropy_norm=mean_entropy_norm,
         )
