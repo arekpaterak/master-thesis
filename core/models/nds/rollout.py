@@ -1,31 +1,12 @@
-from dataclasses import dataclass
-
 import torch
 
 from core.models.entropy import entropy
 from core.models.nds.seed_sampler import sample_seed
+from core.models.rollout import Rollout
 from core.models.utils import get_model_device
 from core.problems.cvrp import CVRPSolution
 from core.problems.cvrp.features import CVRPFeatureExtractor
 from core.problems.solution import BaseSolution
-
-
-@dataclass
-class NDSRollout:
-    actions: torch.Tensor
-    """(B, R, M)"""
-    log_p_of_actions: torch.Tensor
-    """(B, R, M)"""
-    entropy: float | None
-    entropy_norm: float | None
-
-    def __post_init__(self):
-        assert self.actions.size() == self.log_p_of_actions.size()
-
-    @property
-    def overall_log_p(self) -> torch.Tensor:
-        """(B, R)"""
-        return self.log_p_of_actions.sum(dim=-1)
 
 
 def _rollout_solution(
@@ -35,7 +16,7 @@ def _rollout_solution(
     rollouts_per_solution: int,
     deconstruction_size: int,
     greedy: bool = False,
-) -> NDSRollout:
+) -> Rollout:
     if not isinstance(solution, CVRPSolution):
         raise NotImplementedError("Only works with CVRPSolution")
 
@@ -97,7 +78,7 @@ def _rollout_solution(
     mean_entropy = torch.stack(entropies, dim=-1).mean().item()
     mean_entropy_norm = torch.stack(entropies_norm, dim=-1).mean().item()
 
-    return NDSRollout(
+    return Rollout(
         actions=selected,
         log_p_of_actions=torch.stack(log_p_of_selected, dim=-1),
         entropy=mean_entropy,

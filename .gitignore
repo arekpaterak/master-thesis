@@ -25,3 +25,6 @@ notebooks/checkpoints/
 
 # W&B
 wandb/
+
+# AI agents
+.claude

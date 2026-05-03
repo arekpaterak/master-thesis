@@ -319,8 +319,8 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
         noop_repair,
         only_expanding_apply_rollout,
     )
-    from core.models.nds.training import configure_train_epoch
-    from core.models.train import Trainer
+    from core.models.nds.training import EpochSummary, configure_training_step
+    from core.models.trainer import Trainer
 
     cfg = CVRPConfig.for_n(20)
     sampler = CVRPSampler(cfg, seed=123)
@@ -329,10 +329,7 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
         return one_customer_per_route(instance)
 
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    train_epoch = configure_train_epoch(
-        instance_sampler=lambda batch_size: sampler(batch_size=batch_size).to(DEVICE),
-        batches_per_epoch=1,
-        batch_size=32,
+    train_step = configure_training_step(
         num_main_improvement_steps=2,
         rollouts_per_solution=4,
         num_initial_improvement_steps=0,
@@ -345,8 +342,15 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
 
     Trainer(
         max_epochs=1,
-        train_epoch=train_epoch,
-    ).fit(model=model, optimizer=optimizer)
+        batches_per_epoch=1,
+        batch_size=32,
+        train_step=train_step,
+        aggregate_epoch=EpochSummary.from_step_summaries,
+    ).fit(
+        model=model,
+        optimizer=optimizer,
+        instance_sampler=lambda batch_size: sampler(batch_size=batch_size).to(DEVICE),
+    )
     return
 
 

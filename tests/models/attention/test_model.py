@@ -1,6 +1,6 @@
 import pytest
 
-from core.models.attention_model.model import AttentionModel
+from core.models.attention_model.model import AttentionModel, rollout_to_solution
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.tsp import TSPConfig, TSPSampler
 
@@ -23,6 +23,6 @@ def test_attention_model_rollout(problem: str):
     assert isinstance(result.entropy, float)
     assert isinstance(result.entropy_norm, float)
 
-    solution = result.to_solution(instance)
+    solution = rollout_to_solution(result, instance)
     objective = solution.objective()
     assert objective.shape == (batch_size,)
