@@ -47,7 +47,7 @@ def _rollout_solution(
     seed = sample_seed(
         batch_size=B,
         rollout_size=R,
-        seed_dim=model.z_dim,
+        seed_dim=model.seed_dim,
         device=get_model_device(model),
     )
 

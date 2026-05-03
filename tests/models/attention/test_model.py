@@ -8,9 +8,9 @@ from core.problems.tsp import TSPConfig, TSPSampler
 @pytest.mark.parametrize("problem", ["tsp", "cvrp"])
 def test_attention_model_rollout(problem: str):
     batch_size = 2
-    d_h = 16
+    hidden_dim = 16
 
-    model = AttentionModel(problem_name=problem, hidden_dim=d_h, num_heads=2, num_layers=1)
+    model = AttentionModel(problem_name=problem, hidden_dim=hidden_dim, num_heads=2, num_layers=1)
     if problem == "tsp":
         instance = TSPSampler(TSPConfig(num_locations=5))(batch_size)
     else:

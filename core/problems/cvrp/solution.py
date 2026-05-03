@@ -222,12 +222,18 @@ class CVRPSolution(BaseSolution):
         Returns:
             A new solution with the specified customers removed (set to -1 in the sequence).
         """
-        # 1. Determine the target batch shape by broadcasting the leading dimensions
-        target_batch_shape = torch.broadcast_shapes(self.batch_size, to_remove.shape[:-1])
+        # 1. Target batch shape is the leading dims of to_remove (excludes deconstruction_size dim).
+        target_batch_shape = to_remove.shape[:-1]
 
-        # 2. Expand sequence and instance to match the new batch shape
-        sequence = self.sequence.expand(*target_batch_shape, -1)
-        instance = self.instance.expand(*target_batch_shape)
+        # 2. Expand to match the new batch shape using TensorClass batch operations,
+        # which propagate unsqueeze/expand through all nested tensors uniformly.
+        expanded = self
+        for _ in range(len(target_batch_shape) - len(self.batch_size)):
+            expanded = expanded.unsqueeze(-1)
+        expanded = expanded.expand(*target_batch_shape)
+
+        sequence = expanded.sequence
+        instance = expanded.instance
 
         # 3. Create a mask identifying where nodes in the sequence match nodes in to_remove
         # We compare (..., L, 1) with (..., 1, K) -> (..., L, K)

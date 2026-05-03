@@ -15,13 +15,13 @@ class DecoderCache(NamedTuple):
 
     Attributes:
         k: Projected keys for multi-head attention.
-            Shape: (B, rollout_size, N+1, d_h).
+            Shape: (B, rollout_size, N+1, hidden_dim).
         v: Projected values for multi-head attention.
-            Shape: (B, rollout_size, N+1, d_h).
+            Shape: (B, rollout_size, N+1, hidden_dim).
         seed: Seed vectors for diverse rollout conditioning.
-            Shape: (B, rollout_size, z_dim).
+            Shape: (B, rollout_size, seed_dim).
         h_nodes_expanded: Node embeddings expanded over rollout dimension.
-            Shape: (B, rollout_size, N+1, d_h).
+            Shape: (B, rollout_size, N+1, hidden_dim).
     """
 
     k: torch.Tensor
@@ -35,7 +35,7 @@ class DecoderState(NamedTuple):
 
     Attributes:
         gru_hidden: GRU hidden state accumulating history of selected customers.
-            Shape: (B*rollout, d_h).
+            Shape: (B*rollout, hidden_dim).
     """
 
     gru_hidden: torch.Tensor
@@ -96,7 +96,7 @@ class NDSDecoder(nn.Module):
             nn.Linear(poly_dim, hidden_dim),
         )
 
-        self.final_scorer = CompatibilityScorer(d_h=hidden_dim, C=C, use_projections=False)
+        self.final_scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
 
     def build_initial_state(
         self,
@@ -131,17 +131,17 @@ class NDSDecoder(nn.Module):
         """Precompute keys, values, and seed vectors before the decoding loop.
 
         Args:
-            h_nodes: Encoder output node embeddings. Shape: (B, N+1, d_h).
-            seed: Seed vectors for rollout diversity. Shape: (B, rollout_size, z_dim).
+            h_nodes: Encoder output node embeddings. Shape: (B, N+1, hidden_dim).
+            seed: Seed vectors for rollout diversity. Shape: (B, rollout_size, seed_dim).
 
         Returns:
             DecoderCache containing projected keys, values, seed vectors, and expanded node embeddings.
         """
-        B, L, d_h = h_nodes.shape
+        B, L, hidden_dim = h_nodes.shape
         _, rollout_size, _ = seed.shape
 
         # Expand nodes for rollout dimension
-        h_nodes_expanded = h_nodes.unsqueeze(1).expand(B, rollout_size, L, d_h)
+        h_nodes_expanded = h_nodes.unsqueeze(1).expand(B, rollout_size, L, hidden_dim)
 
         k, v = self.MHA.project_kv(h_nodes_expanded)
 
@@ -167,7 +167,7 @@ class NDSDecoder(nn.Module):
                 gru_hidden_state: A new GRU hidden state.
         """
         B, R, _, _ = cache.h_nodes_expanded.shape
-        d_h = self.hidden_dim
+        hidden_dim = self.hidden_dim
 
         last_node_idx = problem_state.last_node_idx
         if last_node_idx is None:
@@ -175,14 +175,14 @@ class NDSDecoder(nn.Module):
         else:
             h_last_node = cache.h_nodes_expanded.gather(
                 dim=-2,
-                index=last_node_idx.unsqueeze(-1).expand(B, R, 1, d_h),
+                index=last_node_idx.unsqueeze(-1).expand(B, R, 1, hidden_dim),
             ).squeeze(-2)
 
         gru_hidden = self.GRU(
-            h_last_node.reshape(B * R, d_h),
+            h_last_node.reshape(B * R, hidden_dim),
             decoder_state.gru_hidden,
         )
-        context = gru_hidden.reshape(B, R, d_h)
+        context = gru_hidden.reshape(B, R, hidden_dim)
 
         attention_mask = ~problem_state.action_mask
         mh_out = self.MHA(

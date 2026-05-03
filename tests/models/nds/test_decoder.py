@@ -7,12 +7,12 @@ from core.states.destroy import CVRPDestroyState
 
 def test_one_step_of_decoder() -> None:
     B, rollout_size, N = 2, 10, 4
-    z_dim = 10
+    seed_dim = 10
 
     decoder = NDSDecoder()
 
     embedded_nodes = torch.randn(B, N + 1, 128)
-    z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=z_dim)
+    z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=seed_dim)
 
     problem_state = CVRPDestroyState.build_initial(
         batch_size=B,

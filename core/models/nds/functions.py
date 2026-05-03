@@ -1,5 +1,6 @@
 from collections.abc import Callable
 
+from core.lns.operators.repair.greedy import GreedyCVRPRepair
 from core.models.nds.model import NDSModel
 from core.models.nds.rollout import NDSRollout
 from core.problems.cvrp import CVRPSolution
@@ -35,3 +36,7 @@ def noop_repair(
     rollout: NDSRollout,
 ) -> BaseSolution:
     return solution
+
+
+def greedy_cvrp_repair(solution: CVRPSolution, rollout: NDSRollout) -> CVRPSolution:
+    return GreedyCVRPRepair()(solution)

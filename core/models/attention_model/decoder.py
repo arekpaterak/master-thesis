@@ -42,7 +42,7 @@ class Decoder(nn.Module):
             batch_first=True,
             bias=False,
         )
-        self.final_scorer = CompatibilityScorer(d_h=hidden_dim, C=C)
+        self.final_scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C)
 
     def forward(
         self,

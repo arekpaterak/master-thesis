@@ -74,7 +74,7 @@ class Encoder(nn.Module):
             h = layer(h, edge_index)
 
         # Graph-level embedding: mean of node embeddings per graph
-        h_graph = global_mean_pool(h, batch)  # (B, d_h)
+        h_graph = global_mean_pool(h, batch)  # (B, hidden_dim)
 
         return EncoderOutput(h, h_graph)
 

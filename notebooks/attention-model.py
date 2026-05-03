@@ -129,7 +129,7 @@ def _():
                 "batches_per_epoch": self.batches_per_epoch,
                 "batch_size": self.batch_size,
                 "learning_rate": self.learning_rate,
-                "d_h": self.hidden_dim,
+                "hidden_dim": self.hidden_dim,
                 "num_heads": self.num_heads,
                 "num_layers": self.num_layers,
             }
@@ -263,12 +263,12 @@ def _(mo, model, model_params, sampler):
         ) as step_bar,
     ):
 
-        def on_batch_end(step_idx: int, summary: BatchSummary):
+        def on_step_end(summary: BatchSummary):
             step_bar.update(subtitle=f"Loss: {summary.loss:.4f}")
 
         def on_epoch_end(summary: EpochSummary):
             if model_params.wandb_project:
-                wandb.log(summary.asdict())
+                wandb.log(summary.model_dump())
             epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
 
         baseline = prepare_baseline(model)
@@ -281,7 +281,7 @@ def _(mo, model, model_params, sampler):
             instance_sampler=sampler,
             batches_per_epoch=model_params.batches_per_epoch,
             batch_size=model_params.batch_size,
-            on_batch_end=on_batch_end,
+            on_step_end=on_step_end,
         )
 
         _ = Trainer(
