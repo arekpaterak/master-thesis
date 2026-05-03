@@ -1,1 +1,1 @@
-A directory with the base experiment configuration files.
+A directory with the **base** experiment configurations.
