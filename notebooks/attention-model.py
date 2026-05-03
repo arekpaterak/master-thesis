@@ -241,13 +241,14 @@ def _(mo):
 
 @app.cell
 def _(mo, model, model_params, sampler):
+    from core.models.attention_model.statistical_test import OneSidedPairedTTestResult
     from core.models.attention_model.training import (
         BatchSummary,
         EpochSummary,
         configure_baseline_sync_callback,
         training_step,
     )
-    from core.models.attention_model.training_helpers import PairedTTestResult, prepare_baseline
+    from core.models.attention_model.training_helpers import prepare_baseline
     from core.models.trainer import Trainer
 
     if model_params.wandb_project:
@@ -272,7 +273,7 @@ def _(mo, model, model_params, sampler):
                 wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
             epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
 
-        def on_test_end(test: PairedTTestResult):
+        def on_test_end(test: OneSidedPairedTTestResult):
             if model_params.wandb_project:
                 wandb.log(
                     {

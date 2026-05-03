@@ -1,5 +1,3 @@
-from collections.abc import Callable
-
 import torch
 import torch.nn as nn
 from torch_geometric.data import Batch
@@ -35,23 +33,20 @@ class AttentionModel(nn.Module):
         hidden_dim: int = 128,
         num_heads: int = 8,
         num_layers: int = 3,
-        feature_extractor: Callable[[BaseProblemInstance], dict[str, torch.Tensor]] | None = None,
     ):
         super().__init__()
         if problem_name not in {"tsp", "cvrp"}:
             raise ValueError(f"Unknown problem_name: {problem_name}")
 
         self.problem_name = problem_name
-        self._feature_extractor_override = feature_extractor
 
-        if feature_extractor is not None:
-            self._feature_extractor_override = feature_extractor
-        elif problem_name == "cvrp":
-            self._feature_extractor_override = CVRPInstanceFeatureExtractor()
-        elif problem_name == "tsp":
-            self._feature_extractor_override = TSPInstanceFeatureExtractor()
-        else:
-            raise ValueError(f"Unsupported problem_name: {problem_name}")
+        match problem_name:
+            case "cvrp":
+                self.feature_extractor = CVRPInstanceFeatureExtractor()
+            case "tsp":
+                self.feature_extractor = TSPInstanceFeatureExtractor()
+            case _:
+                raise ValueError(f"Unsupported problem_name: {problem_name}")
 
         self.encoder = Encoder(
             problem_name=problem_name,
@@ -85,7 +80,8 @@ class AttentionModel(nn.Module):
         greedy: bool = False,
         previous_actions: torch.Tensor | None = None,
     ) -> Rollout:
-        batch_size, n, _ = instance.locations.shape
+        batch_size = instance.batch_size[0]
+        n = instance.num_nodes
 
         data = Batch.from_data_list(
             [make_complete_graph(instance.locations[b]) for b in range(batch_size)]
@@ -93,12 +89,8 @@ class AttentionModel(nn.Module):
         assert data["edge_index"].shape[0] == 2, (
             "Expected edge_index to have shape (2, total_edges)"
         )
-        if self.problem_name == "cvrp" and not isinstance(instance, CVRPInstance):
-            raise TypeError("AttentionModel(problem_name='cvrp') expects CVRPInstance input.")
-        if self.problem_name == "tsp" and not isinstance(instance, TSPInstance):
-            raise TypeError("AttentionModel(problem_name='tsp') expects TSPInstance input.")
 
-        features = self._feature_extractor_override(instance)
+        features = self.feature_extractor(instance)
         h_nodes, h_graph = self.encoder(
             edge_index=data["edge_index"],
             batch=data["batch"],
