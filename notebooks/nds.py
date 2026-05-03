@@ -335,10 +335,10 @@ def _(device, mo, model, model_params, sampler):
             max_epochs=model_params.epochs,
             batches_per_epoch=model_params.batches_per_epoch,
             batch_size=model_params.batch_size,
-            train_step=train_step,
+            training_step=train_step,
             aggregate_epoch=EpochSummary.from_step_summaries,
             on_step_end=on_step_end,
-            on_epoch_end=on_epoch_end,
+            on_epoch_end=[on_epoch_end],
         ).fit(
             model=model,
             optimizer=optimizer,
