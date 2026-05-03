@@ -1,0 +1,21 @@
+problem_params:
+  name: cvrp
+  num_nodes: 100
+  num_nodes_to_destroy: 15
+
+model_params:
+
+optimizer_params:
+  optimizer:
+    lr: 1e-4
+    weight_decay: 1e-6
+
+trainer_params:
+    epochs: 10
+    batch_size: 64
+    rollout_size: 128
+
+logging:
+    wandb:
+        enable: True
+        project: nds
