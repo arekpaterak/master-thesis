@@ -23,7 +23,7 @@ def test_trainer_runs_epochs_and_callbacks_in_order():
         max_epochs=2,
         batches_per_epoch=2,
         batch_size=4,
-        train_step=train_step,
+        training_step=train_step,
         aggregate_epoch=aggregate_epoch,
         on_step_end=seen_step_summaries.append,
         on_epoch_end=[seen_epoch_summaries.append],

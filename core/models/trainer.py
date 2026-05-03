@@ -10,7 +10,7 @@ class Trainer[ModelT, InstanceT, BatchSummaryT, EpochSummaryT]:
         max_epochs: int,
         batches_per_epoch: int,
         batch_size: int,
-        train_step: Callable[..., BatchSummaryT],
+        training_step: Callable[..., BatchSummaryT],
         aggregate_epoch: Callable[..., EpochSummaryT],
         on_step_end: Callable[[BatchSummaryT], None] | None = None,
         on_epoch_end: Sequence[Callable[[EpochSummaryT], None]] = (),
@@ -18,7 +18,7 @@ class Trainer[ModelT, InstanceT, BatchSummaryT, EpochSummaryT]:
         self.max_epochs = max_epochs
         self.batches_per_epoch = batches_per_epoch
         self.batch_size = batch_size
-        self.train_step = train_step
+        self.train_step = training_step
         self.aggregate_epoch = aggregate_epoch
         self.on_step_end = on_step_end
         self.on_epoch_end = on_epoch_end

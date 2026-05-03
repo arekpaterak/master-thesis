@@ -95,8 +95,7 @@ def configure_training_step(
         instance = instance.to(device)
         model.train()
 
-        # TODO: For future, think if only operate on one instance, expanded to many rollouts, instead of batch of instances
-        # Like in the article
+        # TODO: For future, think if only operate on one instance, expanded to many rollouts, instead of batch of instances. Like in the article
         optimizer.zero_grad()
         solution = generate_start_solution(instance)
 
@@ -157,16 +156,16 @@ def configure_training_step(
 
         # TODO: Normalize by main improvement steps
         return BatchSummary(
-            loss=total_loss,
-            reward=total_reward,
-            reward_baseline=total_reward_baseline,
-            entropy=total_entropy,
-            entropy_norm=total_entropy_norm,
-            log_p=total_log_p,
+            loss=total_loss / num_main_improvement_steps,
+            reward=total_reward / num_main_improvement_steps,
+            reward_baseline=total_reward_baseline / num_main_improvement_steps,
+            entropy=total_entropy / num_main_improvement_steps,
+            entropy_norm=total_entropy_norm / num_main_improvement_steps,
+            log_p=total_log_p / num_main_improvement_steps,
             objective_before=objective_before,
             objective_after=objective_after,
             grad_norm=grad_norm.item(),
-            instances_per_sec=batch_size / elapsed,
+            instances_per_sec=(batch_size * rollouts_per_solution) / elapsed,
         )
 
     return training_step

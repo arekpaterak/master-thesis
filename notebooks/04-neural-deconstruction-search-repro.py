@@ -344,7 +344,7 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
         max_epochs=1,
         batches_per_epoch=1,
         batch_size=32,
-        train_step=train_step,
+        training_step=train_step,
         aggregate_epoch=EpochSummary.from_step_summaries,
     ).fit(
         model=model,

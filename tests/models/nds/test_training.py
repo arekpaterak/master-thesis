@@ -33,7 +33,7 @@ def test_train():
         max_epochs=2,
         batches_per_epoch=2,
         batch_size=B,
-        train_step=train_step,
+        training_step=train_step,
         aggregate_epoch=EpochSummary.from_step_summaries,
     ).fit(model=model, optimizer=optimizer, instance_sampler=sampler)
 

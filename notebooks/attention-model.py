@@ -267,10 +267,10 @@ def _(mo, model, model_params, sampler):
 
         def on_step_end(summary: BatchSummary):
             step_bar.update(subtitle=f"Loss: {summary.loss:.4f}")
-
-        def on_epoch_end(summary: EpochSummary):
             if model_params.wandb_project:
                 wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
+
+        def on_epoch_end(summary: EpochSummary):
             epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
 
         def on_test_end(test: OneSidedPairedTTestResult):
@@ -300,7 +300,7 @@ def _(mo, model, model_params, sampler):
             max_epochs=model_params.epochs,
             batches_per_epoch=model_params.batches_per_epoch,
             batch_size=model_params.batch_size,
-            train_step=training_step,
+            training_step=training_step,
             aggregate_epoch=EpochSummary.from_step_summaries,
             on_step_end=on_step_end,
             on_epoch_end=[baseline_sync, on_epoch_end],
