@@ -16,7 +16,7 @@ def test_create_from_sequence():
         ]
     )
 
-    solution = TSPGraphSolution.create(
+    solution = TSPGraphSolution.create_from_sequence(
         instance=instance,
         sequence=sequence,
     )
@@ -53,7 +53,7 @@ def test_fail_to_create_with_unassigned_nodes():
     )
 
     with pytest.raises(Exception):
-        TSPGraphSolution.create(instance=instance, sequence=sequence)
+        TSPGraphSolution.create_from_sequence(instance=instance, sequence=sequence)
 
 
 @pytest.mark.parametrize(
@@ -87,7 +87,9 @@ def test_fail_to_create_with_unassigned_nodes():
 )
 def test_remove_edges(sequence, to_nodes, expected_next, expected_prev):
     instance = TSPSampler(TSPConfig(num_locations=4))(len(sequence))
-    solution = TSPGraphSolution.create(instance=instance, sequence=torch.tensor(sequence))
+    solution = TSPGraphSolution.create_from_sequence(
+        instance=instance, sequence=torch.tensor(sequence)
+    )
 
     solution.remove_edges(end_nodes=torch.tensor(to_nodes))
 
@@ -98,7 +100,7 @@ def test_remove_edges(sequence, to_nodes, expected_next, expected_prev):
 def test_add_edges():
     instance = TSPSampler(TSPConfig(num_locations=4))(2)
 
-    solution = TSPGraphSolution.create(instance)
+    solution = TSPGraphSolution.create_from_sequence(instance)
 
     edges = torch.tensor(
         [

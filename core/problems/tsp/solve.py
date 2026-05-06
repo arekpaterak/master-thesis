@@ -43,7 +43,7 @@ def random_permutation(instance: TSPInstance, *, seed: int | None = None) -> TSP
 
 def random_permutation_graph(instance: TSPInstance, *, seed: int | None = None) -> TSPGraphSolution:
     solution = random_permutation(instance, seed=seed)
-    return TSPGraphSolution.create(instance=instance, sequence=solution.tour)
+    return TSPGraphSolution.create_from_sequence(instance=instance, sequence=solution.tour)
 
 
 STRATEGIES = [

@@ -65,7 +65,7 @@ class TestGreedyEdgeRepair:
         instance = TSPSampler(config, seed=42)(batch_size)
 
         sequence = random_permutation(instance).tour
-        solution = TSPGraphSolution.create(instance=instance, sequence=sequence)
+        solution = TSPGraphSolution.create_from_sequence(instance=instance, sequence=sequence)
 
         assert solution.is_complete.all(), "Initial solution should be complete."
 
@@ -99,7 +99,7 @@ class TestGreedyEdgeRepairWithNodeDestroy:
         instance = TSPSampler(config, seed=42)(batch_size)
 
         sequence = random_permutation(instance).tour
-        solution = TSPGraphSolution.create(instance=instance, sequence=sequence)
+        solution = TSPGraphSolution.create_from_sequence(instance=instance, sequence=sequence)
 
         assert solution.is_complete.all()
 
