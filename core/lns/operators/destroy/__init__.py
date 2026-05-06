@@ -1,11 +1,11 @@
 from .base import DestroyOperator
-from .random_edge import RandomEdgeDestroy
+from .random_edge import TSPRandomEdgeDestroy
 from .random_node import RandomNodeDestroy
-from .random_segment import RandomSegmentDestroy
+from .random_segment import TSPRandomSegmentDestroy
 
 __all__ = [
     "DestroyOperator",
     "RandomNodeDestroy",
-    "RandomSegmentDestroy",
-    "RandomEdgeDestroy",
+    "TSPRandomSegmentDestroy",
+    "TSPRandomEdgeDestroy",
 ]

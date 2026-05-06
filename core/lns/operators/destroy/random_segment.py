@@ -4,7 +4,7 @@ from core.lns.operators.destroy.base import DestroyOperator
 from core.problems.tsp.solution import TSPSolution
 
 
-class RandomSegmentDestroy(DestroyOperator[TSPSolution]):
+class TSPRandomSegmentDestroy(DestroyOperator[TSPSolution]):
     def __init__(self, segment_size: int, *, seed: int | None = None) -> None:
         if not segment_size >= 0:
             raise ValueError("Expected non-negative segment size.")

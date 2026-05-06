@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.lns.operators.destroy.random_segment import RandomSegmentDestroy
+from core.lns.operators.destroy.random_segment import TSPRandomSegmentDestroy
 from core.problems.tsp import TSPConfig, TSPSampler
 from core.problems.tsp.solution import TSPSolution
 
@@ -34,7 +34,7 @@ def small_solution():
 
 def test_random_segment_destroy_logic(sample_solution):
     segment_size = 3
-    destroy = RandomSegmentDestroy(segment_size=segment_size)
+    destroy = TSPRandomSegmentDestroy(segment_size=segment_size)
 
     destroyed = destroy(sample_solution)
 
@@ -48,7 +48,7 @@ def test_random_segment_destroy_logic(sample_solution):
 def test_random_segment_destroy_wrap_around(small_solution):
     # Arrange
     segment_size = 2
-    destroy = RandomSegmentDestroy(segment_size=segment_size, seed=42)
+    destroy = TSPRandomSegmentDestroy(segment_size=segment_size, seed=42)
 
     # Act
     # We force the start to the last index (4) and remove 2 nodes
@@ -71,7 +71,7 @@ def test_preserves_existing_holes(small_solution):
         tour=tour_with_hole,
     )
 
-    destroy = RandomSegmentDestroy(segment_size=1)
+    destroy = TSPRandomSegmentDestroy(segment_size=1)
     destroyed = destroy(solution)
 
     assert destroyed.batch_size == solution.batch_size
@@ -83,7 +83,7 @@ def test_without_batch_dim(sample_solution):
     assert single_solution.batch_dims == 0
     num_locations = single_solution.instance.num_locations
 
-    destroy = RandomSegmentDestroy(segment_size=1)
+    destroy = TSPRandomSegmentDestroy(segment_size=1)
     destroyed = destroy(single_solution)
 
     assert destroyed.batch_dims == 0

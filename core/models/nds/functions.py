@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from core.lns.operators.repair.greedy import GreedyCVRPRepair
+from core.lns.operators.repair.greedy import CVRPSequentialGreedyNodeInsertionRepair
 from core.models.nds.model import NDSModel
 from core.models.rollout import Rollout
 from core.problems.cvrp import CVRPSolution
@@ -24,7 +24,12 @@ def apply_rollout(
     solution: CVRPSolution,
     rollout: Rollout,
 ) -> CVRPSolution:
+    """Deconstruct the solution by applying the rollout."""
     return solution.remove_customers(rollout.actions)
+
+
+def greedy_cvrp_repair(solution: CVRPSolution, rollout: Rollout) -> CVRPSolution:
+    return CVRPSequentialGreedyNodeInsertionRepair()(solution)
 
 
 def only_expanding_apply_rollout(solution: BaseSolution, rollout: Rollout) -> BaseSolution:
@@ -36,7 +41,3 @@ def noop_repair(
     rollout: Rollout,
 ) -> BaseSolution:
     return solution
-
-
-def greedy_cvrp_repair(solution: CVRPSolution, rollout: Rollout) -> CVRPSolution:
-    return GreedyCVRPRepair()(solution)
