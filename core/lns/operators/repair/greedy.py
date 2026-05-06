@@ -2,6 +2,7 @@ import math
 
 import torch
 
+from core.constants import EPS
 from core.lns.operators.repair.base import RepairOperator
 from core.problems.cvrp.solution import CVRPSolution
 from core.problems.solution import BaseSolution
@@ -90,7 +91,12 @@ class GreedyNodeRepair[S: BaseSolution](RepairOperator[S]):
         return tour
 
 
-class GreedyCVRPRepair(RepairOperator[CVRPSolution]):
+class CVRPSequentialGreedyNodeInsertionRepair(RepairOperator[CVRPSolution]):
+    """
+    Inherently sequential. Repairs a single partial solution from a batch at a time.
+    Can insert inside the existing routes.
+    """
+
     def __init__(self, *, seed: int | None = None):
         self._generator = torch.Generator()
         if seed is not None:
@@ -98,34 +104,43 @@ class GreedyCVRPRepair(RepairOperator[CVRPSolution]):
 
     def __call__(self, partial_solution: CVRPSolution) -> CVRPSolution:
         batch_size = partial_solution.batch_size
-        N = partial_solution.instance.num_customers
-        max_len = 2 * N + 1
-        flat_n = math.prod(batch_size) if batch_size else 1
-        orig_len = partial_solution.sequence.shape[-1]
+        num_customers = partial_solution.instance.num_customers
+        max_len = 2 * num_customers + 1
+        flat_batch_size = math.prod(batch_size) if batch_size else 1
 
-        seq = partial_solution.sequence.reshape(flat_n, orig_len).cpu()
-        locs = partial_solution.instance.locations.reshape(flat_n, N + 1, 2).float().cpu()
-        demands = partial_solution.instance.demand.reshape(flat_n, N + 1).float().cpu()
-        capacity = partial_solution.instance.capacity.reshape(flat_n).float().cpu()
+        sequence = partial_solution.sequence.reshape(flat_batch_size, -1).cpu()
+        locations = (
+            partial_solution.instance.locations.reshape(flat_batch_size, -1, 2).float().cpu()
+        )
+        demands = partial_solution.instance.demand.reshape(flat_batch_size, -1).float().cpu()
+        capacity = partial_solution.instance.capacity.reshape(flat_batch_size).float().cpu()
 
         repaired = [
-            self._repair_single(seq[b], locs[b], demands[b], float(capacity[b]), N, max_len)
-            for b in range(flat_n)
+            self._repair_single(
+                sequence=sequence[b],
+                locations=locations[b],
+                demands=demands[b],
+                capacity=float(capacity[b]),
+                num_customers=num_customers,
+                max_len=max_len,
+            )
+            for b in range(flat_batch_size)
         ]
-        new_seq = (
+        new_sequence = (
             torch.stack(repaired)
             .to(device=partial_solution.sequence.device, dtype=partial_solution.sequence.dtype)
             .reshape(*batch_size, max_len)
         )
-        return CVRPSolution.create(instance=partial_solution.instance, sequence=new_seq)
+        return CVRPSolution.create(instance=partial_solution.instance, sequence=new_sequence)
 
     def _repair_single(
         self,
+        *,
         sequence: torch.Tensor,
-        locs: torch.Tensor,
+        locations: torch.Tensor,
         demands: torch.Tensor,
         capacity: float,
-        N: int,
+        num_customers: int,
         max_len: int,
     ) -> torch.Tensor:
         routes: list[list[int]] = []
@@ -141,38 +156,40 @@ class GreedyCVRPRepair(RepairOperator[CVRPSolution]):
             routes.append(current)
 
         assigned = {c for route in routes for c in route}
-        missing = [c for c in range(1, N + 1) if c not in assigned]
+        missing_customers = [c for c in range(1, num_customers + 1) if c not in assigned]
 
-        if not missing:
+        if not missing_customers:
             tokens = [x for x in sequence.tolist() if x != -1]
             while len(tokens) < max_len:
                 tokens.append(0)
             return torch.tensor(tokens[:max_len], dtype=sequence.dtype)
 
-        perm = torch.randperm(len(missing), generator=self._generator).tolist()
-        missing = [missing[i] for i in perm]
+        perm = torch.randperm(len(missing_customers), generator=self._generator).tolist()
+        missing_customers = [missing_customers[i] for i in perm]
 
-        dist_mat = torch.cdist(locs.unsqueeze(0), locs.unsqueeze(0)).squeeze(0).tolist()
+        dist_mat = torch.cdist(locations.unsqueeze(0), locations.unsqueeze(0)).squeeze(0).tolist()
         route_demands = [sum(demands[c].item() for c in r) for r in routes]
 
-        for c in missing:
-            c_dem = demands[c].item()
+        for customer in missing_customers:
+            customer_demand = demands[customer].item()
             best_cost, best_r, best_pos = float("inf"), -1, -1
             for r_idx, route in enumerate(routes):
-                if route_demands[r_idx] + c_dem > capacity + 1e-6:
+                if route_demands[r_idx] + customer_demand > capacity + EPS:
                     continue
                 for pos in range(len(route) + 1):
                     prev = route[pos - 1] if pos > 0 else 0
-                    nxt = route[pos] if pos < len(route) else 0
-                    cost = dist_mat[prev][c] + dist_mat[c][nxt] - dist_mat[prev][nxt]
+                    next = route[pos] if pos < len(route) else 0
+                    cost = (
+                        dist_mat[prev][customer] + dist_mat[customer][next] - dist_mat[prev][next]
+                    )
                     if cost < best_cost:
                         best_cost, best_r, best_pos = cost, r_idx, pos
             if best_r >= 0:
-                routes[best_r].insert(best_pos, c)
-                route_demands[best_r] += c_dem
+                routes[best_r].insert(best_pos, customer)
+                route_demands[best_r] += customer_demand
             else:
-                routes.append([c])
-                route_demands.append(c_dem)
+                routes.append([customer])
+                route_demands.append(customer_demand)
 
         tokens = [0]
         for route in routes:

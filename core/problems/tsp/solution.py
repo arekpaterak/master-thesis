@@ -135,13 +135,13 @@ class TSPSolution(BaseSolution):
 
     def remove_nodes(self, to_remove: torch.Tensor) -> TSPSolution:
         """
-        Deconstruct the TSP tour.
+        Deconstruct the TSP solution.
 
         Args:
             to_remove: Tensor containing node indices to remove with shape [..., deconstruction_size].
 
         Returns:
-            A new solution with the specified nodes replaced by PADDING (-1).
+            A new solution with the specified nodes replaced by -1.
         """
         # 1. Determine the target batch shape by broadcasting leading dimensions
         target_batch_shape = torch.broadcast_shapes(self.batch_size, to_remove.shape[:-1])
@@ -154,7 +154,7 @@ class TSPSolution(BaseSolution):
         # (..., num_nodes, 1) == (..., 1, deconstruction_size) -> (..., num_nodes)
         is_removed = (tour.unsqueeze(-1) == to_remove.unsqueeze(-2)).any(dim=-1)
 
-        # 4. Create the new tour with PADDING at masked positions
+        # 4. Create the new tour with -1 at masked positions
         new_tour = tour.clone().masked_fill_(is_removed, self.UNASSIGNED)
 
         return TSPSolution.create(instance=instance, tour=new_tour)

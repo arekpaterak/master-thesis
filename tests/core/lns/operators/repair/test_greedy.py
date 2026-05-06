@@ -2,10 +2,13 @@
 import pytest
 import torch
 
-from core.lns.operators.destroy.random_edge import RandomEdgeDestroy
+from core.lns.operators.destroy.random_edge import TSPRandomEdgeDestroy
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair.greedy import GreedyCVRPRepair, GreedyNodeRepair
-from core.lns.operators.repair.greedy_edge import GreedyEdgeRepair
+from core.lns.operators.repair.greedy import (
+    CVRPSequentialGreedyNodeInsertionRepair,
+    GreedyNodeRepair,
+)
+from core.lns.operators.repair.greedy_edge import TSPGreedyEdgeRepair
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.solve import one_customer_per_route
 from core.problems.tsp import TSPConfig, TSPSampler, TSPSolution
@@ -67,7 +70,7 @@ class TestGreedyEdgeRepair:
         assert solution.is_complete.all(), "Initial solution should be complete."
 
         # Destroy solution
-        destroy = RandomEdgeDestroy[TSPGraphSolution](
+        destroy = TSPRandomEdgeDestroy[TSPGraphSolution](
             destruction_size=num_edges_to_destroy, seed=42
         )
         destroyed_solution = destroy(solution)
@@ -77,7 +80,7 @@ class TestGreedyEdgeRepair:
         )
 
         # Repair solution
-        repair = GreedyEdgeRepair()
+        repair = TSPGreedyEdgeRepair()
         repaired_solution = repair(destroyed_solution)
 
         # Check if repaired successfully
@@ -106,7 +109,7 @@ class TestGreedyCVRPRepair:
 
         assert not destroyed.is_complete.any(), "Destroyed solution should not be complete."
 
-        repair = GreedyCVRPRepair(seed=42)
+        repair = CVRPSequentialGreedyNodeInsertionRepair(seed=42)
         repaired = repair(destroyed)
 
         assert repaired.is_complete.all(), "Repaired solution should be complete."
@@ -124,7 +127,7 @@ class TestGreedyCVRPRepair:
 
         assert partial.batch_size == torch.Size([B, R])
 
-        repair = GreedyCVRPRepair(seed=0)
+        repair = CVRPSequentialGreedyNodeInsertionRepair(seed=0)
         repaired = repair(partial)
 
         assert repaired.batch_size == torch.Size([B, R])
