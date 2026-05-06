@@ -40,9 +40,9 @@ class TrainerParams(BaseModel):
     batch_size: int = Field(default=64, description="Training batch size.")
     rollouts_per_instance: int = Field(default=128, description="Rollouts per instance.")
     num_initial_improvement_steps: int = Field(
-        default=0, description="Initial improvement steps before training."
+        default=10, description="Initial improvement steps before training."
     )
-    num_main_improvement_steps: int = Field(default=2, description="Number of improvement steps.")
+    num_main_improvement_steps: int = Field(default=50, description="Number of improvement steps.")
     deconstruction_size: int = Field(
         default=5, description="Number of nodes removed per iteration."
     )
