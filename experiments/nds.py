@@ -211,12 +211,12 @@ def _(TrainConfig, mo):
     trainer_widgets = mo.ui.dictionary(
         {
             "epochs": mo.ui.slider(1, 100, value=defaults.trainer.epochs, step=1, label="Epochs"),
-            "batches_per_epoch": mo.ui.number(
-                10,
-                10000,
-                value=defaults.trainer.batches_per_epoch,
-                step=10,
-                label="Batches per epoch",
+            "instances_per_epoch": mo.ui.number(
+                100,
+                1500,
+                value=defaults.trainer.instances_per_epoch,
+                step=100,
+                label="Instances per epoch",
             ),
             "batch_size": mo.ui.slider(
                 8, 512, value=defaults.trainer.batch_size, step=8, label="Batch size"
@@ -373,7 +373,7 @@ def _(config, device, mo, model, sampler):
     with (
         mo.status.progress_bar(total=config.trainer.epochs, title="Epochs") as epoch_bar,
         mo.status.progress_bar(
-            total=config.trainer.epochs * config.trainer.batches_per_epoch, title="Batches"
+            total=config.trainer.epochs * config.trainer.batches_per_epoch, title="Batches (steps)"
         ) as step_bar,
     ):
 
@@ -399,7 +399,7 @@ def _(config, device, mo, model, sampler):
 
         _ = Trainer(
             max_epochs=config.trainer.epochs,
-            batches_per_epoch=config.trainer.batches_per_epoch,
+            instances_per_epoch=config.trainer.instances_per_epoch,
             batch_size=config.trainer.batch_size,
             training_step=train_step,
             aggregate_epoch=EpochSummary.from_step_summaries,
