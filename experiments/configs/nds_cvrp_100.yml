@@ -1,21 +1,26 @@
-problem_params:
+problem:
   name: cvrp
-  num_nodes: 100
-  num_nodes_to_destroy: 15
+  size: 100
 
-model_params:
+model:
+  hidden_dim: 128
+  num_heads: 8
+  ff_dim: 512
+  poly_dim: 256
+  seed_dim: 10
 
-optimizer_params:
-  optimizer:
-    lr: 1e-4
-    weight_decay: 1e-6
+optimizer:
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-6
 
-trainer_params:
-    epochs: 10
-    batch_size: 64
-    rollout_size: 128
+trainer:
+  epochs: 10
+  batches_per_epoch: 500
+  batch_size: 64
+  rollouts_per_instance: 128
+  num_initial_improvement_steps: 0
+  num_main_improvement_steps: 2
+  deconstruction_size: 15
 
 logging:
-    wandb:
-        enable: True
-        project: nds
+  wandb_project: nds

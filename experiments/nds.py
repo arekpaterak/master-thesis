@@ -35,9 +35,17 @@ def _():
 
 
 @app.cell
+def _():
+    from core.models.nds.config import TrainConfig
+
+    return (TrainConfig,)
+
+
+@app.cell(hide_code=True)
 def _(TrainConfig, mo):
     import sys
 
+    import yaml
     from wigglystuff import EnvConfig
 
     is_script_mode = mo.app_meta().mode == "script"
@@ -50,72 +58,52 @@ def _(TrainConfig, mo):
         )
     )
 
-    # If run in script mode and no CLI arguments passed, show help
-    if is_script_mode and not mo.cli_args():
-        from rich.console import Console
-        from rich.table import Table
+    yaml_data = {}
+    if is_script_mode:
+        _cli_args = mo.cli_args()
 
-        table = Table(title="CLI Options")
-        table.add_column("Flag", style="cyan")
-        table.add_column("Type", style="green")
-        table.add_column("Default", style="yellow")
-        table.add_column("Description")
+        if not _cli_args:
+            from rich.console import Console
+            from rich.table import Table
 
-        # Flatten nested config for CLI
-        _config = TrainConfig()
-        cli_fields = {
-            "problem_name": (
-                str,
-                _config.problem.name,
-                "Problem to solve (currently only cvrp is supported).",
-            ),
-            "problem_size": (int, _config.problem.size, "Number of customers."),
-            "epochs": (int, _config.trainer.epochs, "Number of training epochs."),
-            "batches_per_epoch": (int, _config.trainer.batches_per_epoch, "Batches per epoch."),
-            "batch_size": (int, _config.trainer.batch_size, "Training batch size."),
-            "learning_rate": (float, _config.optimizer.learning_rate, "Learning rate."),
-            "hidden_dim": (int, _config.model.hidden_dim, "Hidden dimension."),
-            "num_heads": (int, _config.model.num_heads, "Number of attention heads."),
-            "ff_dim": (int, _config.model.ff_dim, "Feed-forward dimension."),
-            "poly_dim": (int, _config.model.poly_dim, "Polynomial dimension."),
-            "seed_dim": (int, _config.model.seed_dim, "Seed (latent) dimension."),
-            "num_initial_improvement_steps": (
-                int,
-                _config.trainer.num_initial_improvement_steps,
-                "Initial improvement steps before training.",
-            ),
-            "num_main_improvement_steps": (
-                int,
-                _config.trainer.num_main_improvement_steps,
-                "Number of improvement steps per batch.",
-            ),
-            "rollouts_per_solution": (
-                int,
-                _config.trainer.rollouts_per_instance,
-                "Rollouts per solution.",
-            ),
-            "deconstruction_size": (
-                int,
-                _config.trainer.deconstruction_size,
-                "Number of customers removed per rollout.",
-            ),
-            "wandb_project": (
-                str,
-                _config.logging.wandb_project,
-                "W&B project name (empty to skip).",
-            ),
-        }
+            _usage = Table(title="NDS Training — CLI Usage")
+            _usage.add_column("Flag", style="cyan")
+            _usage.add_column("Description")
+            _usage.add_row("--config <path>", "Path to YAML config file")
+            _usage.add_row(
+                "--<section>.<field> <value>",
+                "Override a nested config field, e.g. --trainer.epochs 5",
+            )
+            Console().print(_usage)
 
-        for name, (type_name, default, description) in cli_fields.items():
-            flag = f"--{name.replace('_', '-')}"
-            table.add_row(flag, type_name.__name__, str(default), description)
+            _defaults = TrainConfig()
+            _fields = Table(title="Config fields and defaults")
+            _fields.add_column("Key", style="cyan")
+            _fields.add_column("Default", style="yellow")
+            for _section, _params in _defaults.model_dump(exclude={"run_name", "logging"}).items():
+                for _field, _value in _params.items():
+                    _fields.add_row(f"{_section}.{_field}", str(_value))
+            Console().print(_fields)
 
-        Console().print(table)
-        sys.exit(0)
-    return env_config_widget, is_script_mode
+            sys.exit(0)
+
+        _config_path = _cli_args.get("config")
+        if _config_path:
+            with open(_config_path) as _f:
+                yaml_data = yaml.safe_load(_f) or {}
+
+        for _key, _value in _cli_args.items():
+            if _key == "config":
+                continue
+            _parts = _key.split(".")
+            _node = yaml_data
+            for _part in _parts[:-1]:
+                _node = _node.setdefault(_part, {})
+            _node[_parts[-1]] = _value
+    return env_config_widget, is_script_mode, yaml_data
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(env_config_widget, is_script_mode):
     env_config_widget if not is_script_mode and not wandb.login() else None
     return
@@ -129,110 +117,25 @@ def _(mo):
     return
 
 
-@app.cell
-def _(params_form):
-    params_form
+@app.cell(hide_code=True)
+def _(is_script_mode, mo, params_accordion, run_button):
+    mo.vstack([params_accordion, run_button]) if not is_script_mode else None
     return
 
 
-@app.cell
-def _():
-    from core.models.nds.config import TrainConfig
-
-    return (TrainConfig,)
-
-
-@app.cell
-def _(TrainConfig, mo):
-    defaults = TrainConfig()
-    params_form = (
-        mo.md(
-            """
-    {problem_name}
-    {problem_size}
-    {epochs}
-    {batches_per_epoch}
-    {batch_size}
-    {learning_rate}
-    {hidden_dim}
-    {num_heads}
-    {ff_dim}
-    {poly_dim}
-    {seed_dim}
-    {num_main_improvement_steps}
-    {rollouts_per_solution}
-    {num_initial_improvement_steps}
-    {deconstruction_size}
-    """
-        )
-        .batch(
-            problem_name=mo.ui.dropdown(
-                ["cvrp"], value=defaults.problem.name, label="Problem name"
-            ),
-            problem_size=mo.ui.number(
-                10, 200, value=defaults.problem.size, step=1, label="Problem size"
-            ),
-            epochs=mo.ui.slider(1, 100, value=defaults.trainer.epochs, step=1, label="Epochs"),
-            batches_per_epoch=mo.ui.number(
-                10,
-                10000,
-                value=defaults.trainer.batches_per_epoch,
-                step=10,
-                label="Batches per epoch",
-            ),
-            batch_size=mo.ui.slider(
-                8, 512, value=defaults.trainer.batch_size, step=8, label="Batch size"
-            ),
-            learning_rate=mo.ui.slider(
-                1e-5, 5e-4, value=defaults.optimizer.learning_rate, step=1e-5, label="Learning rate"
-            ),
-            hidden_dim=mo.ui.dropdown(
-                [64, 128, 256, 512], value=defaults.model.hidden_dim, label="Hidden dim"
-            ),
-            num_heads=mo.ui.slider(
-                1, 16, value=defaults.model.num_heads, step=1, label="Num heads"
-            ),
-            ff_dim=mo.ui.dropdown(
-                [128, 256, 512, 1024], value=defaults.model.ff_dim, label="FF dim"
-            ),
-            poly_dim=mo.ui.dropdown(
-                [64, 128, 256, 512], value=defaults.model.poly_dim, label="Poly dim"
-            ),
-            seed_dim=mo.ui.dropdown(
-                [4, 8, 10, 16, 32], value=defaults.model.seed_dim, label="Seed dim"
-            ),
-            num_main_improvement_steps=mo.ui.slider(
-                1, 10, value=defaults.trainer.num_main_improvement_steps, step=1, label="Main steps"
-            ),
-            rollouts_per_solution=mo.ui.slider(
-                1,
-                16,
-                value=defaults.trainer.rollouts_per_instance,
-                step=1,
-                label="Rollouts/solution",
-            ),
-            num_initial_improvement_steps=mo.ui.slider(
-                0,
-                10,
-                value=defaults.trainer.num_initial_improvement_steps,
-                step=1,
-                label="Initial steps",
-            ),
-            deconstruction_size=mo.ui.slider(
-                1,
-                20,
-                value=defaults.trainer.deconstruction_size,
-                step=1,
-                label="Deconstruction size",
-            ),
-        )
-        .form()
-    )
-    return (params_form,)
-
-
-@app.cell
-def _(TrainConfig, is_script_mode, mo, params_form):
+@app.cell(hide_code=True)
+def _(
+    TrainConfig,
+    is_script_mode,
+    logging_widgets,
+    mo,
+    model_widgets,
+    optimizer_widgets,
+    problem_widgets,
+    run_button,
+    trainer_widgets,
+    yaml_data,
+):
     from core.models.nds.config import (
         LoggingConfig,
         ModelParams,
@@ -241,45 +144,140 @@ def _(TrainConfig, is_script_mode, mo, params_form):
         TrainerParams,
     )
 
-    mo.stop(
-        not is_script_mode and params_form.value is None,
-        mo.md("*Submit the form to start training.*"),
-    )
-
     if is_script_mode:
-        form_data = {k.replace("-", "_"): v for k, v in mo.cli_args().items()}
+        config = TrainConfig.model_validate(yaml_data)
     else:
-        form_data = params_form.value
-
-    config = TrainConfig(
-        problem=ProblemParams(
-            name=form_data.get("problem_name", "cvrp"),
-            size=form_data.get("problem_size", 20),
-        ),
-        model=ModelParams(
-            hidden_dim=form_data.get("hidden_dim", 128),
-            num_heads=form_data.get("num_heads", 8),
-            ff_dim=form_data.get("ff_dim", 512),
-            poly_dim=form_data.get("poly_dim", 256),
-            seed_dim=form_data.get("seed_dim", 10),
-        ),
-        optimizer=OptimizerParams(
-            learning_rate=form_data.get("learning_rate", 1e-4),
-        ),
-        trainer=TrainerParams(
-            epochs=form_data.get("epochs", 1),
-            batches_per_epoch=form_data.get("batches_per_epoch", 500),
-            batch_size=form_data.get("batch_size", 256),
-            num_initial_improvement_steps=form_data.get("num_initial_improvement_steps", 0),
-            num_main_improvement_steps=form_data.get("num_main_improvement_steps", 2),
-            rollouts_per_instance=form_data.get("rollouts_per_solution", 4),
-            deconstruction_size=form_data.get("deconstruction_size", 5),
-        ),
-        logging=LoggingConfig(
-            wandb_project=form_data.get("wandb_project", "nds"),
-        ),
-    )
+        mo.stop(
+            run_button.value == 0,
+            mo.md("*Click 'Start Training' to begin.*"),
+        )
+        config = TrainConfig(
+            problem=ProblemParams(**problem_widgets.value),
+            model=ModelParams(**model_widgets.value),
+            optimizer=OptimizerParams(**optimizer_widgets.value),
+            trainer=TrainerParams(**trainer_widgets.value),
+            logging=LoggingConfig(**logging_widgets.value),
+        )
     return (config,)
+
+
+@app.cell(hide_code=True)
+def _(TrainConfig, mo):
+    defaults = TrainConfig()
+
+    problem_widgets = mo.ui.dictionary(
+        {
+            "name": mo.ui.dropdown(["cvrp"], value=defaults.problem.name, label="Problem name"),
+            "size": mo.ui.number(
+                10, 200, value=defaults.problem.size, step=1, label="Problem size"
+            ),
+        }
+    )
+
+    model_widgets = mo.ui.dictionary(
+        {
+            "hidden_dim": mo.ui.dropdown(
+                [64, 128, 256, 512], value=defaults.model.hidden_dim, label="Hidden dim"
+            ),
+            "num_heads": mo.ui.slider(
+                1, 16, value=defaults.model.num_heads, step=1, label="Num heads"
+            ),
+            "ff_dim": mo.ui.dropdown(
+                [128, 256, 512, 1024], value=defaults.model.ff_dim, label="FF dim"
+            ),
+            "poly_dim": mo.ui.dropdown(
+                [64, 128, 256, 512], value=defaults.model.poly_dim, label="Poly dim"
+            ),
+            "seed_dim": mo.ui.dropdown(
+                [4, 8, 10, 16, 32], value=defaults.model.seed_dim, label="Seed dim"
+            ),
+        }
+    )
+
+    optimizer_widgets = mo.ui.dictionary(
+        {
+            "learning_rate": mo.ui.slider(
+                1e-5,
+                5e-4,
+                value=defaults.optimizer.learning_rate,
+                step=1e-5,
+                label="Learning rate",
+            ),
+        }
+    )
+
+    trainer_widgets = mo.ui.dictionary(
+        {
+            "epochs": mo.ui.slider(1, 100, value=defaults.trainer.epochs, step=1, label="Epochs"),
+            "batches_per_epoch": mo.ui.number(
+                10,
+                10000,
+                value=defaults.trainer.batches_per_epoch,
+                step=10,
+                label="Batches per epoch",
+            ),
+            "batch_size": mo.ui.slider(
+                8, 512, value=defaults.trainer.batch_size, step=8, label="Batch size"
+            ),
+            "rollouts_per_instance": mo.ui.slider(
+                1,
+                256,
+                value=defaults.trainer.rollouts_per_instance,
+                step=1,
+                label="Rollouts/solution",
+            ),
+            "num_initial_improvement_steps": mo.ui.slider(
+                0,
+                10,
+                value=defaults.trainer.num_initial_improvement_steps,
+                step=1,
+                label="Initial steps",
+            ),
+            "num_main_improvement_steps": mo.ui.slider(
+                1,
+                50,
+                value=defaults.trainer.num_main_improvement_steps,
+                step=1,
+                label="Main steps",
+            ),
+            "deconstruction_size": mo.ui.slider(
+                1,
+                20,
+                value=defaults.trainer.deconstruction_size,
+                step=1,
+                label="Deconstruction size",
+            ),
+        }
+    )
+
+    logging_widgets = mo.ui.dictionary(
+        {
+            "wandb_project": mo.ui.text(
+                value=defaults.logging.wandb_project, label="W&B project (empty to skip)"
+            ),
+        }
+    )
+
+    params_accordion = mo.accordion(
+        {
+            "Problem": problem_widgets,
+            "Model": model_widgets,
+            "Optimizer": optimizer_widgets,
+            "Trainer": trainer_widgets,
+            "Logging": logging_widgets,
+        }
+    )
+
+    run_button = mo.ui.button(label="Start Training", value=0, on_click=lambda count: count + 1)
+    return (
+        logging_widgets,
+        model_widgets,
+        optimizer_widgets,
+        params_accordion,
+        problem_widgets,
+        run_button,
+        trainer_widgets,
+    )
 
 
 @app.cell(column=2)
