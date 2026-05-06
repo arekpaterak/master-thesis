@@ -14,7 +14,7 @@ class TSPGraphSolution(BaseSolution):
     UNASSIGNED = -1
 
     @classmethod
-    def create(
+    def create_from_sequence(
         cls, instance: TSPInstance, sequence: torch.Tensor | None = None
     ) -> TSPGraphSolution:
         if sequence is None:
