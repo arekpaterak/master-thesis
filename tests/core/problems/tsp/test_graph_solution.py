@@ -3,6 +3,7 @@ import torch
 
 from core.problems.tsp import TSPConfig, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.problems.tsp.solve import random_permutation_graph
 
 
 def test_create_from_sequence():
@@ -121,3 +122,23 @@ def test_add_edges():
     # Unassigned slots are untouched
     assert (solution.next_nodes[0, [1, 3]] == TSPGraphSolution.UNASSIGNED).all()
     assert (solution.prev_nodes[0, [0, 2]] == TSPGraphSolution.UNASSIGNED).all()
+
+
+class TestMultiDimBatch:
+    """TSPGraphSolution methods must work for batch shapes beyond 1D (e.g. (B, R) from rollouts)."""
+
+    @pytest.fixture
+    def solution_2d(self):
+        B, R, N, K = 3, 5, 10, 2
+        instance = TSPSampler(TSPConfig(num_locations=N))(B)
+        flat = random_permutation_graph(instance)  # (B,) batch
+        # Use first K nodes per element
+        nodes = torch.arange(K).unsqueeze(0).unsqueeze(0).expand(B, R, K)
+        return flat.remove_nodes(nodes)  # (B, R) batch
+
+    def test_remove_nodes_batch_shape(self, solution_2d):
+        assert solution_2d.batch_size == torch.Size([3, 5])
+
+    def test_neighbours_index_shape(self, solution_2d):
+        idx = solution_2d.neighbours_index()
+        assert idx.shape == torch.Size([3, 5, 10, 2])

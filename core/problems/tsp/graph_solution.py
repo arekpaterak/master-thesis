@@ -52,7 +52,7 @@ class TSPGraphSolution(BaseSolution):
         return cls(_instance=instance, _next=next_nodes, _prev=prev_nodes, batch_size=b_size)
 
     def __post_init__(self) -> None:
-        assert (self.num_unassigned == self.num_unassigned[0]).all()
+        pass
 
     @property
     def instance(self) -> TSPInstance:
@@ -76,9 +76,12 @@ class TSPGraphSolution(BaseSolution):
 
     def objective(self) -> torch.Tensor:
         locations = self._instance.locations
-        next_locations = locations.gather(1, self._next.unsqueeze(-1).expand(-1, -1, 2))
+        next_locations = locations.gather(-2, self._next.unsqueeze(-1).expand(*self._next.shape, 2))
         length = torch.linalg.norm(locations - next_locations, dim=-1)
         return length.sum(dim=-1)
+
+    def neighbours_index(self) -> torch.Tensor:
+        return torch.stack([self._prev, self._next], dim=-1)
 
     def node_degree(self) -> torch.Tensor:
         return (self._next != self.UNASSIGNED).long() + (self._prev != self.UNASSIGNED).long()
@@ -89,6 +92,31 @@ class TSPGraphSolution(BaseSolution):
     @property
     def is_complete(self) -> torch.Tensor:
         return self.num_unassigned == 0
+
+    def remove_nodes(self, nodes: torch.Tensor) -> TSPGraphSolution:
+        target_batch_shape = nodes.shape[:-1]
+
+        expanded = self
+        for _ in range(len(target_batch_shape) - len(self.batch_size)):
+            expanded = expanded.unsqueeze(-1)
+        expanded = expanded.expand(*target_batch_shape)
+
+        next_nodes = expanded._next.clone()
+        prev_nodes = expanded._prev.clone()
+
+        predecessors = prev_nodes.gather(-1, nodes)
+        successors = next_nodes.gather(-1, nodes)
+        next_nodes.scatter_(-1, predecessors, self.UNASSIGNED)
+        prev_nodes.scatter_(-1, nodes, self.UNASSIGNED)
+        next_nodes.scatter_(-1, nodes, self.UNASSIGNED)
+        prev_nodes.scatter_(-1, successors, self.UNASSIGNED)
+
+        return TSPGraphSolution(
+            _instance=expanded._instance,
+            _next=next_nodes,
+            _prev=prev_nodes,
+            batch_size=torch.Size(target_batch_shape),
+        )
 
     def remove_edges(self, *, end_nodes: torch.Tensor) -> None:
         if end_nodes.shape == self._next.shape[:-1]:

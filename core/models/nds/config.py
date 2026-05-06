@@ -23,6 +23,11 @@ class ModelParams(BaseModel):
     ff_dim: int = Field(default=512, description="Feed-forward hidden dimension.")
     poly_dim: int = Field(default=256, description="PolyNet hidden dimension.")
     seed_dim: int = Field(default=10, description="Seed dimension.")
+    with_neighbours_encoding: bool = Field(default=True, description="Use neighbours encoding.")
+    with_tour_encoding: bool | None = Field(
+        default=None,
+        description="Use tour encoding. None means problem-specific default (True for CVRP, False for TSP).",
+    )
 
 
 class OptimizerParams(BaseModel):

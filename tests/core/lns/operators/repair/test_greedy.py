@@ -70,9 +70,7 @@ class TestGreedyEdgeRepair:
         assert solution.is_complete.all(), "Initial solution should be complete."
 
         # Destroy solution
-        destroy = TSPRandomEdgeDestroy[TSPGraphSolution](
-            destruction_size=num_edges_to_destroy, seed=42
-        )
+        destroy = TSPRandomEdgeDestroy(destruction_size=num_edges_to_destroy, seed=42)
         destroyed_solution = destroy(solution)
 
         assert not destroyed_solution.is_complete.any(), (
@@ -85,6 +83,39 @@ class TestGreedyEdgeRepair:
 
         # Check if repaired successfully
         assert repaired_solution.is_complete.all(), "Repaired solution should be complete."
+
+
+class TestGreedyEdgeRepairWithNodeDestroy:
+    @pytest.mark.parametrize(
+        "batch_size, num_locations, destruction_size",
+        [
+            (1, 10, 3),
+            (4, 20, 5),
+            (4, 20, 2),  # adjacent removals likely in some batch elements
+        ],
+    )
+    def test_repairs_tsp(self, batch_size: int, num_locations: int, destruction_size: int) -> None:
+        config = TSPConfig(num_locations=num_locations)
+        instance = TSPSampler(config, seed=42)(batch_size)
+
+        sequence = random_permutation(instance).tour
+        solution = TSPGraphSolution.create(instance=instance, sequence=sequence)
+
+        assert solution.is_complete.all()
+
+        destroy = RandomNodeDestroy(destruction_size=destruction_size, seed=42)
+        destroyed = destroy(solution)
+
+        assert not destroyed.is_complete.any()
+        # Each removed node severs 2 edges, so num_unassigned is between
+        # destruction_size + 1 (all adjacent) and 2 * destruction_size (all non-adjacent).
+        assert (destroyed.num_unassigned >= destruction_size + 1).all()
+        assert (destroyed.num_unassigned <= 2 * destruction_size).all()
+
+        repair = TSPGreedyEdgeRepair()
+        repaired = repair(destroyed)
+
+        assert repaired.is_complete.all()
 
 
 class TestGreedyCVRPRepair:

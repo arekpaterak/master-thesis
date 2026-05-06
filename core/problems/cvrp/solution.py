@@ -212,18 +212,18 @@ class CVRPSolution(BaseSolution):
         neighbours = self.neighbours_per_customer()
         return (neighbours != self.UNASSIGNED).sum(dim=-1)
 
-    def remove_customers(self, to_remove: torch.Tensor) -> CVRPSolution:
+    def remove_customers(self, customers: torch.Tensor) -> CVRPSolution:
         """
         Deconstruct the solution.
 
         Args:
-            to_remove: (batch_size, deconstruction_size) or (batch_size, rollout_size, deconstruction_size)
+            customers: (batch_size, deconstruction_size) or (batch_size, rollout_size, deconstruction_size)
 
         Returns:
             A new solution with the specified customers removed (set to -1 in the sequence).
         """
         # 1. Target batch shape is the leading dims of to_remove (excludes deconstruction_size dim).
-        target_batch_shape = to_remove.shape[:-1]
+        target_batch_shape = customers.shape[:-1]
 
         # 2. Expand to match the new batch shape using TensorClass batch operations,
         # which propagate unsqueeze/expand through all nested tensors uniformly.
@@ -238,7 +238,7 @@ class CVRPSolution(BaseSolution):
         # 3. Create a mask identifying where nodes in the sequence match nodes in to_remove
         # We compare (..., L, 1) with (..., 1, K) -> (..., L, K)
         # .any(-1) reduces it to (..., L)
-        is_removed = (sequence.unsqueeze(-1) == to_remove.unsqueeze(-2)).any(dim=-1)
+        is_removed = (sequence.unsqueeze(-1) == customers.unsqueeze(-2)).any(dim=-1)
 
         # 4. Safety: Only allow removal of customers (node indices >= 1)
         # This prevents accidental removal of depots (0)

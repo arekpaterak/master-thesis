@@ -1,3 +1,5 @@
+from typing import Literal
+
 import torch
 import torch.nn as nn
 
@@ -18,20 +20,30 @@ class NDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: str,
+        problem_name: Literal["tsp", "cvrp"],
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
         poly_dim: int = 256,
         seed_dim: int = 10,
+        with_neighbours_encoding: bool = True,
+        with_tour_encoding: bool | None = None,
     ) -> None:
         super().__init__()
 
         self.problem_name = problem_name
         self.seed_dim = seed_dim
 
+        if with_tour_encoding is None:
+            with_tour_encoding = problem_name == "cvrp"
+
         self.encoder = NDSEncoder(
-            problem_name=problem_name, hidden_dim=hidden_dim, num_heads=num_heads, ff_dim=ff_dim
+            problem_name=problem_name,
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            ff_dim=ff_dim,
+            with_neighbours_encoding=with_neighbours_encoding,
+            with_tour_encoding=with_tour_encoding,
         )
         self.decoder = NDSDecoder(
             hidden_dim=hidden_dim, num_heads=num_heads, seed_dim=seed_dim, poly_dim=poly_dim
