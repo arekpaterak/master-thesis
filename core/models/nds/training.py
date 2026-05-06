@@ -137,7 +137,7 @@ def configure_training_step(
             loss = -((best_reward - reward_baseline) * best_log_p).mean()
             loss.backward()
 
-            solution = solution_prime.gather(1, best_rollout_idx.squeeze()).squeeze(1)
+            solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
             total_loss += loss.item()
             total_reward += best_reward.mean().item()
@@ -165,7 +165,7 @@ def configure_training_step(
             objective_before=objective_before,
             objective_after=objective_after,
             grad_norm=grad_norm.item(),
-            instances_per_sec=(batch_size * rollouts_per_solution) / elapsed,
+            instances_per_sec=batch_size / elapsed,
         )
 
     return training_step

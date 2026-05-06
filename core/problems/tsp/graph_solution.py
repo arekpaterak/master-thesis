@@ -96,27 +96,19 @@ class TSPGraphSolution(BaseSolution):
     def remove_nodes(self, nodes: torch.Tensor) -> TSPGraphSolution:
         target_batch_shape = nodes.shape[:-1]
 
-        expanded = self
-        for _ in range(len(target_batch_shape) - len(self.batch_size)):
-            expanded = expanded.unsqueeze(-1)
-        expanded = expanded.expand(*target_batch_shape)
-
-        next_nodes = expanded._next.clone()
-        prev_nodes = expanded._prev.clone()
-
-        predecessors = prev_nodes.gather(-1, nodes)
-        successors = next_nodes.gather(-1, nodes)
-        next_nodes.scatter_(-1, predecessors, self.UNASSIGNED)
-        prev_nodes.scatter_(-1, nodes, self.UNASSIGNED)
-        next_nodes.scatter_(-1, nodes, self.UNASSIGNED)
-        prev_nodes.scatter_(-1, successors, self.UNASSIGNED)
-
-        return TSPGraphSolution(
-            _instance=expanded._instance,
-            _next=next_nodes,
-            _prev=prev_nodes,
-            batch_size=torch.Size(target_batch_shape),
+        shape_diff = len(target_batch_shape) - len(self.batch_size)
+        expanded = (
+            self.reshape(*self.batch_size, *[1] * shape_diff).expand(target_batch_shape).clone()
         )
+
+        predecessors = expanded._prev.gather(-1, nodes)
+        successors = expanded._next.gather(-1, nodes)
+        expanded._next.scatter_(-1, predecessors, self.UNASSIGNED)
+        expanded._prev.scatter_(-1, nodes, self.UNASSIGNED)
+        expanded._next.scatter_(-1, nodes, self.UNASSIGNED)
+        expanded._prev.scatter_(-1, successors, self.UNASSIGNED)
+
+        return expanded
 
     def remove_edges(self, *, end_nodes: torch.Tensor) -> None:
         if end_nodes.shape == self._next.shape[:-1]:

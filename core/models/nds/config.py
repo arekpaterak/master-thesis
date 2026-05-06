@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -41,8 +42,14 @@ class TrainerParams(BaseModel):
     """Configuration for the training process."""
 
     epochs: int = Field(default=1, description="Number of training epochs.")
-    batches_per_epoch: int = Field(default=500, description="Batches per epoch.")
-    batch_size: int = Field(default=64, description="Training batch size.")
+    instances_per_epoch: int = Field(default=1500, description="Instances per epoch.")
+    batch_size: int = Field(default=128, description="Training batch size.")
+
+    @computed_field
+    @property
+    def batches_per_epoch(self) -> int:
+        return math.ceil(self.instances_per_epoch / self.batch_size)
+
     rollouts_per_instance: int = Field(default=128, description="Rollouts per instance.")
     num_initial_improvement_steps: int = Field(
         default=10, description="Initial improvement steps before training."
