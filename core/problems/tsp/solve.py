@@ -5,6 +5,7 @@ from typing import Protocol
 import torch
 
 from core.problems.tsp import TSPInstance
+from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solution import TSPSolution
 
 
@@ -13,17 +14,18 @@ class TSPSolveStrategy(Protocol):
 
 
 def random_permutation(instance: TSPInstance, *, seed: int | None = None) -> TSPSolution:
-    generator = torch.Generator()
-    if seed:
-        generator.manual_seed(seed)
     was_batched = True
     if len(instance.batch_size) == 0:
         instance = instance.unsqueeze(0)
         was_batched = False
     batch_size = instance.batch_size[0]
     num_locations = instance.num_locations
-
     device = instance.locations.device
+
+    generator = None
+    if seed is not None:
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
 
     random_permutations = torch.argsort(
         torch.rand(batch_size, num_locations, device=device, generator=generator), dim=-1
@@ -37,6 +39,11 @@ def random_permutation(instance: TSPInstance, *, seed: int | None = None) -> TSP
         instance=instance,
         tour=random_permutations,
     )
+
+
+def random_permutation_graph(instance: TSPInstance, *, seed: int | None = None) -> TSPGraphSolution:
+    solution = random_permutation(instance, seed=seed)
+    return TSPGraphSolution.create(instance=instance, sequence=solution.tour)
 
 
 STRATEGIES = [

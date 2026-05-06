@@ -134,13 +134,17 @@ class NeighboursEncodingLayer(nn.Module):
     ) -> torch.Tensor:
         """
         Args:
-            h: (B, N+1, hidden_dim) node embeddings, where h[:, 0] is the depot embedding and h[:, 1:] are customer embeddings
-            neighbours_index: (B, N, 2) integer indices of the previous and next nodes for each customer
+            h: (B, N+offset, hidden_dim) node embeddings. For problems with a depot (e.g. CVRP),
+               offset=1 and h[:, 0] is the depot embedding with h[:, 1:] as customer embeddings.
+               For problems without a depot (e.g. TSP), offset=0 and all nodes are treated equally.
+            neighbours_index: (B, N, 2) integer indices of the previous and next nodes for each non-depot node.
 
         Returns:
-            (B, N+1, hidden_dim) updated node embeddings after message passing
+            (B, N+offset, hidden_dim) updated node embeddings after message passing.
         """
-        customer_embeddings = h[:, 1:]  # (B, N, hidden_dim)
+        # offset=1 for problems with a depot (CVRP), offset=0 when all nodes are customers (TSP)
+        offset = h.shape[-2] - neighbours_index.shape[-2]
+        customer_embeddings = h[:, offset:]  # (B, N, hidden_dim)
 
         previous = self._gather(h, neighbours_index[:, :, 0])  # (B, N, hidden_dim)
         next = self._gather(h, neighbours_index[:, :, 1])  # (B, N, hidden_dim)
@@ -152,7 +156,7 @@ class NeighboursEncodingLayer(nn.Module):
         update = self.FF(F.relu(self.W3(torch.cat([customer_embeddings, agg], dim=-1))))
         updated = self.norm(customer_embeddings + update)
 
-        return torch.cat([h[:, :1], updated], dim=1)
+        return torch.cat([h[:, :offset], updated], dim=1)
 
     def _gather(self, embeddings: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
         """

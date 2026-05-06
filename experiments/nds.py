@@ -167,7 +167,9 @@ def _(TrainConfig, mo):
 
     problem_widgets = mo.ui.dictionary(
         {
-            "name": mo.ui.dropdown(["cvrp"], value=defaults.problem.name, label="Problem name"),
+            "name": mo.ui.dropdown(
+                ["cvrp", "tsp"], value=defaults.problem.name, label="Problem name"
+            ),
             "size": mo.ui.number(
                 10, 200, value=defaults.problem.size, step=1, label="Problem size"
             ),
@@ -280,14 +282,26 @@ def _(TrainConfig, mo):
     )
 
 
-@app.cell(column=2)
+@app.cell(column=2, hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Problem Setup
+    """)
+    return
+
+
+@app.cell
 def _(config):
     from core.problems.cvrp import CVRPConfig, CVRPSampler
+    from core.problems.tsp import TSPConfig, TSPSampler
 
-    if config.problem.name != "cvrp":
-        raise ValueError(f"Unsupported problem name: {config.problem.name}")
-
-    sampler = CVRPSampler(CVRPConfig.for_n(config.problem.size))
+    match config.problem.name:
+        case "cvrp":
+            sampler = CVRPSampler(CVRPConfig.for_n(config.problem.size))
+        case "tsp":
+            sampler = TSPSampler(TSPConfig(num_locations=config.problem.size))
+        case _:
+            raise ValueError(f"Unsupported problem name: {config.problem.name}")
     return (sampler,)
 
 
@@ -310,6 +324,8 @@ def _(config, device):
         ff_dim=config.model.ff_dim,
         poly_dim=config.model.poly_dim,
         seed_dim=config.model.seed_dim,
+        with_neighbours_encoding=config.model.with_neighbours_encoding,
+        with_tour_encoding=config.model.with_tour_encoding,
     ).to(device)
 
     model
@@ -331,11 +347,13 @@ def _(config, device, mo, model, sampler):
     from core.models.nds.functions import (
         apply_rollout,
         greedy_cvrp_repair,
+        greedy_tsp_repair,
         noop_improvement_step,
     )
     from core.models.nds.training import BatchSummary, EpochSummary, configure_training_step
     from core.models.trainer import Trainer
     from core.problems.cvrp.solve import one_customer_per_route
+    from core.problems.tsp.solve import random_permutation_graph
 
     if config.logging.wandb_project:
         wandb.init(
@@ -344,8 +362,13 @@ def _(config, device, mo, model, sampler):
             config=config.model_dump(),
         )
 
-    def generate_start_solution(instance):
-        return one_customer_per_route(instance)
+    match config.problem.name:
+        case "cvrp":
+            generate_start_solution = one_customer_per_route
+            _repair = greedy_cvrp_repair
+        case "tsp":
+            generate_start_solution = random_permutation_graph
+            _repair = greedy_tsp_repair
 
     with (
         mo.status.progress_bar(total=config.trainer.epochs, title="Epochs") as epoch_bar,
@@ -371,7 +394,7 @@ def _(config, device, mo, model, sampler):
             generate_start_solution=generate_start_solution,
             improvement_step=noop_improvement_step,
             apply_rollout=apply_rollout,
-            repair=greedy_cvrp_repair,
+            repair=_repair,
         )
 
         _ = Trainer(

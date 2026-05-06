@@ -3,6 +3,7 @@ import torch
 from core.lns.operators.destroy.base import DestroyOperator
 from core.problems.cvrp import CVRPSolution
 from core.problems.solution import BaseSolution
+from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solution import TSPSolution
 
 
@@ -22,6 +23,19 @@ class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
         batch_size = solution.batch_size
 
         match solution:
+            case TSPGraphSolution() as s:
+                if self.destruction_size > num_nodes:
+                    raise ValueError(
+                        f"Destruction size {self.destruction_size} exceeds nodes {num_nodes}"
+                    )
+
+                to_remove = (
+                    torch.rand((*batch_size, num_nodes), device=device, generator=self._generator)
+                    .topk(self.destruction_size, dim=-1)
+                    .indices
+                )
+                return s.remove_nodes(to_remove)  # type: ignore
+
             case TSPSolution() as s:
                 if self.destruction_size > num_nodes:
                     raise ValueError(
