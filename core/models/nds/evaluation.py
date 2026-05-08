@@ -101,6 +101,7 @@ def configure_validation_step(
         epoch: int,
     ) -> BatchValidationSummary:
         model.eval()
+        instance = instance.to(next(model.parameters()).device)
         batch_size = instance.batch_size[0]
 
         with torch.no_grad():
