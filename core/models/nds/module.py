@@ -9,20 +9,24 @@ from core.models.module import Module
 from core.models.nds.config import TrainConfig
 from core.models.nds.evaluation import (
     BatchValidationSummary,
-    EpochValidationSummary,
+    EpochValidationAccumulator,
     configure_validation_step,
 )
 from core.models.nds.functions import noop_improvement_step
 from core.models.nds.model import NDSModel
-from core.models.nds.training import BatchTrainSummary, EpochTrainSummary, configure_training_step
+from core.models.nds.training import (
+    BatchTrainSummary,
+    EpochTrainAccumulator,
+    configure_training_step,
+)
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 
 
 class NDSModule(Module):
-    epoch_train_summary_cls = EpochTrainSummary
-    epoch_validation_summary_cls = EpochValidationSummary
+    train_accumulator_cls = EpochTrainAccumulator
+    validation_accumulator_cls = EpochValidationAccumulator
 
     def __init__(
         self,

@@ -18,15 +18,19 @@ def test_trainer_runs_epochs_and_callbacks_in_order():
         def __eq__(self, other: object) -> bool:
             return isinstance(other, EpochSummary) and self.value == other.value
 
-        @classmethod
-        def from_step_summaries(
-            cls, *, epoch: int, batch_summaries: list[str], **_
-        ) -> EpochSummary:
-            assert batch_summaries == ["batch:instance-4", "batch:instance-4"]
-            return cls(f"epoch-{epoch}")
+    class EpochAccumulator:
+        def __init__(self) -> None:
+            self._batch_summaries: list[str] = []
+
+        def update(self, batch_summary: str) -> None:
+            self._batch_summaries.append(batch_summary)
+
+        def finalize(self, *, epoch: int) -> EpochSummary:
+            assert self._batch_summaries == ["batch:instance-4", "batch:instance-4"]
+            return EpochSummary(f"epoch-{epoch}")
 
     class FakeModule(Module):
-        epoch_train_summary_cls = EpochSummary
+        train_accumulator_cls = EpochAccumulator
 
         def training_step(self, *, optimizer: object, instance: object, **_) -> str:
             assert optimizer == "optimizer"

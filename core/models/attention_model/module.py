@@ -6,14 +6,14 @@ import torch.nn as nn
 import torch.optim as optim
 
 from core.models.attention_model.model import AttentionModel
-from core.models.attention_model.training import BatchSummary, EpochSummary, training_step
+from core.models.attention_model.training import BatchSummary, EpochTrainAccumulator, training_step
 from core.models.attention_model.training_helpers import prepare_baseline
 from core.models.module import Module
 from core.problems.instance import BaseProblemInstance
 
 
 class AMModule(Module):
-    epoch_train_summary_cls = EpochSummary
+    train_accumulator_cls = EpochTrainAccumulator
 
     def __init__(self, model: AttentionModel) -> None:
         self.model = model

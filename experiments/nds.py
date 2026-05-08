@@ -415,6 +415,7 @@ def _(config, device, mo, model, sampler, val_sampler):
             name=config.run_name,
             config=config.model_dump(),
         )
+        wandb.define_metric("val/*", step_metric="epoch")
 
     match config.problem.name:
         case "cvrp":
@@ -455,6 +456,7 @@ def _(config, device, mo, model, sampler, val_sampler):
                         "val/objective_final": val_summary.objective_final,
                         "val/improvement": val_summary.improvement,
                         "val/relative_improvement": val_summary.relative_improvement,
+                        "epoch": val_summary.epoch,
                     }
                 )
             if config.validation.plot_enabled:
