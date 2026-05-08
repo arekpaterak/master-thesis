@@ -6,7 +6,7 @@ from core.models.nds.functions import (
     only_expanding_apply_rollout,
 )
 from core.models.nds.model import NDSModel
-from core.models.nds.training import EpochSummary, configure_training_step
+from core.models.nds.training import EpochTrainSummary, configure_training_step
 from core.models.trainer import Trainer
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.solve import one_customer_per_route
@@ -34,7 +34,7 @@ def test_train():
         batches_per_epoch=2,
         batch_size=B,
         training_step=train_step,
-        aggregate_epoch=EpochSummary.from_step_summaries,
+        epoch_train_summary_cls=EpochTrainSummary,
     ).fit(model=model, optimizer=optimizer, instance_sampler=sampler)
 
     assert [summary.epoch for summary in history] == [1, 2]

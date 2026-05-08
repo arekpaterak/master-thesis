@@ -13,7 +13,7 @@ from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 
 
-class BatchSummary(BaseModel):
+class BatchTrainSummary(BaseModel):
     model_config = {"frozen": True}
 
     loss: float
@@ -28,7 +28,7 @@ class BatchSummary(BaseModel):
     instances_per_sec: float
 
 
-class EpochSummary(BaseModel):
+class EpochTrainSummary(BaseModel):
     model_config = {"frozen": True}
 
     epoch: int
@@ -53,9 +53,9 @@ class EpochSummary(BaseModel):
         cls,
         *,
         epoch: int,
-        batch_summaries: list[BatchSummary],
+        batch_summaries: list[BatchTrainSummary],
         **_,
-    ) -> EpochSummary:
+    ) -> EpochTrainSummary:
         n = len(batch_summaries)
         return cls(
             epoch=epoch,
@@ -82,20 +82,19 @@ def configure_training_step(
     improvement_step: Callable[[BaseSolution, NDSModel], BaseSolution],
     apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution],
     repair: Callable[[BaseSolution, Rollout], BaseSolution],
-) -> Callable[..., BatchSummary]:
+) -> Callable[..., BatchTrainSummary]:
     def training_step(
         *,
         model: NDSModel,
         optimizer: optim.Optimizer,
         instance: BaseProblemInstance,
         **_,
-    ) -> BatchSummary:
+    ) -> BatchTrainSummary:
         start = time.perf_counter()
         device = next(model.parameters()).device
         instance = instance.to(device)
         model.train()
 
-        # TODO: For future, think if only operate on one instance, expanded to many rollouts, instead of batch of instances. Like in the article
         optimizer.zero_grad()
         solution = generate_start_solution(instance)
 
@@ -154,8 +153,7 @@ def configure_training_step(
         elapsed = time.perf_counter() - start
         batch_size = instance.batch_size[0]
 
-        # TODO: Normalize by main improvement steps
-        return BatchSummary(
+        return BatchTrainSummary(
             loss=total_loss / num_main_improvement_steps,
             reward=total_reward / num_main_improvement_steps,
             reward_baseline=total_reward_baseline / num_main_improvement_steps,

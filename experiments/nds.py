@@ -4,6 +4,7 @@ __generated_with = "0.22.5"
 app = marimo.App(width="columns")
 
 with app.setup:
+    import matplotlib.pyplot as plt
     import torch
     import torch.nn
 
@@ -134,6 +135,7 @@ def _(
     problem_widgets,
     run_button,
     trainer_widgets,
+    validation_widgets,
     yaml_data,
 ):
     from core.models.nds.config import (
@@ -142,6 +144,7 @@ def _(
         OptimizerParams,
         ProblemParams,
         TrainerParams,
+        ValidationConfig,
     )
 
     if is_script_mode:
@@ -157,6 +160,7 @@ def _(
             optimizer=OptimizerParams(**optimizer_widgets.value),
             trainer=TrainerParams(**trainer_widgets.value),
             logging=LoggingConfig(**logging_widgets.value),
+            validation=ValidationConfig(**validation_widgets.value),
         )
     return (config,)
 
@@ -260,6 +264,45 @@ def _(TrainConfig, mo):
         }
     )
 
+    validation_widgets = mo.ui.dictionary(
+        {
+            "num_instances": mo.ui.number(
+                32, 5000, value=defaults.validation.num_instances, step=32, label="Num instances"
+            ),
+            "batch_size": mo.ui.slider(
+                8, 512, value=defaults.validation.batch_size, step=8, label="Batch size"
+            ),
+            "num_improvement_steps": mo.ui.slider(
+                1,
+                200,
+                value=defaults.validation.num_improvement_steps,
+                step=1,
+                label="Improvement steps",
+            ),
+            "every_n_epochs": mo.ui.number(
+                1, 100, value=defaults.validation.every_n_epochs, step=1, label="Every N epochs"
+            ),
+            "seed": mo.ui.number(0, 99999, value=defaults.validation.seed, step=1, label="Seed"),
+            "plot_enabled": mo.ui.checkbox(
+                value=defaults.validation.plot_enabled, label="Plot enabled"
+            ),
+            "plot_every_n_lns_steps": mo.ui.slider(
+                1,
+                20,
+                value=defaults.validation.plot_every_n_improvement_steps,
+                step=1,
+                label="Plot every N steps",
+            ),
+            "plot_dir": mo.ui.text(value=defaults.validation.plot_dir, label="Plot directory"),
+            "plot_save_to_disk": mo.ui.checkbox(
+                value=defaults.validation.plot_save_to_disk, label="Save to disk"
+            ),
+            "plot_show_in_marimo": mo.ui.checkbox(
+                value=defaults.validation.plot_show_in_marimo, label="Show in marimo"
+            ),
+        }
+    )
+
     params_accordion = mo.accordion(
         {
             "Problem": problem_widgets,
@@ -267,6 +310,7 @@ def _(TrainConfig, mo):
             "Optimizer": optimizer_widgets,
             "Trainer": trainer_widgets,
             "Logging": logging_widgets,
+            "Validation": validation_widgets,
         }
     )
 
@@ -279,6 +323,7 @@ def _(TrainConfig, mo):
         problem_widgets,
         run_button,
         trainer_widgets,
+        validation_widgets,
     )
 
 
@@ -298,11 +343,17 @@ def _(config):
     match config.problem.name:
         case "cvrp":
             sampler = CVRPSampler(CVRPConfig.for_n(config.problem.size))
+            val_sampler = CVRPSampler(
+                CVRPConfig.for_n(config.problem.size), seed=config.validation.seed
+            )
         case "tsp":
             sampler = TSPSampler(TSPConfig(num_locations=config.problem.size))
+            val_sampler = TSPSampler(
+                TSPConfig(num_locations=config.problem.size), seed=config.validation.seed
+            )
         case _:
             raise ValueError(f"Unsupported problem name: {config.problem.name}")
-    return (sampler,)
+    return sampler, val_sampler
 
 
 @app.cell(hide_code=True)
@@ -341,16 +392,27 @@ def _(mo):
 
 
 @app.cell
-def _(config, device, mo, model, sampler):
+def _(config, device, mo, model, sampler, val_sampler):
+    from pathlib import Path
+
     import torch.optim as optim
 
+    from core.models.nds.evaluation import (
+        EpochValidationSummary,
+        configure_validation_step,
+        plot_lns_progress,
+    )
     from core.models.nds.functions import (
         apply_rollout,
         greedy_cvrp_repair,
         greedy_tsp_repair,
         noop_improvement_step,
     )
-    from core.models.nds.training import BatchSummary, EpochSummary, configure_training_step
+    from core.models.nds.training import (
+        BatchTrainSummary,
+        EpochTrainSummary,
+        configure_training_step,
+    )
     from core.models.trainer import Trainer
     from core.problems.cvrp.solve import one_customer_per_route
     from core.problems.tsp.solve import random_permutation_graph
@@ -370,6 +432,15 @@ def _(config, device, mo, model, sampler):
             generate_start_solution = random_permutation_graph
             _repair = greedy_tsp_repair
 
+    validation_step = configure_validation_step(
+        generate_start_solution=generate_start_solution,
+        apply_rollout_fn=apply_rollout,
+        repair=_repair,
+        deconstruction_size=config.trainer.deconstruction_size,
+        num_improvement_steps=config.validation.num_improvement_steps,
+        every_n_lns_steps=config.validation.plot_every_n_improvement_steps,
+    )
+
     with (
         mo.status.progress_bar(total=config.trainer.epochs, title="Epochs") as epoch_bar,
         mo.status.progress_bar(
@@ -377,15 +448,41 @@ def _(config, device, mo, model, sampler):
         ) as step_bar,
     ):
 
-        def on_step_end(summary: BatchSummary):
+        def on_step_end(summary: BatchTrainSummary):
             step_bar.update(subtitle=f"Loss: {summary.loss:.4f}")
             if config.logging.wandb_project:
                 wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
 
-        def on_epoch_end(summary: EpochSummary):
+        def on_epoch_end(summary: EpochTrainSummary):
             epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
 
-        optimizer = optim.Adam(model.parameters(), lr=config.optimizer.learning_rate)
+        def on_validation_end(val_summary: EpochValidationSummary):
+            if config.logging.wandb_project:
+                wandb.log(
+                    {
+                        "val/objective_initial": val_summary.objective_initial,
+                        "val/objective_final": val_summary.objective_final,
+                        "val/improvement": val_summary.improvement,
+                        "val/relative_improvement": val_summary.relative_improvement,
+                    }
+                )
+            if config.validation.plot_enabled:
+                fig = plot_lns_progress(
+                    val_summary.snapshots, val_summary.step_labels, epoch=val_summary.epoch
+                )
+                if config.validation.plot_save_to_disk:
+                    plot_path = Path(config.validation.plot_dir) / config.run_name
+                    plot_path.mkdir(parents=True, exist_ok=True)
+                    fig.savefig(
+                        plot_path / f"epoch_{val_summary.epoch:04d}.png",
+                        dpi=100,
+                        bbox_inches="tight",
+                    )
+                if config.validation.plot_show_in_marimo:
+                    pass
+                plt.close(fig)
+
+        optimizer = optim.AdamW(model.parameters(), lr=config.optimizer.learning_rate)
         train_step = configure_training_step(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
             rollouts_per_solution=config.trainer.rollouts_per_instance,
@@ -402,13 +499,20 @@ def _(config, device, mo, model, sampler):
             instances_per_epoch=config.trainer.instances_per_epoch,
             batch_size=config.trainer.batch_size,
             training_step=train_step,
-            aggregate_epoch=EpochSummary.from_step_summaries,
+            epoch_train_summary_cls=EpochTrainSummary,
             on_step_end=on_step_end,
             on_epoch_end=[on_epoch_end],
+            validation_step=validation_step,
+            epoch_validation_summary_cls=EpochValidationSummary,
+            validation_instances=config.validation.num_instances,
+            validation_batch_size=config.validation.batch_size,
+            validate_every_n_epochs=config.validation.every_n_epochs,
+            on_validation_end=[on_validation_end],
         ).fit(
             model=model,
             optimizer=optimizer,
-            instance_sampler=lambda batch_size: sampler(batch_size).to(device),
+            instance_sampler=lambda n: sampler(n).to(device),
+            validation_instance_sampler=lambda n: val_sampler(n).to(device),
         )
 
     if config.logging.wandb_project:
