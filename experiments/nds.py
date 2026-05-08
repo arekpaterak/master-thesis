@@ -397,22 +397,14 @@ def _(config, device, mo, model, sampler, val_sampler):
 
     import torch.optim as optim
 
-    from core.models.nds.evaluation import (
-        EpochValidationSummary,
-        configure_validation_step,
-        plot_lns_progress,
-    )
+    from core.models.nds.evaluation import EpochValidationSummary, plot_lns_progress
     from core.models.nds.functions import (
         apply_rollout,
         greedy_cvrp_repair,
         greedy_tsp_repair,
-        noop_improvement_step,
     )
-    from core.models.nds.training import (
-        BatchTrainSummary,
-        EpochTrainSummary,
-        configure_training_step,
-    )
+    from core.models.nds.module import NDSModule
+    from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
     from core.models.trainer import Trainer
     from core.problems.cvrp.solve import one_customer_per_route
     from core.problems.tsp.solve import random_permutation_graph
@@ -432,13 +424,12 @@ def _(config, device, mo, model, sampler, val_sampler):
             generate_start_solution = random_permutation_graph
             _repair = greedy_tsp_repair
 
-    validation_step = configure_validation_step(
+    nds_module = NDSModule(
+        config=config,
+        model=model,
         generate_start_solution=generate_start_solution,
-        apply_rollout_fn=apply_rollout,
+        apply_rollout=apply_rollout,
         repair=_repair,
-        deconstruction_size=config.trainer.deconstruction_size,
-        num_improvement_steps=config.validation.num_improvement_steps,
-        every_n_lns_steps=config.validation.plot_every_n_improvement_steps,
     )
 
     with (
@@ -482,34 +473,24 @@ def _(config, device, mo, model, sampler, val_sampler):
                     pass
                 plt.close(fig)
 
-        optimizer = optim.AdamW(model.parameters(), lr=config.optimizer.learning_rate)
-        train_step = configure_training_step(
-            num_main_improvement_steps=config.trainer.num_main_improvement_steps,
-            rollouts_per_solution=config.trainer.rollouts_per_instance,
-            num_initial_improvement_steps=config.trainer.num_initial_improvement_steps,
-            deconstruction_size=config.trainer.deconstruction_size,
-            generate_start_solution=generate_start_solution,
-            improvement_step=noop_improvement_step,
-            apply_rollout=apply_rollout,
-            repair=_repair,
+        optimizer = optim.AdamW(
+            nds_module.parameters(),
+            lr=config.optimizer.learning_rate,
+            weight_decay=config.optimizer.weight_decay,
         )
 
         _ = Trainer(
             max_epochs=config.trainer.epochs,
-            instances_per_epoch=config.trainer.instances_per_epoch,
+            training_instances=config.trainer.instances_per_epoch,
             batch_size=config.trainer.batch_size,
-            training_step=train_step,
-            epoch_train_summary_cls=EpochTrainSummary,
-            on_step_end=on_step_end,
-            on_epoch_end=[on_epoch_end],
-            validation_step=validation_step,
-            epoch_validation_summary_cls=EpochValidationSummary,
+            on_batch_train_end=on_step_end,
+            on_epoch_train_end=[on_epoch_end],
             validation_instances=config.validation.num_instances,
             validation_batch_size=config.validation.batch_size,
             validate_every_n_epochs=config.validation.every_n_epochs,
-            on_validation_end=[on_validation_end],
+            on_epoch_validation_end=[on_validation_end],
         ).fit(
-            model=model,
+            model=nds_module,
             optimizer=optimizer,
             instance_sampler=lambda n: sampler(n).to(device),
             validation_instance_sampler=lambda n: val_sampler(n).to(device),

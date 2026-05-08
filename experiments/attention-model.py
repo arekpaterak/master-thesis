@@ -241,14 +241,13 @@ def _(mo):
 
 @app.cell
 def _(mo, model, model_params, sampler):
+    from core.models.attention_model.module import AMModule
     from core.models.attention_model.statistical_test import OneSidedPairedTTestResult
     from core.models.attention_model.training import (
         BatchSummary,
         EpochSummary,
         configure_baseline_sync_callback,
-        training_step,
     )
-    from core.models.attention_model.training_helpers import prepare_baseline
     from core.models.trainer import Trainer
 
     if model_params.wandb_project:
@@ -257,6 +256,13 @@ def _(mo, model, model_params, sampler):
             name=model_params.run_name,
             config=model_params.model_dump(),
         )
+
+    attention_module = AMModule(model)
+    optimizer = torch.optim.AdamW(
+        attention_module.parameters(),
+        lr=model_params.learning_rate,
+        weight_decay=0.0,
+    )
 
     with (
         mo.status.progress_bar(total=model_params.epochs, title="Epochs") as epoch_bar,
@@ -283,28 +289,20 @@ def _(mo, model, model_params, sampler):
                     }
                 )
 
-        baseline = prepare_baseline(model)
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=model_params.learning_rate,
-            weight_decay=0.0,
-        )
         baseline_sync = configure_baseline_sync_callback(
-            model=model,
-            baseline=baseline,
+            model=attention_module.model,
+            baseline=attention_module.baseline,
             instance_sampler=sampler,
             on_test_end=on_test_end,
         )
 
         _ = Trainer(
             max_epochs=model_params.epochs,
-            batches_per_epoch=model_params.batches_per_epoch,
+            training_batches_per_epoch=model_params.batches_per_epoch,
             batch_size=model_params.batch_size,
-            training_step=training_step,
-            aggregate_epoch=EpochSummary.from_step_summaries,
-            on_step_end=on_step_end,
-            on_epoch_end=[baseline_sync, on_epoch_end],
-        ).fit(model=model, optimizer=optimizer, instance_sampler=sampler, baseline=baseline)
+            on_batch_train_end=on_step_end,
+            on_epoch_train_end=[baseline_sync, on_epoch_end],
+        ).fit(model=attention_module, optimizer=optimizer, instance_sampler=sampler)
 
     if model_params.wandb_project:
         wandb.finish()
