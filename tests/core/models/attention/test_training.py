@@ -32,7 +32,7 @@ def test_train_one_epoch(problem: str):
         batches_per_epoch=1,
         batch_size=8,
         training_step=training_step,
-        aggregate_epoch=EpochSummary.from_step_summaries,
+        epoch_train_summary_cls=EpochSummary,
     ).fit(model=model, optimizer=optimizer, instance_sampler=sampler, baseline=baseline)
 
     params_after = list(model.parameters())

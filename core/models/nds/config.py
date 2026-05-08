@@ -66,6 +66,26 @@ class LoggingConfig(BaseModel):
     wandb_project: str = Field(default="nds", description="W&B project name (empty to skip).")
 
 
+class ValidationConfig(BaseModel):
+    """Configuration for validation during training."""
+
+    num_instances: int = Field(default=1000, description="Instances to evaluate.")
+    batch_size: int = Field(default=128, description="Batch size.")
+    num_improvement_steps: int = Field(
+        default=60,
+        description="LNS steps.",
+    )
+    every_n_epochs: int = Field(default=1, description="Run validation every N training epochs.")
+    seed: int = Field(default=42, description="Fixed seed for reproducible validation instances.")
+    plot_enabled: bool = Field(default=True, description="Plot LNS progress for one instance.")
+    plot_every_n_improvement_steps: int = Field(
+        default=5, description="Capture solution snapshot every N LNS steps."
+    )
+    plot_dir: str = Field(default="plots", description="Directory to save plots.")
+    plot_save_to_disk: bool = Field(default=True, description="Save plots.")
+    plot_show_in_marimo: bool = Field(default=True, description="Display plots inline in marimo.")
+
+
 class TrainConfig(BaseModel):
     """Complete configuration for NDS model training."""
 
@@ -74,11 +94,12 @@ class TrainConfig(BaseModel):
     optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
     trainer: TrainerParams = Field(default_factory=TrainerParams)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    validation: ValidationConfig = Field(default_factory=ValidationConfig)
 
     @computed_field
     @property
     def run_name(self) -> str:
-        config_dict = self.model_dump(exclude={"logging", "run_name"})
+        config_dict = self.model_dump(exclude={"logging", "validation", "run_name"})
 
         config_json = json.dumps(config_dict, sort_keys=True)
         h = hashlib.md5(config_json.encode()).hexdigest()[:7]

@@ -20,6 +20,7 @@ _MINIMAL_CONFIG = {
         "deconstruction_size": 3,
     },
     "logging": {"wandb_project": ""},
+    "validation": {},
 }
 
 

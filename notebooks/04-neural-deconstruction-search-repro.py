@@ -319,7 +319,7 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
         noop_repair,
         only_expanding_apply_rollout,
     )
-    from core.models.nds.training import EpochSummary, configure_training_step
+    from core.models.nds.training import EpochTrainSummary, configure_training_step
     from core.models.trainer import Trainer
 
     cfg = CVRPConfig.for_n(20)
@@ -345,7 +345,7 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
         batches_per_epoch=1,
         batch_size=32,
         training_step=train_step,
-        aggregate_epoch=EpochSummary.from_step_summaries,
+        aggregate_epoch=EpochTrainSummary.from_step_summaries,
     ).fit(
         model=model,
         optimizer=optimizer,
