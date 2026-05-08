@@ -314,40 +314,36 @@ def _(mo):
 def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
     import torch.optim as optim
 
-    from core.models.nds.functions import (
-        noop_improvement_step,
-        noop_repair,
-        only_expanding_apply_rollout,
-    )
-    from core.models.nds.training import EpochTrainSummary, configure_training_step
+    from core.models.nds.config import TrainConfig, TrainerParams
+    from core.models.nds.functions import noop_repair, only_expanding_apply_rollout
+    from core.models.nds.module import NDSModule
     from core.models.trainer import Trainer
 
     cfg = CVRPConfig.for_n(20)
     sampler = CVRPSampler(cfg, seed=123)
 
-    def generate_start_solution(instance):
-        return one_customer_per_route(instance)
-
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    train_step = configure_training_step(
-        num_main_improvement_steps=2,
-        rollouts_per_solution=4,
-        num_initial_improvement_steps=0,
-        deconstruction_size=5,
-        generate_start_solution=generate_start_solution,
-        improvement_step=noop_improvement_step,
+    nds_module = NDSModule(
+        config=TrainConfig(
+            trainer=TrainerParams(
+                num_main_improvement_steps=2,
+                rollouts_per_instance=4,
+                num_initial_improvement_steps=0,
+                deconstruction_size=5,
+            )
+        ),
+        model=model,
+        generate_start_solution=one_customer_per_route,
         apply_rollout=only_expanding_apply_rollout,
         repair=noop_repair,
     )
+    optimizer = optim.Adam(nds_module.parameters(), lr=1e-4)
 
     Trainer(
         max_epochs=1,
-        batches_per_epoch=1,
+        training_batches_per_epoch=1,
         batch_size=32,
-        training_step=train_step,
-        aggregate_epoch=EpochTrainSummary.from_step_summaries,
     ).fit(
-        model=model,
+        model=nds_module,
         optimizer=optimizer,
         instance_sampler=lambda batch_size: sampler(batch_size=batch_size).to(DEVICE),
     )

@@ -4,10 +4,7 @@ import pytest
 import torch
 
 from core.models.attention_model.model import AttentionModel
-from core.models.attention_model.training import (
-    EpochSummary,
-    training_step,
-)
+from core.models.attention_model.module import AMModule
 from core.models.attention_model.training_helpers import prepare_baseline, sync_baseline_
 from core.models.trainer import Trainer
 from core.problems.cvrp import CVRPConfig, CVRPSampler
@@ -23,17 +20,15 @@ def test_train_one_epoch(problem: str):
         sampler = CVRPSampler(CVRPConfig.for_n(20), seed=0)
 
     model = AttentionModel(problem_name=problem, hidden_dim=8, num_layers=1)
-    baseline = prepare_baseline(model)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.0)
+    attention_module = AMModule(model)
+    optimizer = torch.optim.AdamW(attention_module.parameters(), lr=1e-4, weight_decay=0.0)
     params_before = copy.deepcopy([p.detach().clone() for p in model.parameters()])
 
     Trainer(
         max_epochs=1,
-        batches_per_epoch=1,
+        training_batches_per_epoch=1,
         batch_size=8,
-        training_step=training_step,
-        epoch_train_summary_cls=EpochSummary,
-    ).fit(model=model, optimizer=optimizer, instance_sampler=sampler, baseline=baseline)
+    ).fit(model=attention_module, optimizer=optimizer, instance_sampler=sampler)
 
     params_after = list(model.parameters())
     assert any(
