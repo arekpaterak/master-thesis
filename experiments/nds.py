@@ -481,7 +481,7 @@ def _(config, device, mo, model, sampler, val_sampler):
             weight_decay=config.optimizer.weight_decay,
         )
 
-        _ = Trainer(
+        Trainer(
             max_epochs=config.trainer.epochs,
             training_instances=config.trainer.instances_per_epoch,
             batch_size=config.trainer.batch_size,
@@ -494,8 +494,8 @@ def _(config, device, mo, model, sampler, val_sampler):
         ).fit(
             model=nds_module,
             optimizer=optimizer,
-            instance_sampler=lambda n: sampler(n).to(device),
-            validation_instance_sampler=lambda n: val_sampler(n).to(device),
+            instance_sampler=sampler,
+            validation_instance_sampler=val_sampler,
         )
 
     if config.logging.wandb_project:

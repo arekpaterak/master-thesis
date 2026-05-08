@@ -296,7 +296,7 @@ def _(mo, model, model_params, sampler):
             on_test_end=on_test_end,
         )
 
-        _ = Trainer(
+        Trainer(
             max_epochs=model_params.epochs,
             training_batches_per_epoch=model_params.batches_per_epoch,
             batch_size=model_params.batch_size,
