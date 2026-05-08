@@ -21,6 +21,7 @@ from core.problems.sampler import Sampler
 class BatchSummary(BaseModel):
     model_config = {"frozen": True}
 
+    batch_size: int
     loss: float
     advantage: float
     entropy: float
@@ -42,24 +43,40 @@ class EpochSummary(BaseModel):
     log_p: float
     instances_per_sec: float
 
-    @classmethod
-    def from_step_summaries(
-        cls,
-        *,
-        epoch: int,
-        batch_summaries: list[BatchSummary],
-        **_,
-    ) -> EpochSummary:
-        n = len(batch_summaries)
-        return cls(
+
+class EpochTrainAccumulator:
+    def __init__(self) -> None:
+        self._total_instances = 0
+        self._total_time = 0.0
+        self._total_loss = 0.0
+        self._total_advantage = 0.0
+        self._total_entropy = 0.0
+        self._total_entropy_norm = 0.0
+        self._total_grad_norm = 0.0
+        self._total_log_p = 0.0
+
+    def update(self, summary: BatchSummary) -> None:
+        n = summary.batch_size
+        self._total_instances += n
+        self._total_time += n / summary.instances_per_sec
+        self._total_loss += summary.loss * n
+        self._total_advantage += summary.advantage * n
+        self._total_entropy += summary.entropy * n
+        self._total_entropy_norm += summary.entropy_norm * n
+        self._total_grad_norm += summary.grad_norm * n
+        self._total_log_p += summary.log_p * n
+
+    def finalize(self, *, epoch: int) -> EpochSummary:
+        n = self._total_instances
+        return EpochSummary(
             epoch=epoch,
-            loss=sum(s.loss for s in batch_summaries) / n,
-            advantage=sum(s.advantage for s in batch_summaries) / n,
-            entropy=sum(s.entropy for s in batch_summaries) / n,
-            entropy_norm=sum(s.entropy_norm for s in batch_summaries) / n,
-            grad_norm=sum(s.grad_norm for s in batch_summaries) / n,
-            log_p=sum(s.log_p for s in batch_summaries) / n,
-            instances_per_sec=sum(s.instances_per_sec for s in batch_summaries) / n,
+            loss=self._total_loss / n,
+            advantage=self._total_advantage / n,
+            entropy=self._total_entropy / n,
+            entropy_norm=self._total_entropy_norm / n,
+            grad_norm=self._total_grad_norm / n,
+            log_p=self._total_log_p / n,
+            instances_per_sec=self._total_instances / self._total_time,
         )
 
 
@@ -95,6 +112,7 @@ def training_step(
     batch_size = instance.batch_size[0]
 
     return BatchSummary(
+        batch_size=batch_size,
         loss=loss.item(),
         advantage=advantage.mean().item(),
         entropy=rollout.entropy or 0.0,

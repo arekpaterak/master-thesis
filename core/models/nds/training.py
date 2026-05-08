@@ -16,6 +16,7 @@ from core.problems.solution import BaseSolution
 class BatchTrainSummary(BaseModel):
     model_config = {"frozen": True}
 
+    batch_size: int
     loss: float
     reward: float
     reward_baseline: float
@@ -48,27 +49,49 @@ class EpochTrainSummary(BaseModel):
     def improvement(self) -> float:
         return self.objective_before - self.objective_after
 
-    @classmethod
-    def from_step_summaries(
-        cls,
-        *,
-        epoch: int,
-        batch_summaries: list[BatchTrainSummary],
-        **_,
-    ) -> EpochTrainSummary:
-        n = len(batch_summaries)
-        return cls(
+
+class EpochTrainAccumulator:
+    def __init__(self) -> None:
+        self._total_instances = 0
+        self._total_time = 0.0
+        self._total_loss = 0.0
+        self._total_reward = 0.0
+        self._total_reward_baseline = 0.0
+        self._total_entropy = 0.0
+        self._total_entropy_norm = 0.0
+        self._total_log_p = 0.0
+        self._total_objective_before = 0.0
+        self._total_objective_after = 0.0
+        self._total_grad_norm = 0.0
+
+    def update(self, summary: BatchTrainSummary) -> None:
+        n = summary.batch_size
+        self._total_instances += n
+        self._total_time += n / summary.instances_per_sec
+        self._total_loss += summary.loss * n
+        self._total_reward += summary.reward * n
+        self._total_reward_baseline += summary.reward_baseline * n
+        self._total_entropy += summary.entropy * n
+        self._total_entropy_norm += summary.entropy_norm * n
+        self._total_log_p += summary.log_p * n
+        self._total_objective_before += summary.objective_before * n
+        self._total_objective_after += summary.objective_after * n
+        self._total_grad_norm += summary.grad_norm * n
+
+    def finalize(self, *, epoch: int) -> EpochTrainSummary:
+        n = self._total_instances
+        return EpochTrainSummary(
             epoch=epoch,
-            loss=sum(s.loss for s in batch_summaries) / n,
-            reward=sum(s.reward for s in batch_summaries) / n,
-            reward_baseline=sum(s.reward_baseline for s in batch_summaries) / n,
-            entropy=sum(s.entropy for s in batch_summaries) / n,
-            entropy_norm=sum(s.entropy_norm for s in batch_summaries) / n,
-            log_p=sum(s.log_p for s in batch_summaries) / n,
-            objective_before=sum(s.objective_before for s in batch_summaries) / n,
-            objective_after=sum(s.objective_after for s in batch_summaries) / n,
-            grad_norm=sum(s.grad_norm for s in batch_summaries) / n,
-            instances_per_sec=sum(s.instances_per_sec for s in batch_summaries) / n,
+            loss=self._total_loss / n,
+            reward=self._total_reward / n,
+            reward_baseline=self._total_reward_baseline / n,
+            entropy=self._total_entropy / n,
+            entropy_norm=self._total_entropy_norm / n,
+            log_p=self._total_log_p / n,
+            objective_before=self._total_objective_before / n,
+            objective_after=self._total_objective_after / n,
+            grad_norm=self._total_grad_norm / n,
+            instances_per_sec=self._total_instances / self._total_time,
         )
 
 
@@ -154,6 +177,7 @@ def configure_training_step(
         batch_size = instance.batch_size[0]
 
         return BatchTrainSummary(
+            batch_size=batch_size,
             loss=total_loss / num_main_improvement_steps,
             reward=total_reward / num_main_improvement_steps,
             reward_baseline=total_reward_baseline / num_main_improvement_steps,

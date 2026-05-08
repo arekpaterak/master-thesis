@@ -67,7 +67,7 @@ class Trainer[BatchSummaryT]:
             )
 
         for epoch in range(self.max_epochs):
-            batch_summaries = []
+            train_accumulator = model.train_accumulator_cls()
             for size in self._epoch_batch_sizes():
                 instance = instance_sampler(size)
                 batch_summary = model.training_step(
@@ -75,29 +75,20 @@ class Trainer[BatchSummaryT]:
                     instance=instance,
                     **kwargs,
                 )
-                batch_summaries.append(batch_summary)
+                train_accumulator.update(batch_summary)
                 if self.on_batch_train_end:
                     self.on_batch_train_end(batch_summary)
 
-            epoch_train_summary = model.epoch_train_summary_cls.from_step_summaries(
-                epoch=epoch,
-                batch_summaries=batch_summaries,
-                model=model,
-                optimizer=optimizer,
-                **kwargs,
-            )
+            epoch_train_summary = train_accumulator.finalize(epoch=epoch)
             for callback in self.on_epoch_train_end:
                 callback(epoch_train_summary)
 
             if with_validation and epoch % self.validate_every_n_epochs == 0:
-                batch_validation_summaries = []
+                val_accumulator = model.validation_accumulator_cls()
                 for size in self._validation_batch_sizes():
                     validation_instance = validation_instance_sampler(size)  # type: ignore[misc]
                     batch_validation_summary = model.validation_step(validation_instance, epoch)
-                    batch_validation_summaries.append(batch_validation_summary)
-                epoch_validation_summary = model.epoch_validation_summary_cls.from_step_summaries(
-                    epoch=epoch,
-                    batch_summaries=batch_validation_summaries,
-                )
+                    val_accumulator.update(batch_validation_summary)
+                epoch_validation_summary = val_accumulator.finalize(epoch=epoch)
                 for callback in self.on_epoch_validation_end:
                     callback(epoch_validation_summary)

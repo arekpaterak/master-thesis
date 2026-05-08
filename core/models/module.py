@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any, Protocol, Self
+from typing import Any, Protocol
 
 
-class EpochSummary(Protocol):
-    @classmethod
-    def from_step_summaries(cls, *, epoch: int, batch_summaries: list, **kwargs: Any) -> Self: ...
+class EpochAccumulator(Protocol):
+    def update(self, batch_summary: Any) -> None: ...
+    def finalize(self, *, epoch: int) -> Any: ...
 
 
 class Module(ABC):
-    epoch_train_summary_cls: type[EpochSummary]
-    epoch_validation_summary_cls: type[EpochSummary]
+    train_accumulator_cls: type[EpochAccumulator]
+    validation_accumulator_cls: type[EpochAccumulator]
 
     def training_step(self, *, optimizer: Any, instance: Any, **kwargs: Any) -> Any:
         pass

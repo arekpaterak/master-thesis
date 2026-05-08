@@ -47,28 +47,38 @@ class EpochValidationSummary(BaseModel):
             return 0.0
         return self.improvement / self.objective_initial
 
-    @classmethod
-    def from_step_summaries(
-        cls,
-        *,
-        epoch: int,
-        batch_summaries: list[BatchValidationSummary],
-        **_,
-    ) -> EpochValidationSummary:
-        total = sum(s.batch_size for s in batch_summaries)
-        objective_initial = sum(s.objective_initial * s.batch_size for s in batch_summaries) / total
-        objective_final = sum(s.objective_final * s.batch_size for s in batch_summaries) / total
-        objective_curve = [
-            sum(s.objective_curve[i] * s.batch_size for s in batch_summaries) / total
-            for i in range(len(batch_summaries[0].objective_curve))
-        ]
-        return cls(
+
+class EpochValidationAccumulator:
+    def __init__(self) -> None:
+        self._total_instances = 0
+        self._total_objective_initial = 0.0
+        self._total_objective_final = 0.0
+        self._weighted_curve: list[float] = []
+        self._step_labels: list[int] = []
+        self._snapshots: list[BaseSolution] = []
+
+    def update(self, summary: BatchValidationSummary) -> None:
+        n = summary.batch_size
+        self._total_instances += n
+        self._total_objective_initial += summary.objective_initial * n
+        self._total_objective_final += summary.objective_final * n
+        if not self._weighted_curve:
+            self._weighted_curve = [v * n for v in summary.objective_curve]
+            self._step_labels = summary.step_labels
+            self._snapshots = summary.snapshots
+        else:
+            for i, v in enumerate(summary.objective_curve):
+                self._weighted_curve[i] += v * n
+
+    def finalize(self, *, epoch: int) -> EpochValidationSummary:
+        n = self._total_instances
+        return EpochValidationSummary(
             epoch=epoch,
-            objective_initial=objective_initial,
-            objective_final=objective_final,
-            objective_curve=objective_curve,
-            step_labels=batch_summaries[0].step_labels,
-            snapshots=batch_summaries[0].snapshots,
+            objective_initial=self._total_objective_initial / n,
+            objective_final=self._total_objective_final / n,
+            objective_curve=[v / n for v in self._weighted_curve],
+            step_labels=self._step_labels,
+            snapshots=self._snapshots,
         )
 
 
