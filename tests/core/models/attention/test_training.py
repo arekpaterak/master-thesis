@@ -20,7 +20,7 @@ def test_train_one_epoch(problem: str):
         sampler = CVRPSampler(CVRPConfig.for_n(20), seed=0)
 
     model = AttentionModel(problem_name=problem, hidden_dim=8, num_layers=1)
-    attention_module = AMModule(model)
+    attention_module = AMModule(model, sampler, eval_n_instances=32, eval_batch_size=32)
     optimizer = torch.optim.AdamW(attention_module.parameters(), lr=1e-4, weight_decay=0.0)
     params_before = copy.deepcopy([p.detach().clone() for p in model.parameters()])
 

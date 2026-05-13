@@ -1,21 +1,12 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 
 import torch
 from pydantic import BaseModel
 
 from core.models.attention_model.model import AttentionModel, rollout_to_solution
-from core.models.attention_model.statistical_test import (
-    OneSidedPairedTTestResult,
-    one_sided_paired_ttest,
-)
-from core.models.attention_model.training_helpers import (
-    sync_baseline_,
-)
 from core.problems.instance import BaseProblemInstance
-from core.problems.sampler import Sampler
 
 
 class BatchSummary(BaseModel):
@@ -121,32 +112,3 @@ def training_step(
         log_p=rollout.log_p_of_actions.mean().item(),
         instances_per_sec=batch_size / elapsed,
     )
-
-
-def configure_baseline_sync_callback(
-    *,
-    model: AttentionModel,
-    baseline: AttentionModel,
-    instance_sampler: Sampler,
-    eval_n_instances: int = 10_000,
-    eval_batch_size: int = 512,
-    alpha: float = 0.05,
-    on_test_end: Callable[[OneSidedPairedTTestResult], None] | None = None,
-) -> Callable[[EpochSummary], None]:
-    def on_epoch_end(_: EpochSummary) -> None:
-        device = next(model.parameters()).device
-        test = one_sided_paired_ttest(
-            model,
-            baseline,
-            instance_sampler,
-            n_instances=eval_n_instances,
-            batch_size=eval_batch_size,
-            alpha=alpha,
-            device=device,
-        )
-        if test.improved:
-            sync_baseline_(baseline, model)
-        if on_test_end is not None:
-            on_test_end(test)
-
-    return on_epoch_end
