@@ -80,6 +80,7 @@ class Trainer[BatchSummaryT]:
                     self.on_batch_train_end(batch_summary)
 
             epoch_train_summary = train_accumulator.finalize(epoch=epoch)
+            model.on_epoch_train_end(epoch_train_summary)
             for callback in self.on_epoch_train_end:
                 callback(epoch_train_summary)
 
@@ -90,5 +91,6 @@ class Trainer[BatchSummaryT]:
                     batch_validation_summary = model.validation_step(validation_instance, epoch)
                     val_accumulator.update(batch_validation_summary)
                 epoch_validation_summary = val_accumulator.finalize(epoch=epoch)
+                model.on_epoch_validation_end(epoch_validation_summary)
                 for callback in self.on_epoch_validation_end:
                     callback(epoch_validation_summary)

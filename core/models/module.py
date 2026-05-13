@@ -16,5 +16,11 @@ class Module(ABC):
     def training_step(self, *, optimizer: Any, instance: Any, **kwargs: Any) -> Any:
         pass
 
+    def on_epoch_train_end(self, epoch_summary: Any) -> None:
+        pass
+
     def validation_step(self, instance: Any, epoch: int) -> Any:
+        pass
+
+    def on_epoch_validation_end(self, epoch_summary: Any) -> None:
         pass
