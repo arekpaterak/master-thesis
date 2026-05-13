@@ -343,7 +343,7 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
         training_batches_per_epoch=1,
         batch_size=32,
     ).fit(
-        model=nds_module,
+        module=nds_module,
         optimizer=optimizer,
         instance_sampler=lambda batch_size: sampler(batch_size=batch_size).to(DEVICE),
     )

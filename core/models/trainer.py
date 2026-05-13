@@ -19,6 +19,7 @@ class Trainer[BatchSummaryT]:
         training_batches_per_epoch: int | None = None,
         on_batch_train_end: Callable[[BatchSummaryT], None] | None = None,
         on_epoch_train_end: Sequence[Callable] = (),
+        initial_epoch: int = 0,
         validation_instances: int | None = None,
         validation_batch_size: int | None = None,
         validate_every_n_epochs: int = 10,
@@ -34,6 +35,7 @@ class Trainer[BatchSummaryT]:
         self.batches_per_epoch = training_batches_per_epoch
         self.on_batch_train_end = on_batch_train_end
         self.on_epoch_train_end = on_epoch_train_end
+        self.initial_epoch = initial_epoch
         self.validation_instances = validation_instances
         self.validation_batch_size = validation_batch_size
         self.validate_every_n_epochs = validate_every_n_epochs
@@ -52,7 +54,7 @@ class Trainer[BatchSummaryT]:
     def fit(
         self,
         *,
-        model: Module,
+        module: Module,
         optimizer: torch.optim.Optimizer,
         instance_sampler: Sampler,
         validation_instance_sampler: Sampler | None = None,
@@ -66,11 +68,11 @@ class Trainer[BatchSummaryT]:
                 "validation_instances and validation_batch_size are required when validation_instance_sampler is provided."
             )
 
-        for epoch in range(self.max_epochs):
-            train_accumulator = model.train_accumulator_cls()
+        for epoch in range(self.initial_epoch, self.max_epochs):
+            train_accumulator = module.train_accumulator_cls()
             for size in self._epoch_batch_sizes():
                 instance = instance_sampler(size)
-                batch_summary = model.training_step(
+                batch_summary = module.training_step(
                     optimizer=optimizer,
                     instance=instance,
                     **kwargs,
@@ -80,17 +82,17 @@ class Trainer[BatchSummaryT]:
                     self.on_batch_train_end(batch_summary)
 
             epoch_train_summary = train_accumulator.finalize(epoch=epoch)
-            model.on_epoch_train_end(epoch_train_summary)
+            module.on_epoch_train_end(epoch_train_summary)
             for callback in self.on_epoch_train_end:
                 callback(epoch_train_summary)
 
             if with_validation and epoch % self.validate_every_n_epochs == 0:
-                val_accumulator = model.validation_accumulator_cls()
+                val_accumulator = module.validation_accumulator_cls()
                 for size in self._validation_batch_sizes():
                     validation_instance = validation_instance_sampler(size)  # type: ignore[misc]
-                    batch_validation_summary = model.validation_step(validation_instance, epoch)
+                    batch_validation_summary = module.validation_step(validation_instance, epoch)
                     val_accumulator.update(batch_validation_summary)
                 epoch_validation_summary = val_accumulator.finalize(epoch=epoch)
-                model.on_epoch_validation_end(epoch_validation_summary)
+                module.on_epoch_validation_end(epoch_validation_summary)
                 for callback in self.on_epoch_validation_end:
                     callback(epoch_validation_summary)

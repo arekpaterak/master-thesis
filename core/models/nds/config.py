@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, computed_field
 
 
 class ProblemParams(BaseModel):
-    """Configuration for the optimization problem."""
+    """Configuration for the optimisation problem."""
 
     name: str = Field(default="cvrp", description="Problem to solve.")
     size: int = Field(default=20, description="Number of customers.")
@@ -56,6 +56,12 @@ class TrainerParams(BaseModel):
     deconstruction_size: int = Field(
         default=5, description="Number of nodes removed per iteration."
     )
+    checkpoint_every_n_epochs: int = Field(
+        default=10, description="Save a checkpoint every N epochs (always saves the last epoch)."
+    )
+    init_weights: str | None = Field(
+        default=None, description="Path to a checkpoint to load model weights from (new run)."
+    )
 
 
 class LoggingConfig(BaseModel):
@@ -79,7 +85,6 @@ class ValidationConfig(BaseModel):
     plot_every_n_improvement_steps: int = Field(
         default=5, description="Capture solution snapshot every N LNS steps."
     )
-    plot_dir: str = Field(default="plots", description="Directory to save plots.")
     plot_save_to_disk: bool = Field(default=True, description="Save plots.")
     plot_show_in_marimo: bool = Field(default=True, description="Display plots inline in marimo.")
 

@@ -28,7 +28,7 @@ def test_train_one_epoch(problem: str):
         max_epochs=1,
         training_batches_per_epoch=1,
         batch_size=8,
-    ).fit(model=attention_module, optimizer=optimizer, instance_sampler=sampler)
+    ).fit(module=attention_module, optimizer=optimizer, instance_sampler=sampler)
 
     params_after = list(model.parameters())
     assert any(

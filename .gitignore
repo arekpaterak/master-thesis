@@ -17,7 +17,8 @@ wheels/
 .run/
 
 # Project related
-experiments/results/
+experiments/results/*
+!experiments/results/runs/NOTES.md
 
 # Marimo
 __marimo__/

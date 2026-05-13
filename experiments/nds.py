@@ -88,20 +88,29 @@ def _(TrainConfig, mo):
 
             sys.exit(0)
 
-        _config_path = _cli_args.get("config")
+        from pathlib import Path
+
+        _resume_path = _cli_args.get("resume")
+        resume_run_dir = Path(_resume_path) if _resume_path else None
+
+        _config_path = _cli_args.get("config") or (
+            str(resume_run_dir / "config.yml") if resume_run_dir else None
+        )
         if _config_path:
             with open(_config_path) as _f:
                 yaml_data = yaml.safe_load(_f) or {}
 
         for _key, _value in _cli_args.items():
-            if _key == "config":
+            if _key in ("config", "resume"):
                 continue
             _parts = _key.split(".")
             _node = yaml_data
             for _part in _parts[:-1]:
                 _node = _node.setdefault(_part, {})
             _node[_parts[-1]] = _value
-    return env_config_widget, is_script_mode, yaml_data
+    else:
+        resume_run_dir = None
+    return env_config_widget, is_script_mode, resume_run_dir, yaml_data
 
 
 @app.cell(hide_code=True)
@@ -253,6 +262,13 @@ def _(TrainConfig, mo):
                 step=1,
                 label="Deconstruction size",
             ),
+            "checkpoint_every_n_epochs": mo.ui.number(
+                1,
+                100,
+                value=defaults.trainer.checkpoint_every_n_epochs,
+                step=1,
+                label="Checkpoint every N epochs",
+            ),
         }
     )
 
@@ -293,7 +309,6 @@ def _(TrainConfig, mo):
                 step=1,
                 label="Plot every N steps",
             ),
-            "plot_dir": mo.ui.text(value=defaults.validation.plot_dir, label="Plot directory"),
             "plot_save_to_disk": mo.ui.checkbox(
                 value=defaults.validation.plot_save_to_disk, label="Save to disk"
             ),
@@ -392,10 +407,11 @@ def _(mo):
 
 
 @app.cell
-def _(config, mo, model, sampler, val_sampler):
+def _(config, mo, model, resume_run_dir, sampler, val_sampler):
     from pathlib import Path
 
     import torch.optim as optim
+    import yaml
 
     from core.models.nds.evaluation import EpochValidationSummary, plot_lns_progress
     from core.models.nds.functions import (
@@ -409,12 +425,48 @@ def _(config, mo, model, sampler, val_sampler):
     from core.problems.cvrp.solve import one_customer_per_route
     from core.problems.tsp.solve import random_permutation_graph
 
+    def _find_latest_checkpoint(run_dir: Path):
+        checkpoints = sorted((run_dir / "checkpoints").glob("epoch_*.pt"))
+        if not checkpoints:
+            return None, 0
+        latest = checkpoints[-1]
+        epoch = int(latest.stem.split("_")[1])
+        return latest, epoch
+
+    run_dir = resume_run_dir or (
+        Path(__file__).parent / "results" / "runs" / f"nds-{config.run_name}"
+    )
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    initial_epoch = 0
+    if resume_run_dir:
+        _checkpoint_path, _last_epoch = _find_latest_checkpoint(resume_run_dir)
+        if _checkpoint_path:
+            _ckpt = torch.load(_checkpoint_path, map_location="cpu", weights_only=True)
+            model.load_state_dict(_ckpt["model"])
+            initial_epoch = _last_epoch + 1
+    else:
+        with open(run_dir / "config.yml", "w") as _f:
+            yaml.safe_dump(config.model_dump(), _f, sort_keys=False)
+        if config.trainer.init_weights:
+            _ckpt = torch.load(config.trainer.init_weights, map_location="cpu", weights_only=True)
+            model.load_state_dict(_ckpt.get("model", _ckpt))
+
     if config.logging.wandb_project:
-        wandb.init(
-            project=config.logging.wandb_project,
-            name=config.run_name,
-            config=config.model_dump(),
-        )
+        _wandb_id_path = run_dir / "wandb_run_id"
+        if resume_run_dir and _wandb_id_path.exists():
+            wandb.init(
+                project=config.logging.wandb_project,
+                resume="must",
+                id=_wandb_id_path.read_text().strip(),
+            )
+        else:
+            wandb.init(
+                project=config.logging.wandb_project,
+                name=config.run_name,
+                config=config.model_dump(),
+            )
+            _wandb_id_path.write_text(wandb.run.id)
         wandb.define_metric("val/*", step_metric="epoch")
 
     match config.problem.name:
@@ -440,15 +492,24 @@ def _(config, mo, model, sampler, val_sampler):
         ) as step_bar,
     ):
 
-        def on_step_end(summary: BatchTrainSummary):
+        def on_batch_train_end(summary: BatchTrainSummary):
             step_bar.update(subtitle=f"Loss: {summary.loss:.4f}")
             if config.logging.wandb_project:
                 wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
 
-        def on_epoch_end(summary: EpochTrainSummary):
+        def on_epoch_train_end(summary: EpochTrainSummary):
             epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
+            is_last = summary.epoch == config.trainer.epochs - 1
+            is_checkpoint = (summary.epoch + 1) % config.trainer.checkpoint_every_n_epochs == 0
+            if is_last or is_checkpoint:
+                checkpoints_path = run_dir / "checkpoints"
+                checkpoints_path.mkdir(exist_ok=True)
+                torch.save(
+                    {"model": nds_module.model.state_dict(), "optimizer": optimizer.state_dict()},
+                    checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
+                )
 
-        def on_validation_end(val_summary: EpochValidationSummary):
+        def on_epoch_validation_end(val_summary: EpochValidationSummary):
             if config.logging.wandb_project:
                 wandb.log(
                     {
@@ -464,7 +525,7 @@ def _(config, mo, model, sampler, val_sampler):
                     val_summary.snapshots, val_summary.step_labels, epoch=val_summary.epoch
                 )
                 if config.validation.plot_save_to_disk:
-                    plot_path = Path(config.validation.plot_dir) / config.run_name
+                    plot_path = run_dir / "plots"
                     plot_path.mkdir(parents=True, exist_ok=True)
                     fig.savefig(
                         plot_path / f"epoch_{val_summary.epoch:04d}.png",
@@ -481,18 +542,25 @@ def _(config, mo, model, sampler, val_sampler):
             weight_decay=config.optimizer.weight_decay,
         )
 
+        if resume_run_dir:
+            _checkpoint_path, _ = _find_latest_checkpoint(resume_run_dir)
+            if _checkpoint_path:
+                _ckpt = torch.load(_checkpoint_path, map_location="cpu", weights_only=True)
+                optimizer.load_state_dict(_ckpt["optimizer"])
+
         Trainer(
             max_epochs=config.trainer.epochs,
             training_instances=config.trainer.instances_per_epoch,
             batch_size=config.trainer.batch_size,
-            on_batch_train_end=on_step_end,
-            on_epoch_train_end=[on_epoch_end],
+            on_batch_train_end=on_batch_train_end,
+            on_epoch_train_end=[on_epoch_train_end],
+            initial_epoch=initial_epoch,
             validation_instances=config.validation.num_instances,
             validation_batch_size=config.validation.batch_size,
             validate_every_n_epochs=config.validation.every_n_epochs,
-            on_epoch_validation_end=[on_validation_end],
+            on_epoch_validation_end=[on_epoch_validation_end],
         ).fit(
-            model=nds_module,
+            module=nds_module,
             optimizer=optimizer,
             instance_sampler=sampler,
             validation_instance_sampler=val_sampler,
