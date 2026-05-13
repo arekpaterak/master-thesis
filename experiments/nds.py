@@ -392,7 +392,7 @@ def _(mo):
 
 
 @app.cell
-def _(config, device, mo, model, sampler, val_sampler):
+def _(config, mo, model, sampler, val_sampler):
     from pathlib import Path
 
     import torch.optim as optim
@@ -436,7 +436,7 @@ def _(config, device, mo, model, sampler, val_sampler):
     with (
         mo.status.progress_bar(total=config.trainer.epochs, title="Epochs") as epoch_bar,
         mo.status.progress_bar(
-            total=config.trainer.epochs * config.trainer.batches_per_epoch, title="Batches (steps)"
+            total=config.trainer.epochs * config.trainer.batches_per_epoch, title="Batches"
         ) as step_bar,
     ):
 
