@@ -10,9 +10,7 @@ from pydantic import BaseModel, Field, computed_field
 class ProblemParams(BaseModel):
     """Configuration for the optimization problem."""
 
-    name: str = Field(
-        default="cvrp", description="Problem to solve (currently only cvrp is supported)."
-    )
+    name: str = Field(default="cvrp", description="Problem to solve.")
     size: int = Field(default=20, description="Number of customers.")
 
 

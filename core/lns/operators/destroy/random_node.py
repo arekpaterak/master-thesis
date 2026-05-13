@@ -23,7 +23,7 @@ class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
         batch_size = solution.batch_size
 
         match solution:
-            case TSPGraphSolution() as s:
+            case TSPSolution() | TSPGraphSolution() as s:
                 if self.destruction_size > num_nodes:
                     raise ValueError(
                         f"Destruction size {self.destruction_size} exceeds nodes {num_nodes}"
@@ -34,20 +34,7 @@ class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
                     .topk(self.destruction_size, dim=-1)
                     .indices
                 )
-                return s.remove_nodes(to_remove)  # type: ignore
-
-            case TSPSolution() as s:
-                if self.destruction_size > num_nodes:
-                    raise ValueError(
-                        f"Destruction size {self.destruction_size} exceeds nodes {num_nodes}"
-                    )
-
-                to_remove = (
-                    torch.rand((*batch_size, num_nodes), device=device, generator=self._generator)
-                    .topk(self.destruction_size, dim=-1)
-                    .indices
-                )
-                return s.remove_nodes(to_remove)  # type: ignore
+                return s.remove_nodes(to_remove)
 
             case CVRPSolution() as s:
                 num_customers = s.instance.num_customers
@@ -64,7 +51,7 @@ class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
                     .indices
                     + 1
                 )
-                return s.remove_customers(to_remove)  # type: ignore
+                return s.remove_customers(to_remove)
 
             case _:
                 raise NotImplementedError(f"Operator not implemented for {type(solution)}")

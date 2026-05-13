@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
 
 from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPInstance
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 
 class TSPGraphSolution(BaseSolution):
@@ -86,8 +91,25 @@ class TSPGraphSolution(BaseSolution):
     def node_degree(self) -> torch.Tensor:
         return (self._next != self.UNASSIGNED).long() + (self._prev != self.UNASSIGNED).long()
 
-    def visualize(self, **kwargs) -> None:
-        pass
+    def visualize(
+        self,
+        *,
+        min_coordinate: float | None = None,
+        max_coordinate: float | None = None,
+        ax: Axes | None = None,
+        with_problem_size: bool = True,
+        with_objective: bool = True,
+    ) -> None:
+        from .render import render_graph_solution
+
+        render_graph_solution(
+            self,
+            min_coordinate=min_coordinate,
+            max_coordinate=max_coordinate,
+            ax=ax,
+            with_problem_size=with_problem_size,
+            with_objective=with_objective,
+        )
 
     @property
     def is_complete(self) -> torch.Tensor:
