@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 from collections.abc import Callable
+
+import torch
 
 from core.lns.operators.repair.greedy import CVRPSequentialGreedyNodeInsertionRepair
 from core.lns.operators.repair.greedy_edge import TSPGreedyEdgeRepair
@@ -22,6 +26,71 @@ def noop_improvement_step(
     return solution
 
 
+def make_improvement_step(
+    *,
+    apply_rollout_fn: ApplyRollout,
+    repair: Repair,
+    num_rollouts: int,
+    deconstruction_size: int,
+) -> ImprovementStep:
+    """
+    Build an improvement step following the NDS procedure (Hottung et al. 2025, Figure 2).
+
+    Generates num_rollouts deconstruction rollouts from the current solution in a single
+    batched model call, then applies them sequentially with greedy acceptance: each rollout
+    deconstructs and repairs the evolving current solution, retaining the result only when
+    it improves the objective.
+    """
+
+    @torch.no_grad()
+    def improvement_step(solution: BaseSolution, model: NDSModel) -> BaseSolution:
+        model.eval()
+        rollout = model.rollout(
+            solution,
+            rollouts_per_solution=num_rollouts,
+            deconstruction_size=deconstruction_size,
+            greedy=False,
+        )
+        # rollout.actions: (B, num_rollouts, deconstruction_size)
+        current = solution
+        for r in range(num_rollouts):
+            single_rollout = Rollout(
+                actions=rollout.actions[:, r, :],
+                log_p_of_actions=rollout.log_p_of_actions[:, r, :],
+                entropy=None,
+                entropy_norm=None,
+            )
+            partial = apply_rollout_fn(current, single_rollout)
+            candidate = repair(partial, single_rollout)
+            accept = candidate.objective() < current.objective()
+            current = select_solution(accept, candidate, current)
+        return current
+
+    return improvement_step
+
+
+def select_solution(mask: torch.Tensor, a: BaseSolution, b: BaseSolution) -> BaseSolution:
+    """Select a[i] where mask[i] is True, else b[i]."""
+    match a:
+        case CVRPSolution() as a_cvrp:
+            assert isinstance(b, CVRPSolution)
+            return CVRPSolution.create(
+                instance=a_cvrp.instance,
+                sequence=torch.where(mask.unsqueeze(-1), a_cvrp.sequence, b.sequence),
+            )
+        case TSPGraphSolution() as a_tsp:
+            assert isinstance(b, TSPGraphSolution)
+            m = mask.unsqueeze(-1)
+            return TSPGraphSolution(
+                _instance=a_tsp._instance,
+                _next=torch.where(m, a_tsp._next, b._next),
+                _prev=torch.where(m, a_tsp._prev, b._prev),
+                batch_size=a_tsp.batch_size,
+            )
+        case _:
+            raise NotImplementedError(f"select_solution not implemented for {type(a)}")
+
+
 def apply_rollout(solution: BaseSolution, rollout: Rollout) -> BaseSolution:
     match solution:
         case CVRPSolution() as s:
@@ -41,6 +110,9 @@ def greedy_tsp_repair(solution: TSPGraphSolution, rollout: Rollout) -> TSPGraphS
 
 
 def only_expanding_apply_rollout(solution: BaseSolution, rollout: Rollout) -> BaseSolution:
+    """
+    Only expands the ``solution`` from (B, destruction_size) to (B, num_rollouts, destruction_size), based on the ``rollout`` dimensionality.
+    """
     return solution.unsqueeze(1).expand(*solution.batch_size, rollout.log_p_of_actions.shape[1])
 
 
