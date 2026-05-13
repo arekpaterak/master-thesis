@@ -36,6 +36,6 @@ def test_train():
         training_batches_per_epoch=2,
         batch_size=B,
         on_epoch_train_end=[lambda s: seen_epochs.append(s.epoch)],
-    ).fit(model=nds_module, optimizer=optimizer, instance_sampler=sampler)
+    ).fit(module=nds_module, optimizer=optimizer, instance_sampler=sampler)
 
     assert seen_epochs == [0, 1]

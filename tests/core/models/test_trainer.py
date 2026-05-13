@@ -43,7 +43,7 @@ def test_trainer_runs_epochs_and_callbacks_in_order():
         batch_size=4,
         on_batch_train_end=seen_step_summaries.append,
         on_epoch_train_end=[seen_epoch_summaries.append],
-    ).fit(model=fake_module, optimizer="optimizer", instance_sampler=instance_sampler)
+    ).fit(module=fake_module, optimizer="optimizer", instance_sampler=instance_sampler)
 
     assert [s.value for s in seen_epoch_summaries] == ["epoch-0", "epoch-1"]
     assert seen_step_summaries == [
