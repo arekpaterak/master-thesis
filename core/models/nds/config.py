@@ -79,7 +79,7 @@ class ValidationConfig(BaseModel):
         default=60,
         description="LNS steps.",
     )
-    every_n_epochs: int = Field(default=1, description="Run validation every N training epochs.")
+    every_n_epochs: int = Field(default=10, description="Run validation every N training epochs.")
     seed: int = Field(default=42, description="Fixed seed for reproducible validation instances.")
     plot_enabled: bool = Field(default=True, description="Plot LNS progress for one instance.")
     plot_every_n_improvement_steps: int = Field(

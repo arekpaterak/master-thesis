@@ -1,25 +1,26 @@
 import marimo
 
-__generated_with = "0.22.5"
+__generated_with = "0.23.6"
 app = marimo.App(width="columns")
 
 with app.setup:
+    import sys
+    from pathlib import Path
+
+    import marimo as mo
     import matplotlib.pyplot as plt
     import torch
     import torch.nn
+    import yaml
+    from dotenv import load_dotenv
 
     import wandb
 
-
-@app.cell
-def _():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device
-    return (device,)
+    load_dotenv(".env")
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Setup
     """)
@@ -28,11 +29,9 @@ def _(mo):
 
 @app.cell
 def _():
-    import marimo as mo
-    from dotenv import load_dotenv
-
-    load_dotenv(".env")
-    return (mo,)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device
+    return (device,)
 
 
 @app.cell
@@ -43,10 +42,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(TrainConfig, mo):
-    import sys
-
-    import yaml
+def _(TrainConfig):
     from wigglystuff import EnvConfig
 
     is_script_mode = mo.app_meta().mode == "script"
@@ -88,8 +84,6 @@ def _(TrainConfig, mo):
 
             sys.exit(0)
 
-        from pathlib import Path
-
         _resume_path = _cli_args.get("resume")
         resume_run_dir = Path(_resume_path) if _resume_path else None
 
@@ -120,7 +114,7 @@ def _(env_config_widget, is_script_mode):
 
 
 @app.cell(column=1, hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Training Parameters
     """)
@@ -128,8 +122,10 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(is_script_mode, mo, params_accordion, run_button):
-    mo.vstack([params_accordion, run_button]) if not is_script_mode else None
+def _(is_script_mode, noop_apply_repair_checkbox, params_accordion, run_button):
+    mo.vstack(
+        [params_accordion, run_button, noop_apply_repair_checkbox]
+    ) if not is_script_mode else None
     return
 
 
@@ -138,7 +134,6 @@ def _(
     TrainConfig,
     is_script_mode,
     logging_widgets,
-    mo,
     model_widgets,
     optimizer_widgets,
     problem_widgets,
@@ -175,7 +170,7 @@ def _(
 
 
 @app.cell(hide_code=True)
-def _(TrainConfig, mo):
+def _(TrainConfig):
     defaults = TrainConfig()
 
     problem_widgets = mo.ui.dictionary(
@@ -223,7 +218,7 @@ def _(TrainConfig, mo):
 
     trainer_widgets = mo.ui.dictionary(
         {
-            "epochs": mo.ui.slider(1, 100, value=defaults.trainer.epochs, step=1, label="Epochs"),
+            "epochs": mo.ui.number(1, 100, value=defaults.trainer.epochs, step=1, label="Epochs"),
             "instances_per_epoch": mo.ui.number(
                 100,
                 1500,
@@ -234,30 +229,30 @@ def _(TrainConfig, mo):
             "batch_size": mo.ui.slider(
                 8, 512, value=defaults.trainer.batch_size, step=8, label="Batch size"
             ),
-            "rollouts_per_instance": mo.ui.slider(
+            "rollouts_per_instance": mo.ui.number(
                 1,
                 256,
                 value=defaults.trainer.rollouts_per_instance,
                 step=1,
                 label="Rollouts/solution",
             ),
-            "num_initial_improvement_steps": mo.ui.slider(
+            "num_initial_improvement_steps": mo.ui.number(
                 0,
                 10,
                 value=defaults.trainer.num_initial_improvement_steps,
                 step=1,
                 label="Initial steps",
             ),
-            "num_main_improvement_steps": mo.ui.slider(
+            "num_main_improvement_steps": mo.ui.number(
                 1,
-                50,
+                100,
                 value=defaults.trainer.num_main_improvement_steps,
                 step=1,
                 label="Main steps",
             ),
-            "deconstruction_size": mo.ui.slider(
+            "deconstruction_size": mo.ui.number(
                 1,
-                20,
+                25,
                 value=defaults.trainer.deconstruction_size,
                 step=1,
                 label="Deconstruction size",
@@ -288,7 +283,7 @@ def _(TrainConfig, mo):
             "batch_size": mo.ui.slider(
                 8, 512, value=defaults.validation.batch_size, step=8, label="Batch size"
             ),
-            "num_improvement_steps": mo.ui.slider(
+            "num_improvement_steps": mo.ui.number(
                 1,
                 200,
                 value=defaults.validation.num_improvement_steps,
@@ -302,7 +297,7 @@ def _(TrainConfig, mo):
             "plot_enabled": mo.ui.checkbox(
                 value=defaults.validation.plot_enabled, label="Plot enabled"
             ),
-            "plot_every_n_lns_steps": mo.ui.slider(
+            "plot_every_n_improvement_steps": mo.ui.number(
                 1,
                 20,
                 value=defaults.validation.plot_every_n_improvement_steps,
@@ -330,9 +325,13 @@ def _(TrainConfig, mo):
     )
 
     run_button = mo.ui.button(label="Start Training", value=0, on_click=lambda count: count + 1)
+    noop_apply_repair_checkbox = mo.ui.checkbox(
+        value=False, label="Noop apply+repair (timing benchmark)"
+    )
     return (
         logging_widgets,
         model_widgets,
+        noop_apply_repair_checkbox,
         optimizer_widgets,
         params_accordion,
         problem_widgets,
@@ -343,7 +342,7 @@ def _(TrainConfig, mo):
 
 
 @app.cell(column=2, hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Problem Setup
     """)
@@ -372,7 +371,7 @@ def _(config):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Model Setup
     """)
@@ -399,7 +398,7 @@ def _(config, device):
 
 
 @app.cell(column=3, hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Training
     """)
@@ -407,17 +406,16 @@ def _(mo):
 
 
 @app.cell
-def _(config, mo, model, resume_run_dir, sampler, val_sampler):
-    from pathlib import Path
-
+def _(config, model, noop_apply_repair_checkbox, resume_run_dir, sampler, val_sampler):
     import torch.optim as optim
-    import yaml
 
     from core.models.nds.evaluation import EpochValidationSummary, plot_lns_progress
     from core.models.nds.functions import (
         apply_rollout,
         greedy_cvrp_repair,
         greedy_tsp_repair,
+        noop_repair,
+        only_expanding_apply_rollout,
     )
     from core.models.nds.module import NDSModule
     from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
@@ -433,9 +431,7 @@ def _(config, mo, model, resume_run_dir, sampler, val_sampler):
         epoch = int(latest.stem.split("_")[1])
         return latest, epoch
 
-    run_dir = resume_run_dir or (
-        Path(__file__).parent / "results" / "runs" / f"nds-{config.run_name}"
-    )
+    run_dir = resume_run_dir or (Path(__file__).parent / "runs" / f"nds-{config.run_name}")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     initial_epoch = 0
@@ -477,20 +473,36 @@ def _(config, mo, model, resume_run_dir, sampler, val_sampler):
             generate_start_solution = random_permutation_graph
             _repair = greedy_tsp_repair
 
-    nds_module = NDSModule(
-        config=config,
-        model=model,
-        generate_start_solution=generate_start_solution,
-        apply_rollout=apply_rollout,
-        repair=_repair,
-    )
+    if noop_apply_repair_checkbox.value:
+        _apply_rollout = only_expanding_apply_rollout
+        _repair = noop_repair
+    else:
+        _apply_rollout = apply_rollout
 
     with (
         mo.status.progress_bar(total=config.trainer.epochs, title="Epochs") as epoch_bar,
         mo.status.progress_bar(
             total=config.trainer.epochs * config.trainer.batches_per_epoch, title="Batches"
         ) as step_bar,
+        mo.status.progress_bar(
+            total=config.trainer.epochs
+            * config.trainer.batches_per_epoch
+            * config.trainer.num_main_improvement_steps,
+            title="Improvement Steps",
+        ) as improvement_bar,
     ):
+
+        def on_improvement_step(_step: int, loss: float) -> None:
+            improvement_bar.update(subtitle=f"Loss: {loss:.4f}")
+
+        nds_module = NDSModule(
+            config=config,
+            model=model,
+            generate_start_solution=generate_start_solution,
+            apply_rollout=_apply_rollout,
+            repair=_repair,
+            on_improvement_step=on_improvement_step,
+        )
 
         def on_batch_train_end(summary: BatchTrainSummary):
             step_bar.update(subtitle=f"Loss: {summary.loss:.4f}")
@@ -574,15 +586,10 @@ def _(config, mo, model, resume_run_dir, sampler, val_sampler):
 
 
 @app.cell(column=4, hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""
     ## Evaluation
     """)
-    return
-
-
-@app.cell
-def _():
     return
 
 

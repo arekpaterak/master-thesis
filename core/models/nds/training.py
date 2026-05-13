@@ -105,6 +105,7 @@ def configure_training_step(
     improvement_step: Callable[[BaseSolution, NDSModel], BaseSolution],
     apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution],
     repair: Callable[[BaseSolution, Rollout], BaseSolution],
+    on_improvement_step: Callable[[int, float], None] | None = None,
 ) -> Callable[..., BatchTrainSummary]:
     def training_step(
         *,
@@ -133,7 +134,7 @@ def configure_training_step(
         total_entropy_norm = 0.0
         total_log_p = 0.0
 
-        for _ in range(num_main_improvement_steps):
+        for step in range(num_main_improvement_steps):
             rollout = model.rollout(
                 solution,
                 rollouts_per_solution=rollouts_per_solution,
@@ -162,6 +163,8 @@ def configure_training_step(
             solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
             total_loss += loss.item()
+            if on_improvement_step is not None:
+                on_improvement_step(step, loss.item())
             total_reward += best_reward.mean().item()
             total_reward_baseline += reward_baseline.mean().item()
             total_entropy += rollout.entropy or 0.0
