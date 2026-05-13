@@ -37,6 +37,7 @@ class NDSModule(Module):
         apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution],
         repair: Callable[[BaseSolution, Rollout], BaseSolution],
         improvement_step: Callable[[BaseSolution, NDSModel], BaseSolution] | None = None,
+        on_improvement_step: Callable[[int, float], None] | None = None,
     ) -> None:
         self.model = model
         self._training_step_fn = configure_training_step(
@@ -48,6 +49,7 @@ class NDSModule(Module):
             improvement_step=improvement_step or noop_improvement_step,
             apply_rollout=apply_rollout,
             repair=repair,
+            on_improvement_step=on_improvement_step,
         )
         self._validation_step_fn = configure_validation_step(
             generate_start_solution=generate_start_solution,
