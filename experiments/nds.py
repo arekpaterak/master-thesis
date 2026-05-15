@@ -122,7 +122,12 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(is_script_mode, noop_apply_repair_checkbox, params_accordion, run_button):
+def _(
+    is_script_mode,
+    noop_apply_repair_checkbox,
+    params_accordion,
+    run_button,
+):
     mo.vstack(
         [params_accordion, run_button, noop_apply_repair_checkbox]
     ) if not is_script_mode else None
@@ -380,6 +385,11 @@ def _():
 
 @app.cell
 def _(config, device):
+    import gc
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
     from core.models.nds.model import NDSModel
 
     model = NDSModel(
@@ -406,7 +416,14 @@ def _():
 
 
 @app.cell
-def _(config, model, noop_apply_repair_checkbox, resume_run_dir, sampler, val_sampler):
+def _(
+    config,
+    model,
+    noop_apply_repair_checkbox,
+    resume_run_dir,
+    sampler,
+    val_sampler,
+):
     import torch.optim as optim
 
     from core.models.nds.evaluation import EpochValidationSummary, plot_lns_progress
