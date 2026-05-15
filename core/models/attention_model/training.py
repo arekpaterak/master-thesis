@@ -90,9 +90,11 @@ def training_step(
     with torch.no_grad():
         baseline_rollout = baseline.rollout(instance, greedy=True)
 
+    # Minimize the cost
     obj_model = rollout_to_solution(rollout, instance).objective()
     obj_baseline = rollout_to_solution(baseline_rollout, instance).objective()
     advantage = (obj_model - obj_baseline).detach()
+    # No sign flip here since we minimize the cost
     loss = (advantage * rollout.overall_log_p).mean()
 
     loss.backward()
