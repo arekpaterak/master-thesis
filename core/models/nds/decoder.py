@@ -74,6 +74,7 @@ class NDSDecoder(nn.Module):
         poly_dim: int = 512,
         num_heads: int = 8,
         C: float = 10.0,
+        use_hidden_decoding_state: bool = True,
     ) -> None:
         super().__init__()
         assert hidden_dim % num_heads == 0
@@ -88,7 +89,7 @@ class NDSDecoder(nn.Module):
             num_heads=num_heads,
         )
 
-        self.GRU = nn.GRUCell(hidden_dim, hidden_dim)
+        self.GRU = nn.GRUCell(hidden_dim, hidden_dim) if use_hidden_decoding_state else None
 
         self.poly_net = nn.Sequential(
             nn.Linear(hidden_dim + seed_dim, poly_dim),
@@ -178,11 +179,15 @@ class NDSDecoder(nn.Module):
                 index=last_node_idx.unsqueeze(-1).expand(B, R, 1, hidden_dim),
             ).squeeze(-2)
 
-        gru_hidden = self.GRU(
-            h_last_node.reshape(B * R, hidden_dim),
-            decoder_state.gru_hidden,
-        )
-        context = gru_hidden.reshape(B, R, hidden_dim)
+        gru_hidden = decoder_state.gru_hidden
+        if self.GRU is not None:
+            gru_hidden = self.GRU(
+                h_last_node.reshape(B * R, hidden_dim),
+                gru_hidden,
+            )
+            context = gru_hidden.reshape(B, R, hidden_dim)
+        else:
+            context = h_last_node.reshape(B, R, hidden_dim)
 
         attention_mask = ~problem_state.action_mask
         mh_out = self.MHA(

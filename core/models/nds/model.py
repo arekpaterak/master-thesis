@@ -3,16 +3,15 @@ from typing import Literal
 import torch
 import torch.nn as nn
 
-from core.models.nds.decoder import DecoderCache, DecoderOutput, DecoderState, NDSDecoder
-from core.models.nds.encoder import NDSEncoder
-from core.problems.solution import BaseSolution
-from core.states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
-
-from ...problems.cvrp.features import CVRPFeatureExtractor
-from ...problems.tsp.features import TSPFeatureExtractor
+from ...problems.cvrp.features import CVRPSolutionFeatureExtractor
+from ...problems.solution import BaseSolution
+from ...problems.tsp.features import TSPSolutionFeatureExtractor
+from ...states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
 from ..entropy import entropy
 from ..rollout import Rollout
 from ..utils import get_model_device
+from .decoder import DecoderCache, DecoderOutput, DecoderState, NDSDecoder
+from .encoder import NDSEncoder
 from .seed_sampler import sample_seed
 
 
@@ -28,6 +27,7 @@ class NDSModel(nn.Module):
         seed_dim: int = 10,
         with_neighbours_encoding: bool = True,
         with_tour_encoding: bool | None = None,
+        use_hidden_decoding_state: bool = True,
     ) -> None:
         super().__init__()
 
@@ -46,14 +46,18 @@ class NDSModel(nn.Module):
             with_tour_encoding=with_tour_encoding,
         )
         self.decoder = NDSDecoder(
-            hidden_dim=hidden_dim, num_heads=num_heads, seed_dim=seed_dim, poly_dim=poly_dim
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            seed_dim=seed_dim,
+            poly_dim=poly_dim,
+            use_hidden_decoding_state=use_hidden_decoding_state,
         )
 
         match problem_name:
             case "cvrp":
-                self.feature_extractor = CVRPFeatureExtractor()
+                self.feature_extractor = CVRPSolutionFeatureExtractor()
             case "tsp":
-                self.feature_extractor = TSPFeatureExtractor()
+                self.feature_extractor = TSPSolutionFeatureExtractor()
             case _:
                 raise ValueError(f"Unsupported problem_name: {self.problem_name}")
 

@@ -27,6 +27,7 @@ class ModelParams(BaseModel):
         default=None,
         description="Use tour encoding. None means problem-specific default (True for CVRP, False for TSP).",
     )
+    use_hidden_decoding_state: bool = Field(default=True, description="Use hidden decoding state.")
 
 
 class OptimizerParams(BaseModel):

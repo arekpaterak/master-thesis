@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.problems.tsp.features import RepairTSPFeatureExtractor
+from core.problems.tsp.features import RepairTSPSolutionFeatureExtractor
 from core.problems.tsp.instance import TSPInstance
 from core.problems.tsp.solution import TSPSolution
 
@@ -12,7 +12,7 @@ def instance_n4():
     return TSPInstance.create(locations=locations)
 
 
-class TestRepairTSPFeatureExtractor:
+class TestRepairTSPSolutionFeatureExtractor:
     @pytest.mark.parametrize(
         "tour, expected_indices, expected_padding",
         [
@@ -45,7 +45,7 @@ class TestRepairTSPFeatureExtractor:
         expected_k = expected_indices.shape[1]
 
         solution = TSPSolution.create(instance=instance_n4, tour=tour)
-        extractor = RepairTSPFeatureExtractor()
+        extractor = RepairTSPSolutionFeatureExtractor()
         features = extractor(solution)
 
         node_features = features["node_features"]
@@ -100,7 +100,7 @@ class TestRepairTSPFeatureExtractor:
         instance = instance_n4.expand(b_size)
         solution = TSPSolution.create(instance=instance, tour=tour)
 
-        extractor = RepairTSPFeatureExtractor()
+        extractor = RepairTSPSolutionFeatureExtractor()
         features = extractor(solution)
 
         assert {"node_features", "padding_mask", "original_indices"}.issubset(features.keys())
