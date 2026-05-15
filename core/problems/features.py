@@ -1,21 +1,20 @@
-from typing import Protocol, TypeVar
+from abc import ABC, abstractmethod
 
 import torch
 
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 
-SolutionType = TypeVar("SolutionType", bound=BaseSolution)
-InstanceType = TypeVar("InstanceType", bound=BaseProblemInstance)
+
+class SolutionFeatureExtractor[S: BaseSolution](ABC):
+    """Abstract base class for extracting neural network input features from a solution."""
+
+    @abstractmethod
+    def __call__(self, solution: S) -> dict[str, torch.Tensor]: ...
 
 
-class FeatureExtractor(Protocol[SolutionType]):
-    """Protocol for extracting neural network input features from a solution."""
+class InstanceFeatureExtractor[I: BaseProblemInstance](ABC):
+    """Abstract base class for extracting neural network input features from an instance."""
 
-    def __call__(self, solution: SolutionType) -> dict[str, torch.Tensor]: ...
-
-
-class InstanceFeatureExtractor(Protocol[InstanceType]):
-    """Protocol for extracting neural network input features from an instance."""
-
-    def __call__(self, instance: InstanceType) -> dict[str, torch.Tensor]: ...
+    @abstractmethod
+    def __call__(self, instance: I) -> dict[str, torch.Tensor]: ...

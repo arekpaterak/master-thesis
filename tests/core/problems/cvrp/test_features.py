@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.problems.cvrp.features import RepairCVRPFeatureExtractor
+from core.problems.cvrp.features import RepairCVRPSolutionFeatureExtractor
 from core.problems.cvrp.instance import CVRPInstance
 from core.problems.cvrp.solution import CVRPSolution
 
@@ -18,7 +18,7 @@ def instance_n4():
     )
 
 
-class TestRepairCVRPFeatureExtractor:
+class TestRepairCVRPSolutionFeatureExtractor:
     @pytest.mark.parametrize(
         "sequence, expected_indices, expected_padding",
         [
@@ -54,7 +54,7 @@ class TestRepairCVRPFeatureExtractor:
         expected_k = expected_indices.shape[1]
 
         solution = CVRPSolution.create(instance=instance_n4, sequence=sequence)
-        extractor = RepairCVRPFeatureExtractor()
+        extractor = RepairCVRPSolutionFeatureExtractor()
         features = extractor(solution)
 
         customer_features = features["customer_features"]
@@ -130,7 +130,7 @@ class TestRepairCVRPFeatureExtractor:
         instance = instance_n4.expand(B)
         solution = CVRPSolution.create(instance=instance, sequence=sequence)
 
-        extractor = RepairCVRPFeatureExtractor()
+        extractor = RepairCVRPSolutionFeatureExtractor()
         features = extractor(solution)
 
         assert {"customer_features", "depot_features", "padding_mask", "original_indices"}.issubset(

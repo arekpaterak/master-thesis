@@ -2,15 +2,10 @@ import torch
 
 from core.problems.cvrp.instance import CVRPInstance
 from core.problems.cvrp.solution import CVRPSolution
-from core.problems.features import FeatureExtractor, InstanceFeatureExtractor
+from core.problems.features import InstanceFeatureExtractor, SolutionFeatureExtractor
 
 
-class CVRPFeatureExtractor(FeatureExtractor[CVRPSolution]):
-    """
-    Standard feature extractor for the default CVRP NDS Model.
-    Extracts the full problem instance features and relations.
-    """
-
+class CVRPSolutionFeatureExtractor(SolutionFeatureExtractor[CVRPSolution]):
     def __call__(self, solution: CVRPSolution) -> dict[str, torch.Tensor]:
         return {
             "depot_features": solution.instance.depot_location,
@@ -21,8 +16,6 @@ class CVRPFeatureExtractor(FeatureExtractor[CVRPSolution]):
 
 
 class CVRPInstanceFeatureExtractor(InstanceFeatureExtractor[CVRPInstance]):
-    """Feature extractor for instance-level AM-style CVRP encoding."""
-
     def __call__(self, instance: CVRPInstance) -> dict[str, torch.Tensor]:
         return {
             "depot_features": instance.depot_location,
@@ -30,7 +23,7 @@ class CVRPInstanceFeatureExtractor(InstanceFeatureExtractor[CVRPInstance]):
         }
 
 
-class RepairCVRPFeatureExtractor(FeatureExtractor[CVRPSolution]):
+class RepairCVRPSolutionFeatureExtractor(SolutionFeatureExtractor[CVRPSolution]):
     """
     Feature extractor for the CVRP repair model.
     Extracts only the nodes that are free to be reinserted (degree < 2).

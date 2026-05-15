@@ -1,16 +1,11 @@
 import torch
 
-from core.problems.features import FeatureExtractor, InstanceFeatureExtractor
+from core.problems.features import InstanceFeatureExtractor, SolutionFeatureExtractor
 from core.problems.tsp.instance import TSPInstance
 from core.problems.tsp.solution import TSPSolution
 
 
-class TSPFeatureExtractor(FeatureExtractor[TSPSolution]):
-    """
-    Standard feature extractor for the TSP NDS Model.
-    Extracts the full problem instance features and topology.
-    """
-
+class TSPSolutionFeatureExtractor(SolutionFeatureExtractor[TSPSolution]):
     def __call__(self, solution: TSPSolution) -> dict[str, torch.Tensor]:
         return {
             "node_features": solution.instance.locations,
@@ -19,15 +14,13 @@ class TSPFeatureExtractor(FeatureExtractor[TSPSolution]):
 
 
 class TSPInstanceFeatureExtractor(InstanceFeatureExtractor[TSPInstance]):
-    """Feature extractor for instance-level AM-style TSP encoding."""
-
     def __call__(self, instance: TSPInstance) -> dict[str, torch.Tensor]:
         return {
             "node_features": instance.locations,
         }
 
 
-class RepairTSPFeatureExtractor(FeatureExtractor[TSPSolution]):
+class RepairTSPSolutionFeatureExtractor(SolutionFeatureExtractor[TSPSolution]):
     """
     Feature extractor for the TSP repair model.
     Extracts only the nodes that are free to be reinserted (degree < 2).

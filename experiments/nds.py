@@ -401,6 +401,7 @@ def _(config, device):
         seed_dim=config.model.seed_dim,
         with_neighbours_encoding=config.model.with_neighbours_encoding,
         with_tour_encoding=config.model.with_tour_encoding,
+        use_hidden_decoding_state=config.model.use_hidden_decoding_state,
     ).to(device)
 
     model

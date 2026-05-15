@@ -1,7 +1,7 @@
 from core.models.nds.model import NDSModel
 from core.models.nds.seed_sampler import sample_seed
 from core.problems.cvrp import CVRPConfig, CVRPSampler
-from core.problems.cvrp.features import CVRPFeatureExtractor
+from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
 from core.problems.cvrp.solve import one_customer_per_route
 
 
@@ -14,7 +14,7 @@ def test_model() -> None:
 
     model = NDSModel(problem_name="cvrp")
 
-    extractor = CVRPFeatureExtractor()
+    extractor = CVRPSolutionFeatureExtractor()
     features = extractor(solution)
 
     problem_state, decoder_state, cache = model.pre_forward(
