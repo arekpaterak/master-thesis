@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch import nn
 
 
-class CachedMultiHeadAttention(nn.Module):
+class CachedMultiheadAttention(nn.Module):
     def __init__(
         self,
         embed_dim: int,
@@ -45,7 +45,8 @@ class CachedMultiHeadAttention(nn.Module):
             q: Query tensor (..., L_q, embed_dim) or (..., embed_dim)
             k_cached: Pre-projected Keys (..., L_k, embed_dim)
             v_cached: Pre-projected Values (..., L_k, embed_dim)
-            attention_mask: Bool mask (B, 1, L_q, L_k)
+            attention_mask: optional bool mask (..., L_k) where True = attend (allowed).
+                Note: opposite convention to MultiHeadAttention - mirrors F.scaled_dot_product_attention.
         """
         # Normalize query shape to (..., Lq, embed_dim)
         if q.dim() == k_cached.dim() - 1:

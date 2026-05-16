@@ -37,6 +37,14 @@ class NDSModel(nn.Module):
         if with_tour_encoding is None:
             with_tour_encoding = problem_name == "cvrp"
 
+        match problem_name:
+            case "cvrp":
+                self.feature_extractor = CVRPSolutionFeatureExtractor()
+            case "tsp":
+                self.feature_extractor = TSPSolutionFeatureExtractor()
+            case _:
+                raise ValueError(f"Unsupported problem_name: {self.problem_name}")
+
         self.encoder = NDSEncoder(
             problem_name=problem_name,
             hidden_dim=hidden_dim,
@@ -52,14 +60,6 @@ class NDSModel(nn.Module):
             poly_dim=poly_dim,
             use_hidden_decoding_state=use_hidden_decoding_state,
         )
-
-        match problem_name:
-            case "cvrp":
-                self.feature_extractor = CVRPSolutionFeatureExtractor()
-            case "tsp":
-                self.feature_extractor = TSPSolutionFeatureExtractor()
-            case _:
-                raise ValueError(f"Unsupported problem_name: {self.problem_name}")
 
     def pre_forward(
         self,
@@ -112,7 +112,7 @@ class NDSModel(nn.Module):
         rollouts_per_solution: int,
         deconstruction_size: int,
         greedy: bool = False,
-    ):
+    ) -> Rollout:
         instance = solution.instance
 
         B = instance.batch_size[0]

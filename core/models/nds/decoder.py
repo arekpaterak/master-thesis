@@ -5,7 +5,7 @@ from typing import NamedTuple
 import torch
 import torch.nn as nn
 
-from core.models.layers.cached_multi_head_attention import CachedMultiHeadAttention
+from core.models.layers.cached_multihead_attention import CachedMultiheadAttention
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.states.destroy import DestroyState
 
@@ -84,7 +84,7 @@ class NDSDecoder(nn.Module):
 
         self.start_token = nn.Parameter(torch.zeros(hidden_dim), requires_grad=True)
 
-        self.MHA = CachedMultiHeadAttention(
+        self.MHA = CachedMultiheadAttention(
             embed_dim=hidden_dim,
             num_heads=num_heads,
         )
