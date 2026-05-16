@@ -156,7 +156,7 @@ def configure_training_step(
             best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
 
             best_reward = reward.gather(1, best_rollout_idx)
-            best_log_p = rollout.overall_log_p.gather(1, best_rollout_idx)
+            best_log_p = rollout.log_p.gather(1, best_rollout_idx)
             loss = -((best_reward - reward_baseline) * best_log_p).mean()
             loss.backward()
 
@@ -167,8 +167,8 @@ def configure_training_step(
                 on_improvement_step(step, loss.item())
             total_reward += best_reward.mean().item()
             total_reward_baseline += reward_baseline.mean().item()
-            total_entropy += rollout.entropy or 0.0
-            total_entropy_norm += rollout.entropy_norm or 0.0
+            total_entropy += rollout.mean_entropy
+            total_entropy_norm += rollout.mean_entropy_norm
             total_log_p += best_log_p.mean().item()
 
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)

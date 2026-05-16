@@ -32,11 +32,8 @@ def test_if_can_produce_rollout(
         greedy=False,
     )
 
-    assert (
-        rollout.actions.shape
-        == rollout.log_p_of_actions.shape
-        == (4, ROLLOUTS_PER_SOLUTION, DECONSTRUCTION_SIZE)
-    )
+    assert rollout.actions.shape == (4, ROLLOUTS_PER_SOLUTION, DECONSTRUCTION_SIZE)
+    assert rollout.log_p.shape == (4, ROLLOUTS_PER_SOLUTION)
     for action_sequence in rollout.actions.reshape(-1, DECONSTRUCTION_SIZE):
         assert len(set(action_sequence)) == DECONSTRUCTION_SIZE, (
             "Expected no duplicate actions in a rollout."

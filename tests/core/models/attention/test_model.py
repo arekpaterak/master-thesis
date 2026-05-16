@@ -18,10 +18,9 @@ def test_attention_model_rollout(problem: str):
 
     result = model.rollout(instance, greedy=False)
     assert result.actions.shape[0] == batch_size
-    assert result.log_p_of_actions.shape[0] == batch_size
-    assert result.overall_log_p.shape == (batch_size,)
-    assert isinstance(result.entropy, float)
-    assert isinstance(result.entropy_norm, float)
+    assert result.log_p.shape == (batch_size,)
+    assert isinstance(result.mean_entropy, float)
+    assert isinstance(result.mean_entropy_norm, float)
 
     solution = rollout_to_solution(result, instance)
     objective = solution.objective()

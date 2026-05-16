@@ -167,12 +167,9 @@ class NDSModel(nn.Module):
 
         selected = torch.stack(selected, dim=-1).detach()
 
-        mean_entropy = torch.stack(entropies, dim=-1).mean().item()
-        mean_entropy_norm = torch.stack(entropies_norm, dim=-1).mean().item()
-
-        return Rollout(
+        return Rollout.create(
             actions=selected,
-            log_p_of_actions=torch.stack(log_p_of_selected, dim=-1),
-            entropy=mean_entropy,
-            entropy_norm=mean_entropy_norm,
+            log_p=torch.stack(log_p_of_selected, dim=-1).sum(dim=-1),
+            entropy=torch.stack(entropies, dim=-1).mean(dim=-1),
+            entropy_norm=torch.stack(entropies_norm, dim=-1).mean(dim=-1),
         )

@@ -190,11 +190,11 @@ class NDSDecoder(nn.Module):
             context = h_last_node.reshape(B, R, hidden_dim)
 
         attention_mask = ~problem_state.action_mask
-        mh_out = self.MHA(
+        mha_out = self.MHA(
             q=context, k_cached=cache.k, v_cached=cache.v, attention_mask=attention_mask
         ).reshape(B, R, self.hidden_dim)
 
-        context_out = mh_out + self.poly_net(torch.cat([mh_out, cache.seed], dim=-1))
+        context_out = mha_out + self.poly_net(torch.cat([mha_out, cache.seed], dim=-1))
 
         log_p = self.final_scorer(
             h_c=context_out,
