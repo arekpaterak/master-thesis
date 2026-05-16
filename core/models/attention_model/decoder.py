@@ -22,7 +22,7 @@ class Decoder(nn.Module):
         self.v_l = nn.Parameter(torch.zeros(hidden_dim))
         self.v_f = nn.Parameter(torch.zeros(hidden_dim))
 
-        # MODIFICATION: Project upfront, not inside Q projection in MHA
+        # MODIFICATION: Contrary to the original article we project upfront, not inside Q projection in MHA
         # TODO: Extract problem specific code
         match problem_name:
             case "tsp":

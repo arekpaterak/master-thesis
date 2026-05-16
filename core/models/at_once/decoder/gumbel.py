@@ -1,0 +1,74 @@
+import torch
+import torch.nn as nn
+
+from core.models.at_once.decoder.base import OnePassDestroyDecoder
+from core.models.at_once.utils import plackett_luce_log_p
+from core.models.entropy import entropy
+from core.models.layers.compatibility_scorer import CompatibilityScorer
+from core.models.layers.multihead_attention import MultiheadAttentionWrapper
+from core.models.rollout import Rollout
+
+
+class GumbelTopKDecoder(OnePassDestroyDecoder):
+    def __init__(
+        self, *, hidden_dim: int, seed_dim: int, poly_dim: int, num_heads: int, C: float = 10.0
+    ):
+        super().__init__()
+        self._seed_dim = seed_dim
+        self.MHA = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
+        self.poly_net = nn.Sequential(
+            nn.Linear(hidden_dim + seed_dim, poly_dim),
+            nn.ReLU(),
+            nn.Linear(poly_dim, hidden_dim),
+        )
+        self.final_scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
+
+    @property
+    def seed_dim(self) -> int:
+        return self._seed_dim
+
+    def forward(
+        self, *, h_nodes: torch.Tensor, seed: torch.Tensor, action_mask: torch.Tensor
+    ) -> torch.Tensor:
+        # h_nodes: (B, R, N, D), seed: (B, R, seed_dim)
+        # action_mask: (B, R, N) - True = forbidden (e.g., depot for CVRP)
+        query = h_nodes.mean(dim=-2, keepdim=True)  # (B, R, 1, D)
+        mha_out = self.MHA(query, h_nodes, h_nodes, attention_mask=~action_mask).squeeze(
+            -2
+        )  # (B, R, D)
+
+        context = mha_out + self.poly_net(torch.cat([mha_out, seed], dim=-1))
+
+        log_p = self.final_scorer(h_c=context, h_nodes=h_nodes, mask=action_mask)  # (B, R, N)
+        return log_p
+
+    def rollout(
+        self,
+        *,
+        h_nodes: torch.Tensor,
+        seed: torch.Tensor,
+        action_mask: torch.Tensor,
+        deconstruction_size: int,
+        greedy: bool,
+        **kwargs,
+    ) -> Rollout:
+        log_p = self.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)  # (B, R, N)
+
+        log_p_detached = log_p.detach()
+        if greedy:
+            selected = log_p_detached.topk(deconstruction_size, dim=-1).indices  # (B, R, k)
+        else:
+            g = torch.distributions.Gumbel(
+                torch.zeros_like(log_p_detached), torch.ones_like(log_p_detached)
+            ).sample()
+            selected = (log_p_detached + g).topk(deconstruction_size, dim=-1).indices  # (B, R, k)
+
+        log_p_of_selected = plackett_luce_log_p(log_p, selected)  # (B, R, k)
+        _entropy = entropy(log_p)
+
+        return Rollout.create(
+            actions=selected,
+            log_p=log_p_of_selected.sum(dim=-1),
+            entropy=_entropy.entropy.detach(),
+            entropy_norm=_entropy.entropy_norm.detach(),
+        )
