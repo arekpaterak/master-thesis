@@ -4,8 +4,8 @@ from typing import Literal
 
 import torch.nn as nn
 
-from core.models.at_once import ProximityDecoder
-from core.models.at_once.decoder.base import OnePassDestroyDecoder
+from core.models.nds.decoders.one_pass.base import OnePassDestroyDecoder
+from core.models.nds.decoders.one_pass.proximity import ProximityDecoder
 from core.models.nds.encoder import NDSEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.rollout import Rollout
@@ -62,6 +62,7 @@ class OnePassNDSModel(nn.Module):
         greedy: bool = False,
     ) -> Rollout:
         instance = solution.instance
+
         B = instance.batch_size[0]
         R = rollouts_per_solution
         device = get_model_device(self)

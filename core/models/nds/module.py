@@ -12,8 +12,8 @@ from core.models.nds.evaluation import (
     EpochValidationAccumulator,
     configure_validation_step,
 )
+from core.models.nds.factory import NDSModel
 from core.models.nds.functions import noop_improvement_step
-from core.models.nds.model import NDSModel
 from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,

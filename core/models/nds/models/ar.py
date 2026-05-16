@@ -3,19 +3,24 @@ from typing import Literal
 import torch
 import torch.nn as nn
 
-from ...problems.cvrp.features import CVRPSolutionFeatureExtractor
-from ...problems.solution import BaseSolution
-from ...problems.tsp.features import TSPSolutionFeatureExtractor
-from ...states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
-from ..entropy import entropy
-from ..rollout import Rollout
-from ..utils import get_model_device
-from .decoder import DecoderCache, DecoderOutput, DecoderState, NDSDecoder
-from .encoder import NDSEncoder
-from .seed_sampler import sample_seed
+from core.models.entropy import entropy
+from core.models.nds.decoders.ar import (
+    AutoregressiveNDSDecoder,
+    DecoderCache,
+    DecoderOutput,
+    DecoderState,
+)
+from core.models.nds.encoder import NDSEncoder
+from core.models.nds.seed_sampler import sample_seed
+from core.models.rollout import Rollout
+from core.models.utils import get_model_device
+from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
+from core.problems.solution import BaseSolution
+from core.problems.tsp.features import TSPSolutionFeatureExtractor
+from core.states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
 
 
-class NDSModel(nn.Module):
+class AutoregressiveNDSModel(nn.Module):
     def __init__(
         self,
         *,
@@ -53,7 +58,7 @@ class NDSModel(nn.Module):
             with_neighbours_encoding=with_neighbours_encoding,
             with_tour_encoding=with_tour_encoding,
         )
-        self.decoder = NDSDecoder(
+        self.decoder = AutoregressiveNDSDecoder(
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             seed_dim=seed_dim,

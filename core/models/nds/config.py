@@ -6,6 +6,8 @@ import math
 
 from pydantic import BaseModel, Field, computed_field
 
+from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
+
 
 class ProblemParams(BaseModel):
     """Configuration for the optimisation problem."""
@@ -27,7 +29,7 @@ class ModelParams(BaseModel):
         default=None,
         description="Use tour encoding. None means problem-specific default (True for CVRP, False for TSP).",
     )
-    use_hidden_decoding_state: bool = Field(default=True, description="Use hidden decoding state.")
+    decoder: DecoderConfig = Field(default_factory=AutoregressiveDecoderConfig)
 
 
 class OptimizerParams(BaseModel):

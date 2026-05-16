@@ -3,11 +3,12 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from core.models.at_once.decoder.base import OnePassDestroyDecoder
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.rollout import Rollout
+
+from .base import OnePassDestroyDecoder
 
 
 class SlotDecoder(OnePassDestroyDecoder):
@@ -61,7 +62,7 @@ class SlotDecoder(OnePassDestroyDecoder):
     ) -> torch.Tensor:
         # h_nodes: (B, R, N, hidden_dim), seed: (B, R, seed_dim)
         # action_mask: (B, R, N) - True = forbidden
-        B, R, _, hidden_dim = h_nodes.shape
+        B, R, N, hidden_dim = h_nodes.shape
 
         queries = self.slot_queries.expand(B, R, self.k, hidden_dim)
         # Self-attention among slots so they become aware of each other before attending to nodes
@@ -77,7 +78,13 @@ class SlotDecoder(OnePassDestroyDecoder):
             torch.cat([mha_out, seed_expanded], dim=-1)
         )  # (B, R, k, hidden_dim)
 
-        return self.scorer(h_c=context, h_nodes=h_nodes, mask=action_mask)  # (B, R, k, N)
+        # Expand h_nodes and mask over the k slot dimension so scorer
+        # sees matching batch dims: (B, R, k, N, D) and (B, R, k, N)
+        h_nodes_per_slot = h_nodes.unsqueeze(-3).expand(B, R, self.k, N, hidden_dim)
+        mask_per_slot = action_mask.unsqueeze(-2).expand(B, R, self.k, N)
+        return self.scorer(
+            h_c=context, h_nodes=h_nodes_per_slot, mask=mask_per_slot
+        )  # (B, R, k, N)
 
     def rollout(
         self,

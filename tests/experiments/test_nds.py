@@ -5,23 +5,24 @@ from pathlib import Path
 import pytest
 import yaml
 
+from core.models.nds.config import LoggingConfig, ProblemParams, TrainConfig, TrainerParams
+
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "nds.py"
 
-_MINIMAL_CONFIG = {
-    "problem": {"name": "cvrp", "size": 10},
-    "trainer": {
-        "epochs": 1,
-        "instances_per_epoch": 5,
-        "batch_size": 2,
-        "rollouts_per_instance": 2,
-        "num_initial_improvement_steps": 1,
-        "num_main_improvement_steps": 1,
-        "deconstruction_size": 3,
-    },
-    "logging": {"wandb_project": ""},
-    "validation": {},
-}
+_MINIMAL_CONFIG = TrainConfig(
+    problem=ProblemParams(size=10),
+    trainer=TrainerParams(
+        epochs=1,
+        instances_per_epoch=5,
+        batch_size=2,
+        rollouts_per_instance=2,
+        num_initial_improvement_steps=1,
+        num_main_improvement_steps=1,
+        deconstruction_size=3,
+    ),
+    logging=LoggingConfig(wandb_project=""),
+)
 
 
 @pytest.mark.experiment
@@ -32,9 +33,9 @@ _MINIMAL_CONFIG = {
         "tsp",
     ],
 )
-def test_nds_runnable(tmp_path, problem):
+def test_nds_runnable_as_script(tmp_path, problem):
     config_file = tmp_path / "config.yml"
-    config_file.write_text(yaml.dump(_MINIMAL_CONFIG))
+    config_file.write_text(yaml.dump(_MINIMAL_CONFIG.model_dump()))
 
     result = subprocess.run(
         [sys.executable, str(_NDS_SCRIPT), "--config", str(config_file), "--problem.name", problem],

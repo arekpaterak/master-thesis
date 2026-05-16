@@ -36,7 +36,7 @@ def _():
     import torch
     from torchinfo import summary
 
-    from core.models.nds.model import NDSModel
+    from core.models.nds.models.ar import AutoregressiveNDSModel
     from core.models.nds.seed_sampler import sample_seed
     from core.problems.cvrp import CVRPConfig, CVRPSampler
     from core.problems.cvrp.solve import one_customer_per_route
@@ -49,7 +49,7 @@ def _():
         CVRPConfig,
         CVRPSampler,
         DEVICE,
-        NDSModel,
+        AutoregressiveNDSModel,
         one_customer_per_route,
         sample_seed,
         summary,
@@ -256,12 +256,12 @@ def _(mo):
 
 @app.cell
 def _(DEVICE, HIDDEN_DIM, POLY_DIM, NUM_HEADS, SEED_DIM, sample_seed, torch):
-    from core.models.nds.decoder import DecoderState, NDSDecoder
+    from core.models.nds.decoders.ar import AutoregressiveNDSDecoder, DecoderState
 
     B, rollout_size, N = (2, 10, 4)
     seed_dim = 10
     M = 4
-    decoder = NDSDecoder(
+    decoder = AutoregressiveNDSDecoder(
         hidden_dim=HIDDEN_DIM, seed_dim=SEED_DIM, poly_dim=POLY_DIM, num_heads=NUM_HEADS
     ).to(DEVICE)
     h_nodes = torch.randn(B, N + 1, HIDDEN_DIM).to(DEVICE)
