@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
 
-from core.models.at_once.decoder.base import OnePassDestroyDecoder
-from core.models.at_once.utils import plackett_luce_log_p
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.rollout import Rollout
+
+from .base import OnePassDestroyDecoder
+from .utils import plackett_luce_log_p
 
 
 class GumbelTopKDecoder(OnePassDestroyDecoder):

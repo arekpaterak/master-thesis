@@ -2,7 +2,7 @@ import torch
 
 from core.models.nds.config import TrainConfig, TrainerParams
 from core.models.nds.functions import noop_repair, only_expanding_apply_rollout
-from core.models.nds.model import NDSModel
+from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.nds.module import NDSModule
 from core.models.trainer import Trainer
 from core.problems.cvrp import CVRPConfig, CVRPSampler
@@ -12,7 +12,7 @@ from core.problems.cvrp.solve import one_customer_per_route
 def test_train():
     B, R, N = 4, 10, 20
     sampler = CVRPSampler(CVRPConfig.for_n(N))
-    model = NDSModel(problem_name="cvrp")
+    model = AutoregressiveNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(
         config=TrainConfig(

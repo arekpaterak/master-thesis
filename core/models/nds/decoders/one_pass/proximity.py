@@ -5,9 +5,10 @@ import math
 import torch
 import torch.nn as nn
 
-from core.models.at_once.decoder.base import OnePassDestroyDecoder
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.rollout import Rollout
+
+from .base import OnePassDestroyDecoder
 
 
 class ProximityDecoder(OnePassDestroyDecoder):

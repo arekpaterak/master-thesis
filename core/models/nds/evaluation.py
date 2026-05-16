@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from pydantic import BaseModel, computed_field
 
-from core.models.nds.model import NDSModel
+from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -90,13 +90,13 @@ def configure_validation_step(
     deconstruction_size: int,
     num_improvement_steps: int,
     every_n_lns_steps: int,
-) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
+) -> Callable[[AutoregressiveNDSModel, BaseProblemInstance, int], BatchValidationSummary]:
     snapshot_steps = [0] + list(
         range(every_n_lns_steps, num_improvement_steps + 1, every_n_lns_steps)
     )
 
     def validation_step(
-        model: NDSModel,
+        model: AutoregressiveNDSModel,
         instance: BaseProblemInstance,
         epoch: int,
     ) -> BatchValidationSummary:

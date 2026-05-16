@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 from pydantic import BaseModel, computed_field
 
-from core.models.nds.model import NDSModel
+from core.models.nds.factory import NDSModel
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution

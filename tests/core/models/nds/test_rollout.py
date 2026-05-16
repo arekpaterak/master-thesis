@@ -1,13 +1,13 @@
 import pytest
 
-from core.models.nds.model import NDSModel
+from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.problems.cvrp import CVRPConfig, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import one_customer_per_route
 
 
 @pytest.fixture(scope="session")
-def nds_test_model() -> NDSModel:
-    return NDSModel(problem_name="cvrp")
+def nds_test_model() -> AutoregressiveNDSModel:
+    return AutoregressiveNDSModel(problem_name="cvrp")
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def example_solution() -> CVRPSolution:
 
 
 def test_if_can_produce_rollout(
-    nds_test_model: NDSModel,
+    nds_test_model: AutoregressiveNDSModel,
     example_solution: CVRPSolution,
 ):
     ROLLOUTS_PER_SOLUTION = 10

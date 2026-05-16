@@ -1,4 +1,4 @@
-from core.models.nds.model import NDSModel
+from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.nds.seed_sampler import sample_seed
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
@@ -12,7 +12,7 @@ def test_model() -> None:
     solution = one_customer_per_route(instance)
     seed = sample_seed(batch_size=B, rollout_size=R, seed_dim=10)
 
-    model = NDSModel(problem_name="cvrp")
+    model = AutoregressiveNDSModel(problem_name="cvrp")
 
     extractor = CVRPSolutionFeatureExtractor()
     features = extractor(solution)

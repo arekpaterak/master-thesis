@@ -50,7 +50,7 @@ class DecoderOutput(NamedTuple):
     gru_hidden: torch.Tensor
 
 
-class NDSDecoder(nn.Module):
+class AutoregressiveNDSDecoder(nn.Module):
     """Autoregressive decoder for sequential customer selection in NDS.
 
     At each step, a GRU updates the query based on the previously selected

@@ -137,6 +137,9 @@ def _(
 @app.cell(hide_code=True)
 def _(
     TrainConfig,
+    decoder_sigma_widget,
+    decoder_type_widget,
+    decoder_use_hidden_widget,
     is_script_mode,
     logging_widgets,
     model_widgets,
@@ -155,6 +158,18 @@ def _(
         TrainerParams,
         ValidationConfig,
     )
+    from core.models.nds.decoders.config import (
+        AutoregressiveDecoderConfig as _AutoregressiveDecoderConfig,
+    )
+    from core.models.nds.decoders.config import (
+        GumbelDecoderConfig as _GumbelDecoderConfig,
+    )
+    from core.models.nds.decoders.config import (
+        ProximityDecoderConfig as _ProximityDecoderConfig,
+    )
+    from core.models.nds.decoders.config import (
+        SlotDecoderConfig as _SlotDecoderConfig,
+    )
 
     if is_script_mode:
         config = TrainConfig.model_validate(yaml_data)
@@ -163,9 +178,20 @@ def _(
             run_button.value == 0,
             mo.md("*Click 'Start Training' to begin.*"),
         )
+        match decoder_type_widget.value:
+            case "ar":
+                _decoder_config = _AutoregressiveDecoderConfig(
+                    use_hidden_decoding_state=decoder_use_hidden_widget.value
+                )
+            case "gumbel":
+                _decoder_config = _GumbelDecoderConfig()
+            case "slot":
+                _decoder_config = _SlotDecoderConfig()
+            case "proximity":
+                _decoder_config = _ProximityDecoderConfig(sigma=decoder_sigma_widget.value)
         config = TrainConfig(
             problem=ProblemParams(**problem_widgets.value),
-            model=ModelParams(**model_widgets.value),
+            model=ModelParams(**model_widgets.value, decoder=_decoder_config),
             optimizer=OptimizerParams(**optimizer_widgets.value),
             trainer=TrainerParams(**trainer_widgets.value),
             logging=LoggingConfig(**logging_widgets.value),
@@ -207,6 +233,36 @@ def _(TrainConfig):
                 [4, 8, 10, 16, 32], value=defaults.model.seed_dim, label="Seed dim"
             ),
         }
+    )
+
+    from core.models.nds.decoders.config import (
+        AutoregressiveDecoderConfig as _AutoregressiveDecoderConfig,
+    )
+    from core.models.nds.decoders.config import (
+        ProximityDecoderConfig as _ProximityDecoderConfig,
+    )
+
+    _default_decoder = defaults.model.decoder
+
+    decoder_type_widget = mo.ui.dropdown(
+        ["ar", "gumbel", "slot", "proximity"],
+        value=_default_decoder.type,
+        label="Decoder type",
+    )
+    decoder_use_hidden_widget = mo.ui.checkbox(
+        value=_default_decoder.use_hidden_decoding_state
+        if isinstance(_default_decoder, _AutoregressiveDecoderConfig)
+        else True,
+        label="Use hidden decoding state (AR only)",
+    )
+    decoder_sigma_widget = mo.ui.number(
+        0.01,
+        2.0,
+        value=_default_decoder.sigma
+        if isinstance(_default_decoder, _ProximityDecoderConfig)
+        else 0.1,
+        step=0.01,
+        label="Sigma (Proximity only)",
     )
 
     optimizer_widgets = mo.ui.dictionary(
@@ -322,6 +378,13 @@ def _(TrainConfig):
         {
             "Problem": problem_widgets,
             "Model": model_widgets,
+            "Decoder": mo.vstack(
+                [
+                    decoder_type_widget,
+                    decoder_use_hidden_widget,
+                    decoder_sigma_widget,
+                ]
+            ),
             "Optimizer": optimizer_widgets,
             "Trainer": trainer_widgets,
             "Logging": logging_widgets,
@@ -334,6 +397,9 @@ def _(TrainConfig):
         value=False, label="Noop apply+repair (timing benchmark)"
     )
     return (
+        decoder_sigma_widget,
+        decoder_type_widget,
+        decoder_use_hidden_widget,
         logging_widgets,
         model_widgets,
         noop_apply_repair_checkbox,
@@ -390,20 +456,9 @@ def _(config, device):
     gc.collect()
     torch.cuda.empty_cache()
 
-    from core.models.nds.model import NDSModel
+    from core.models.nds.factory import build_model
 
-    model = NDSModel(
-        problem_name=config.problem.name,
-        hidden_dim=config.model.hidden_dim,
-        num_heads=config.model.num_heads,
-        ff_dim=config.model.ff_dim,
-        poly_dim=config.model.poly_dim,
-        seed_dim=config.model.seed_dim,
-        with_neighbours_encoding=config.model.with_neighbours_encoding,
-        with_tour_encoding=config.model.with_tour_encoding,
-        use_hidden_decoding_state=config.model.use_hidden_decoding_state,
-    ).to(device)
-
+    model = build_model(config).to(device)
     model
     return (model,)
 
