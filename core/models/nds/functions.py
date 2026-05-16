@@ -54,11 +54,11 @@ def make_improvement_step(
         # rollout.actions: (B, num_rollouts, deconstruction_size)
         current = solution
         for r in range(num_rollouts):
-            single_rollout = Rollout(
+            single_rollout = Rollout.create(
                 actions=rollout.actions[:, r, :],
-                log_p_of_actions=rollout.log_p_of_actions[:, r, :],
-                entropy=None,
-                entropy_norm=None,
+                log_p=rollout.log_p[:, r],
+                entropy=rollout.entropy[:, r],
+                entropy_norm=rollout.entropy_norm[:, r],
             )
             partial = apply_rollout_fn(current, single_rollout)
             candidate = repair(partial, single_rollout)
@@ -82,9 +82,9 @@ def select_solution(mask: torch.Tensor, a: BaseSolution, b: BaseSolution) -> Bas
             assert isinstance(b, TSPGraphSolution)
             m = mask.unsqueeze(-1)
             return TSPGraphSolution(
-                _instance=a_tsp._instance,
-                _next=torch.where(m, a_tsp._next, b._next),
-                _prev=torch.where(m, a_tsp._prev, b._prev),
+                _instance=a_tsp.instance,
+                _next=torch.where(m, a_tsp.next_nodes, b.next_nodes),
+                _prev=torch.where(m, a_tsp.prev_nodes, b.prev_nodes),
                 batch_size=a_tsp.batch_size,
             )
         case _:
@@ -113,7 +113,7 @@ def only_expanding_apply_rollout(solution: BaseSolution, rollout: Rollout) -> Ba
     """
     Only expands the ``solution`` from (B, destruction_size) to (B, num_rollouts, destruction_size), based on the ``rollout`` dimensionality.
     """
-    return solution.unsqueeze(1).expand(*solution.batch_size, rollout.log_p_of_actions.shape[1])
+    return solution.unsqueeze(1).expand(*solution.batch_size, rollout.batch_size[1])
 
 
 def noop_repair(

@@ -95,7 +95,7 @@ def training_step(
     obj_baseline = rollout_to_solution(baseline_rollout, instance).objective()
     advantage = (obj_model - obj_baseline).detach()
     # No sign flip here since we minimize the cost
-    loss = (advantage * rollout.overall_log_p).mean()
+    loss = (advantage * rollout.log_p).mean()
 
     loss.backward()
     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -108,9 +108,9 @@ def training_step(
         batch_size=batch_size,
         loss=loss.item(),
         advantage=advantage.mean().item(),
-        entropy=rollout.entropy or 0.0,
-        entropy_norm=rollout.entropy_norm or 0.0,
+        entropy=rollout.mean_entropy,
+        entropy_norm=rollout.mean_entropy_norm,
         grad_norm=grad_norm.item(),
-        log_p=rollout.log_p_of_actions.mean().item(),
+        log_p=rollout.log_p.mean().item(),
         instances_per_sec=batch_size / elapsed,
     )

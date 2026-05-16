@@ -137,19 +137,30 @@ class AttentionModel(nn.Module):
             entropies.append(step_entropy.entropy)
             entropies_norm.append(step_entropy.entropy_norm)
 
-        mean_entropy = torch.stack(entropies, dim=-1).mean().item() if entropies else 0.0
-        mean_entropy_norm = (
-            torch.stack(entropies_norm, dim=-1).mean().item() if entropies_norm else 0.0
+        actions_tensor = (
+            torch.stack(actions, dim=-1)
+            if actions
+            else torch.zeros(batch_size, 0, dtype=torch.long, device=h_nodes.device)
         )
         log_p_tensor = (
-            torch.stack(log_p_of_selected, dim=-1)
+            torch.stack(log_p_of_selected, dim=-1).sum(dim=-1)
             if log_p_of_selected
-            else torch.zeros(batch_size, 0, device=h_nodes.device)
+            else torch.zeros(batch_size, device=h_nodes.device)
+        )
+        entropy_tensor = (
+            torch.stack(entropies, dim=-1).mean(dim=-1)
+            if entropies
+            else torch.zeros(batch_size, device=h_nodes.device)
+        )
+        entropy_norm_tensor = (
+            torch.stack(entropies_norm, dim=-1).mean(dim=-1)
+            if entropies_norm
+            else torch.zeros(batch_size, device=h_nodes.device)
         )
 
-        return Rollout(
-            actions=torch.stack(actions, dim=-1),
-            log_p_of_actions=log_p_tensor,
-            entropy=mean_entropy,
-            entropy_norm=mean_entropy_norm,
+        return Rollout.create(
+            actions=actions_tensor,
+            log_p=log_p_tensor,
+            entropy=entropy_tensor,
+            entropy_norm=entropy_norm_tensor,
         )
