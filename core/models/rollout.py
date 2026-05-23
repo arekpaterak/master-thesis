@@ -19,17 +19,17 @@ class Rollout(TensorClass):
         cls,
         *,
         actions: torch.Tensor,
-        log_p: torch.Tensor,
+        log_prob: torch.Tensor,
         entropy: torch.Tensor,
         entropy_norm: torch.Tensor,
     ) -> Rollout:
         """Create a Rollout, inferring batch_size from log_p shape."""
         return cls(
             actions=actions,
-            log_p=log_p,
+            log_p=log_prob,
             entropy=entropy,
             entropy_norm=entropy_norm,
-            batch_size=log_p.shape,
+            batch_size=log_prob.shape,
         )
 
     @property

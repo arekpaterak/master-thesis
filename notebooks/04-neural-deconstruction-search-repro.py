@@ -267,7 +267,7 @@ def _(DEVICE, HIDDEN_DIM, POLY_DIM, NUM_HEADS, SEED_DIM, sample_seed, torch):
     h_nodes = torch.randn(B, N + 1, HIDDEN_DIM).to(DEVICE)
     z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=seed_dim, device=DEVICE)
     print(f"z: {z}")
-    state = decoder.build_initial_state(B=B, rollout_size=rollout_size, num_nodes=N + 1)
+    state = decoder.build_initial_state(batch_size=B, rollout_size=rollout_size, num_nodes=N + 1)
     cache = decoder.build_cache(h_nodes=h_nodes, seed=z)
     selected = []
     for m in range(M):

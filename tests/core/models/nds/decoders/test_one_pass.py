@@ -1,8 +1,8 @@
 import pytest
 import torch
 
-from core.models.nds.decoders.one_pass.gumbel import GumbelTopKDecoder
 from core.models.nds.decoders.one_pass.proximity import ProximityDecoder
+from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
 from core.models.nds.decoders.one_pass.slot import SlotDecoder
 
 B, R, N, K = 2, 4, 10, 3
@@ -13,7 +13,7 @@ NUM_HEADS = 2
 
 
 def _gumbel():
-    return GumbelTopKDecoder(
+    return SimpleOnePassDecoder(
         hidden_dim=HIDDEN_DIM, seed_dim=SEED_DIM, poly_dim=POLY_DIM, num_heads=NUM_HEADS
     ), {}
 
@@ -55,7 +55,7 @@ def test_produces_k_actions(make_decoder, greedy):
     )
 
     assert rollout.actions.shape == (B, R, K)
-    assert rollout.log_p.shape == (B, R)
+    assert rollout.logits.shape == (B, R)
     assert rollout.actions.ge(0).all()
     assert rollout.actions.lt(N).all()
 

@@ -70,7 +70,7 @@ class ProximityDecoder(OnePassDestroyDecoder):
         action_mask: torch.Tensor,
         deconstruction_size: int,
         greedy: bool,
-        node_coords: torch.Tensor,
+        node_coordinates: torch.Tensor,
         **kwargs,
     ) -> Rollout:
         # h_nodes: (B, R, N, D), seed: (B, R, seed_dim), node_coords: (B, R, N, 2)
@@ -78,16 +78,16 @@ class ProximityDecoder(OnePassDestroyDecoder):
 
         mu = self.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)  # (B, R, 2)
 
-        coord = mu.detach() if greedy else (mu + self.sigma * torch.randn_like(mu)).detach()
+        coordinates = mu.detach() if greedy else (mu + self.sigma * torch.randn_like(mu)).detach()
 
         # Select k nearest nodes to the sampled coordinate (action_mask -> inf distance)
-        dists = (node_coords - coord.unsqueeze(-2)).norm(dim=-1)  # (B, R, N)
-        dists = dists.masked_fill(action_mask, float("inf"))
-        selected = dists.topk(deconstruction_size, dim=-1, largest=False).indices  # (B, R, k)
+        distances = (node_coordinates - coordinates.unsqueeze(-2)).norm(dim=-1)  # (B, R, N)
+        distances = distances.masked_fill(action_mask, float("inf"))
+        selected = distances.topk(deconstruction_size, dim=-1, largest=False).indices  # (B, R, k)
 
-        # log_p = log N(coord | mu, sigma^2 * I) - gradient flows through mu
-        # For 2D isotropic Gaussian: -||coord - mu||^2 / (2*sigma^2) - 2*log(sigma) - log(2*pi)
-        diff = coord - mu  # (B, R, 2) - coord is detached, grad flows through mu
+        # log_p = log N(coordinates | mu, sigma^2 * I) - gradient flows through mu
+        # For 2D isotropic Gaussian: -||coordinates - mu||^2 / (2*sigma^2) - 2*log(sigma) - log(2*pi)
+        diff = coordinates - mu  # (B, R, 2) - coordinates is detached, grad flows through mu
         log_p = (
             -0.5 * (diff / self.sigma).pow(2).sum(dim=-1)
             - 2 * math.log(self.sigma)
@@ -100,7 +100,7 @@ class ProximityDecoder(OnePassDestroyDecoder):
 
         return Rollout.create(
             actions=selected,
-            log_p=log_p,
+            log_prob=log_p,
             entropy=entropy_val,
             entropy_norm=torch.zeros(B, R, device=h_nodes.device),
         )
@@ -111,7 +111,7 @@ class ProximityCategoricalSelector(OnePassDestroyDecoder):
 
     Alternative to ProximitySelector: instead of treating the coordinate as a continuous
     action, builds a categorical distribution over nodes via log_softmax(-distances^2)
-    and applies Gumbel-top-k + Plackett-Luce - the same interface as GumbelTopKDecoder.
+    and applies Gumbel-top-k + Plackett-Luce - the same interface as SimpleOnePassDecoder.
 
     Requires node_coords to be passed as a keyword argument to ``rollout()``.
     """
@@ -148,9 +148,9 @@ class ProximityCategoricalSelector(OnePassDestroyDecoder):
         action_mask: torch.Tensor,
         deconstruction_size: int,
         greedy: bool,
-        node_coords: torch.Tensor,
+        node_coordinates: torch.Tensor,
         **kwargs,
     ) -> Rollout:
         # pred_coord (B, R, 2) -> squared L2 distances -> log_softmax -> log_p (B, R, N)
-        # Gumbel-top-k + Plackett-Luce (same pattern as GumbelTopKDecoder)
+        # Gumbel-top-k + Plackett-Luce (same pattern as SimpleOnePassDecoder)
         raise NotImplementedError

@@ -12,7 +12,7 @@ The project is organised with the following structure:
 │   │   │   ├── decoders/          # Destroy decoders
 │   │   │   │   ├── config.py      # Decoder config classes
 │   │   │   │   ├── ar.py          # Autoregressive decoder
-│   │   │   │   └── one_pass/      # One-pass decoder variants (gumbel, slot, proximity)
+│   │   │   │   └── one_pass/      # One-pass decoder variants (simple, slot, proximity)
 │   │   │   ├── encoder.py         # NDSEncoder (shared by all models)
 │   │   │   ├── config.py          # Configuration
 │   │   │   └── factory.py         # Model factory for creating NDS models

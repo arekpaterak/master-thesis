@@ -17,7 +17,7 @@ def test_decoder_step(use_hidden_decoding_state: bool) -> None:
     problem_state = CVRPDestroyState.build_initial(
         batch_size=B, rollout_size=rollout_size, num_nodes=N + 1, device=embedded_nodes.device
     )
-    decoder_state = decoder.build_initial_state(B=B, rollout_size=rollout_size)
+    decoder_state = decoder.build_initial_state(batch_size=B, rollout_size=rollout_size)
     cache = decoder.build_cache(h_nodes=embedded_nodes, seed=z)
 
     log_p, gru_hidden_state = decoder.forward(
