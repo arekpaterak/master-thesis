@@ -67,11 +67,11 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
             )  # (B, R, k)
 
         _entropy = entropy(logits)
-        log_p_of_selected = log_prob_of_sequence_without_replacement(logits, selected)  # (B, R, k)
+        log_p_of_selected = log_prob_of_sequence_without_replacement(logits, selected)  # (B, R)
 
         return Rollout.create(
             actions=selected,
-            log_prob=log_p_of_selected.sum(dim=-1),
+            log_prob=log_p_of_selected,
             entropy=_entropy.entropy.detach(),
             entropy_norm=_entropy.entropy_norm.detach(),
         )

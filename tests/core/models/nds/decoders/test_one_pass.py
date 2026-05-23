@@ -27,7 +27,7 @@ def _slot():
 def _proximity():
     return ProximityDecoder(
         hidden_dim=HIDDEN_DIM, seed_dim=SEED_DIM, poly_dim=POLY_DIM, num_heads=NUM_HEADS
-    ), {"node_coords": torch.rand(B, R, N, 2)}
+    ), {"node_coordinates": torch.rand(B, R, N, 2)}
 
 
 DECODERS = [
@@ -55,7 +55,7 @@ def test_produces_k_actions(make_decoder, greedy):
     )
 
     assert rollout.actions.shape == (B, R, K)
-    assert rollout.logits.shape == (B, R)
+    assert rollout.log_p.shape == (B, R)
     assert rollout.actions.ge(0).all()
     assert rollout.actions.lt(N).all()
 
