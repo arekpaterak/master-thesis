@@ -94,7 +94,7 @@ class AutoregressiveNDSModel(nn.Module):
             device=encoded_nodes.device,
         )
         initial_state = self.decoder.build_initial_state(
-            B=B,
+            batch_size=B,
             rollout_size=rollout_size,
         )
         return problem_state, initial_state, cache
@@ -142,28 +142,25 @@ class AutoregressiveNDSModel(nn.Module):
         )
 
         selected = []
-        log_p_of_selected = []
+        log_prob_of_selected = []
         entropies = []
         entropies_norm = []
 
         for _ in range(deconstruction_size):
-            step_log_p, gru_hidden_state = self.forward(
+            logits, gru_hidden_state = self.forward(
                 problem_state=problem_state,
                 decoder_state=decoder_state,
                 cache=cache,
             )
 
-            if greedy:
-                idx = step_log_p.argmax(dim=-1)
-            else:
-                distribution = torch.distributions.Categorical(logits=step_log_p)
-                idx = distribution.sample()
+            distribution = torch.distributions.Categorical(logits=logits)
+            idx = logits.argmax(dim=-1) if greedy else distribution.sample()
             selected.append(idx)
 
-            step_log_p_of_selected = step_log_p.gather(-1, idx.unsqueeze(-1)).squeeze(-1)
-            log_p_of_selected.append(step_log_p_of_selected)
+            step_log_prob_of_selected = distribution.log_prob(idx)
+            log_prob_of_selected.append(step_log_prob_of_selected)
 
-            step_entropy = entropy(step_log_p)
+            step_entropy = entropy(logits)
             entropies.append(step_entropy.entropy.detach())
             entropies_norm.append(step_entropy.entropy_norm.detach())
 
@@ -174,7 +171,7 @@ class AutoregressiveNDSModel(nn.Module):
 
         return Rollout.create(
             actions=selected,
-            log_p=torch.stack(log_p_of_selected, dim=-1).sum(dim=-1),
+            log_prob=torch.stack(log_prob_of_selected, dim=-1).sum(dim=-1),
             entropy=torch.stack(entropies, dim=-1).mean(dim=-1),
             entropy_norm=torch.stack(entropies_norm, dim=-1).mean(dim=-1),
         )

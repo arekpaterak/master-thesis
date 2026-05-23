@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "drawdata>=0.5.1",
     "iprogress>=0.4",
     "ipykernel>=7.2.0",
     "ipython>=9.10.0",
@@ -15,6 +16,7 @@ dependencies = [
     "marimo>=0.20.4",
     "matplotlib>=3.10.8",
     "notebook>=7.5.4",
+    "pandas>=3.0.3",
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0",

@@ -56,7 +56,7 @@ def make_improvement_step(
         for r in range(num_rollouts):
             single_rollout = Rollout.create(
                 actions=rollout.actions[:, r, :],
-                log_p=rollout.log_p[:, r],
+                log_prob=rollout.log_p[:, r],
                 entropy=rollout.entropy[:, r],
                 entropy_norm=rollout.entropy_norm[:, r],
             )

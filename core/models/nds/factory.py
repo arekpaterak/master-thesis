@@ -5,12 +5,12 @@ from core.models.nds.config import (
 )
 from core.models.nds.decoders.config import (
     AutoregressiveDecoderConfig,
-    GumbelDecoderConfig,
     ProximityDecoderConfig,
+    SimpleOnePassDecoderConfig,
     SlotDecoderConfig,
 )
-from core.models.nds.decoders.one_pass.gumbel import GumbelTopKDecoder
 from core.models.nds.decoders.one_pass.proximity import ProximityDecoder
+from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
 from core.models.nds.decoders.one_pass.slot import SlotDecoder
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.nds.models.one_pass import OnePassNDSModel
@@ -37,10 +37,10 @@ def build_model(config: TrainConfig) -> NDSModel:
                 seed_dim=config.model.seed_dim,
                 use_hidden_decoding_state=decoder_config.use_hidden_decoding_state,
             )
-        case GumbelDecoderConfig():
+        case SimpleOnePassDecoderConfig():
             return OnePassNDSModel(
                 **shared_kwargs,
-                decoder=GumbelTopKDecoder(
+                decoder=SimpleOnePassDecoder(
                     hidden_dim=config.model.hidden_dim,
                     seed_dim=config.model.seed_dim,
                     poly_dim=config.model.poly_dim,

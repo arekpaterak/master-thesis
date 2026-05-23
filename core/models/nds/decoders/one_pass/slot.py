@@ -16,7 +16,7 @@ class SlotDecoder(OnePassDestroyDecoder):
 
     Each slot has a dedicated learned query vector (nn.Parameter) that specialises
     during training. The seed is incorporated via poly_net as a residual after MHA,
-    adding stochastic conditioning per rollout - the same pattern as GumbelTopKDecoder.
+    adding stochastic conditioning per rollout - the same pattern as SimpleOnePassDecoder.
 
     Slots attend to all nodes independently and each samples one node (Categorical),
     so selections are with replacement and duplicates can occur. The joint
@@ -98,28 +98,28 @@ class SlotDecoder(OnePassDestroyDecoder):
     ) -> Rollout:
         assert deconstruction_size == self.k
 
-        log_p_per_slot = self.forward(
+        logits_per_slot = self.forward(
             h_nodes=h_nodes, seed=seed, action_mask=action_mask
         )  # (B, R, k, N)
 
         if greedy:
-            selected = log_p_per_slot.argmax(dim=-1)  # (B, R, k)
+            selected = logits_per_slot.argmax(dim=-1)  # (B, R, k)
         else:
             # Sample one node per slot (independent Categorical, with possible duplicates)
             selected = torch.distributions.Categorical(
-                logits=log_p_per_slot.detach()
+                logits=logits_per_slot.detach()
             ).sample()  # (B, R, k)
 
-        log_p_of_selected = log_p_per_slot.gather(-1, selected.unsqueeze(-1)).squeeze(
+        log_p_of_selected = logits_per_slot.gather(-1, selected.unsqueeze(-1)).squeeze(
             -1
         )  # (B, R, k)
 
         # Mean entropy across slots, each slot has an independent distribution over N nodes
-        per_slot_entropy = entropy(log_p_per_slot)  # (B, R, k)
+        per_slot_entropy = entropy(logits_per_slot)  # (B, R, k)
 
         return Rollout.create(
             actions=selected,
-            log_p=log_p_of_selected.sum(dim=-1),
+            log_prob=log_p_of_selected.sum(dim=-1),
             entropy=per_slot_entropy.entropy.mean(dim=-1).detach(),
             entropy_norm=per_slot_entropy.entropy_norm.mean(dim=-1).detach(),
         )

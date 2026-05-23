@@ -89,11 +89,14 @@ class OnePassNDSModel(nn.Module):
 
         h_nodes_expanded = encoded_nodes.unsqueeze(1).expand(B, R, N, -1)  # (B, R, N, D)
 
+        # TODO: Refactor
         extra_kwargs = {}
         if isinstance(self.decoder, ProximityDecoder):
-            node_coords = instance.locations.to(device)  # (B, N, 2)
-            node_coords_expanded = node_coords.unsqueeze(1).expand(B, R, N, 2)  # (B, R, N, 2)
-            extra_kwargs["node_coords"] = node_coords_expanded
+            node_coordinates = instance.locations.to(device)  # (B, N, 2)
+            node_coordinates_expanded = node_coordinates.unsqueeze(1).expand(
+                B, R, N, 2
+            )  # (B, R, N, 2)
+            extra_kwargs["node_coordinates"] = node_coordinates_expanded
 
         return self.decoder.rollout(
             h_nodes=h_nodes_expanded,

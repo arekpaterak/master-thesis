@@ -160,7 +160,7 @@ class AttentionModel(nn.Module):
 
         return Rollout.create(
             actions=actions_tensor,
-            log_p=log_p_tensor,
+            log_prob=log_p_tensor,
             entropy=entropy_tensor,
             entropy_norm=entropy_norm_tensor,
         )

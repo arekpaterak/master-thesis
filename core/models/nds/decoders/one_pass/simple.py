@@ -7,10 +7,10 @@ from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.rollout import Rollout
 
 from .base import OnePassDestroyDecoder
-from .utils import plackett_luce_log_p
+from .utils import log_prob_of_sequence_without_replacement
 
 
-class GumbelTopKDecoder(OnePassDestroyDecoder):
+class SimpleOnePassDecoder(OnePassDestroyDecoder):
     def __init__(
         self, *, hidden_dim: int, seed_dim: int, poly_dim: int, num_heads: int, C: float = 10.0
     ):
@@ -40,8 +40,8 @@ class GumbelTopKDecoder(OnePassDestroyDecoder):
 
         context = mha_out + self.poly_net(torch.cat([mha_out, seed], dim=-1))
 
-        log_p = self.final_scorer(h_c=context, h_nodes=h_nodes, mask=action_mask)  # (B, R, N)
-        return log_p
+        logits = self.final_scorer(h_c=context, h_nodes=h_nodes, mask=action_mask)  # (B, R, N)
+        return logits
 
     def rollout(
         self,
@@ -53,23 +53,25 @@ class GumbelTopKDecoder(OnePassDestroyDecoder):
         greedy: bool,
         **kwargs,
     ) -> Rollout:
-        log_p = self.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)  # (B, R, N)
+        logits = self.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)  # (B, R, N)
 
-        log_p_detached = log_p.detach()
+        log_p_detached = logits.detach()
         if greedy:
             selected = log_p_detached.topk(deconstruction_size, dim=-1).indices  # (B, R, k)
         else:
-            g = torch.distributions.Gumbel(
+            gumbel = torch.distributions.Gumbel(
                 torch.zeros_like(log_p_detached), torch.ones_like(log_p_detached)
             ).sample()
-            selected = (log_p_detached + g).topk(deconstruction_size, dim=-1).indices  # (B, R, k)
+            selected = (
+                (log_p_detached + gumbel).topk(deconstruction_size, dim=-1).indices
+            )  # (B, R, k)
 
-        log_p_of_selected = plackett_luce_log_p(log_p, selected)  # (B, R, k)
-        _entropy = entropy(log_p)
+        _entropy = entropy(logits)
+        log_p_of_selected = log_prob_of_sequence_without_replacement(logits, selected)  # (B, R, k)
 
         return Rollout.create(
             actions=selected,
-            log_p=log_p_of_selected.sum(dim=-1),
+            log_prob=log_p_of_selected.sum(dim=-1),
             entropy=_entropy.entropy.detach(),
             entropy_norm=_entropy.entropy_norm.detach(),
         )

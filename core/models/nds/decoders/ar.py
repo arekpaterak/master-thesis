@@ -46,7 +46,7 @@ class DecoderState(NamedTuple):
 
 
 class DecoderOutput(NamedTuple):
-    log_p: torch.Tensor
+    logits: torch.Tensor
     gru_hidden: torch.Tensor
 
 
@@ -102,14 +102,14 @@ class AutoregressiveNDSDecoder(nn.Module):
     def build_initial_state(
         self,
         *,
-        B: int,
+        batch_size: int,
         rollout_size: int,
         device: torch.device | None = None,
     ) -> DecoderState:
         """Build zeroed initial state before the first decoding step.
 
         Args:
-            B: Batch size.
+            batch_size: Batch size.
             rollout_size: Number of parallel rollouts per instance.
             device: Target device (optional).
 
@@ -120,7 +120,7 @@ class AutoregressiveNDSDecoder(nn.Module):
             device = next(self.parameters()).device
 
         return DecoderState(
-            gru_hidden=torch.zeros(B * rollout_size, self.hidden_dim, device=device),
+            gru_hidden=torch.zeros(batch_size * rollout_size, self.hidden_dim, device=device),
         )
 
     def build_cache(
@@ -164,7 +164,7 @@ class AutoregressiveNDSDecoder(nn.Module):
 
         Returns:
             DecoderOutput:
-                log_p: Log-probabilities over all nodes. Shape: (B, rollout_size, N+1).
+                logits: Logits over all nodes. Shape: (B, rollout_size, N+1).
                 gru_hidden_state: A new GRU hidden state.
         """
         B, R, _, _ = cache.h_nodes_expanded.shape
@@ -196,13 +196,13 @@ class AutoregressiveNDSDecoder(nn.Module):
 
         context_out = mha_out + self.poly_net(torch.cat([mha_out, cache.seed], dim=-1))
 
-        log_p = self.final_scorer(
+        logits = self.final_scorer(
             h_c=context_out,
             h_nodes=cache.h_nodes_expanded,
             mask=problem_state.action_mask,
         )
 
         return DecoderOutput(
-            log_p=log_p,
+            logits=logits,
             gru_hidden=gru_hidden,
         )

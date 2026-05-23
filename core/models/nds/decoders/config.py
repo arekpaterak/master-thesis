@@ -10,8 +10,8 @@ class AutoregressiveDecoderConfig(BaseModel):
     use_hidden_decoding_state: bool = Field(default=True)
 
 
-class GumbelDecoderConfig(BaseModel):
-    type: Literal["gumbel"] = "gumbel"
+class SimpleOnePassDecoderConfig(BaseModel):
+    type: Literal["simple"] = "simple"
 
 
 class SlotDecoderConfig(BaseModel):
@@ -24,6 +24,9 @@ class ProximityDecoderConfig(BaseModel):
 
 
 DecoderConfig = Annotated[
-    AutoregressiveDecoderConfig | GumbelDecoderConfig | SlotDecoderConfig | ProximityDecoderConfig,
+    AutoregressiveDecoderConfig
+    | SimpleOnePassDecoderConfig
+    | SlotDecoderConfig
+    | ProximityDecoderConfig,
     Field(discriminator="type"),
 ]

@@ -15,6 +15,7 @@ with app.setup:
     from dotenv import load_dotenv
 
     import wandb
+    from core.models.nds.config import TrainConfig
 
     load_dotenv(".env")
 
@@ -34,15 +35,8 @@ def _():
     return (device,)
 
 
-@app.cell
-def _():
-    from core.models.nds.config import TrainConfig
-
-    return (TrainConfig,)
-
-
 @app.cell(hide_code=True)
-def _(TrainConfig):
+def _():
     from wigglystuff import EnvConfig
 
     is_script_mode = mo.app_meta().mode == "script"
@@ -84,10 +78,10 @@ def _(TrainConfig):
 
             sys.exit(0)
 
-        _resume_path = _cli_args.get("resume")
+        _resume_path = str(_cli_args.get("resume"))
         resume_run_dir = Path(_resume_path) if _resume_path else None
 
-        _config_path = _cli_args.get("config") or (
+        _config_path = str(_cli_args.get("config")) or (
             str(resume_run_dir / "config.yml") if resume_run_dir else None
         )
         if _config_path:
@@ -136,7 +130,6 @@ def _(
 
 @app.cell(hide_code=True)
 def _(
-    TrainConfig,
     decoder_sigma_widget,
     decoder_type_widget,
     decoder_use_hidden_widget,
@@ -162,10 +155,10 @@ def _(
         AutoregressiveDecoderConfig as _AutoregressiveDecoderConfig,
     )
     from core.models.nds.decoders.config import (
-        GumbelDecoderConfig as _GumbelDecoderConfig,
+        ProximityDecoderConfig as _ProximityDecoderConfig,
     )
     from core.models.nds.decoders.config import (
-        ProximityDecoderConfig as _ProximityDecoderConfig,
+        SimpleOnePassDecoderConfig as _SimpleDecoderConfig,
     )
     from core.models.nds.decoders.config import (
         SlotDecoderConfig as _SlotDecoderConfig,
@@ -183,8 +176,8 @@ def _(
                 _decoder_config = _AutoregressiveDecoderConfig(
                     use_hidden_decoding_state=decoder_use_hidden_widget.value
                 )
-            case "gumbel":
-                _decoder_config = _GumbelDecoderConfig()
+            case "simple":
+                _decoder_config = _SimpleDecoderConfig()
             case "slot":
                 _decoder_config = _SlotDecoderConfig()
             case "proximity":
@@ -201,7 +194,7 @@ def _(
 
 
 @app.cell(hide_code=True)
-def _(TrainConfig):
+def _():
     defaults = TrainConfig()
 
     problem_widgets = mo.ui.dictionary(
@@ -245,7 +238,7 @@ def _(TrainConfig):
     _default_decoder = defaults.model.decoder
 
     decoder_type_widget = mo.ui.dropdown(
-        ["ar", "gumbel", "slot", "proximity"],
+        ["ar", "simple", "slot", "proximity"],
         value=_default_decoder.type,
         label="Decoder type",
     )
