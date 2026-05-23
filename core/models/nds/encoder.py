@@ -79,6 +79,17 @@ class NDSEncoder(nn.Module):
         return h
 
 
+class InstanceNorm(nn.Module):
+    """InstanceNorm1d for (..., N, D) tensors without manual transpose at call sites."""
+
+    def __init__(self, hidden_dim: int) -> None:
+        super().__init__()
+        self.norm = nn.InstanceNorm1d(hidden_dim, affine=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.norm(x.transpose(-1, -2)).transpose(-1, -2)
+
+
 class AttentionLayer(nn.Module):
     def __init__(
         self,
@@ -89,23 +100,18 @@ class AttentionLayer(nn.Module):
     ) -> None:
         super().__init__()
         self.MHA = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
-        self.norm1 = nn.BatchNorm1d(hidden_dim)
+        self.norm1 = InstanceNorm(hidden_dim)
         self.FF = nn.Sequential(
             nn.Linear(hidden_dim, ff_dim),
             nn.ReLU(),
             nn.Linear(ff_dim, hidden_dim),
         )
-        self.norm2 = nn.BatchNorm1d(hidden_dim)
+        self.norm2 = InstanceNorm(hidden_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, num_nodes, hidden_dim = x.shape
         attn_out, _ = self.MHA(x, x, x)
-        x = self.norm1((x + attn_out).reshape(B * num_nodes, hidden_dim)).reshape(
-            B, num_nodes, hidden_dim
-        )
-        x = self.norm2((x + self.FF(x)).reshape(B * num_nodes, hidden_dim)).reshape(
-            B, num_nodes, hidden_dim
-        )
+        x = self.norm1(x + attn_out)
+        x = self.norm2(x + self.FF(x))
         return x
 
 
@@ -124,7 +130,7 @@ class NeighboursEncodingLayer(nn.Module):
             nn.ReLU(),
             nn.Linear(ff_dim, hidden_dim),
         )
-        self.norm = nn.LayerNorm(hidden_dim)
+        self.norm = InstanceNorm(hidden_dim)
 
     def forward(
         self,
@@ -182,7 +188,7 @@ class TourEncodingLayer(nn.Module):
             nn.ReLU(),
             nn.Linear(ff_dim, hidden_dim),
         )
-        self.norm = nn.LayerNorm(hidden_dim)
+        self.norm = InstanceNorm(hidden_dim)
 
     def forward(
         self,
@@ -198,6 +204,7 @@ class TourEncodingLayer(nn.Module):
         Returns:
             (B, N+1, hidden_dim)
         """
+        # TODO: Make it explicit that it is for VRPs with a depot
         B, L, hidden_dim = node_embeddings.shape
         N = L - 1
 

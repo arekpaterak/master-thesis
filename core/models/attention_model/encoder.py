@@ -93,20 +93,20 @@ class AttentionLayer(nn.Module):
             dropout=0.0,
             bias=True,
         )
-        self.BN1 = nn.BatchNorm1d(hidden_dim)
+        self.norm1 = nn.BatchNorm1d(hidden_dim)
         self.FF = nn.Sequential(
             nn.Linear(hidden_dim, ff_dim),
             nn.ReLU(),
             nn.Linear(ff_dim, hidden_dim),
         )
-        self.BN2 = nn.BatchNorm1d(hidden_dim)
+        self.norm2 = nn.BatchNorm1d(hidden_dim)
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         # MHA sublayer (Eq. 2)
         # TODO: Adjust BN if using nn.MultiheadAttention instead of TransformerConv
-        x = self.BN1(x + self.MHA(x, edge_index))
+        x = self.norm1(x + self.MHA(x, edge_index))
 
         # FF sublayer (Eq. 3)
-        x = self.BN2(x + self.FF(x))
+        x = self.norm2(x + self.FF(x))
 
         return x

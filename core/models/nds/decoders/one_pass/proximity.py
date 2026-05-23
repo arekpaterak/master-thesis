@@ -18,7 +18,7 @@ class ProximityDecoder(OnePassDestroyDecoder):
     a coordinate is sampled from N(mu, sigma^2 * I), and the k nearest nodes are
     selected deterministically. log_p is the Gaussian log-density at the sampled point. Gradients flow through mu via the log-density formula.
 
-    Requires ``node_coords`` to be passed as a keyword argument to ``rollout()``.
+    Requires ``node_coordinates`` to be passed as a keyword argument to ``rollout()``.
     """
 
     def __init__(

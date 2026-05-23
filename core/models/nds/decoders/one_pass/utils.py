@@ -7,17 +7,17 @@ import torch.nn.functional as F
 def log_prob_of_sequence_without_replacement(
     logits: torch.Tensor, selected: torch.Tensor
 ) -> torch.Tensor:
-    """Compute per-step conditional log-probabilities for a sequence sampled without replacement.
+    """Compute the joint log-probability of a sequence sampled without replacement.
 
-    For each step t, computes log P(selected[t] | selected[:t]) under the model distribution
-    defined by log_p.
+    For each step t, computes log P(selected[t] | selected[:t]) and accumulates the sum,
+    giving the joint log-probability of the full sequence under Plackett-Luce.
 
     Args:
         logits: Logits for all nodes from the decoder. Shape: (..., N).
         selected: Indices of selected nodes. Shape: (..., k).
 
     Returns:
-        Per-step conditional log-probabilities. Shape: (..., k).
+        Joint log-probability of the selected sequence. Shape: (...).
     """
     k = selected.shape[-1]
 
