@@ -31,7 +31,7 @@ class AutoregressiveNDSModel(nn.Module):
         poly_dim: int = 256,
         seed_dim: int = 10,
         with_neighbours_encoding: bool = True,
-        with_tour_encoding: bool | None = None,
+        with_route_encoding: bool | None = None,
         use_hidden_decoding_state: bool = True,
     ) -> None:
         super().__init__()
@@ -39,8 +39,8 @@ class AutoregressiveNDSModel(nn.Module):
         self.problem_name = problem_name
         self.seed_dim = seed_dim
 
-        if with_tour_encoding is None:
-            with_tour_encoding = problem_name == "cvrp"
+        if with_route_encoding is None:
+            with_route_encoding = problem_name == "cvrp"
 
         match problem_name:
             case "cvrp":
@@ -56,7 +56,7 @@ class AutoregressiveNDSModel(nn.Module):
             num_heads=num_heads,
             ff_dim=ff_dim,
             with_neighbours_encoding=with_neighbours_encoding,
-            with_tour_encoding=with_tour_encoding,
+            with_route_encoding=with_route_encoding,
         )
         self.decoder = AutoregressiveNDSDecoder(
             hidden_dim=hidden_dim,

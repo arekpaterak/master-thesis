@@ -11,7 +11,7 @@ class CVRPSolutionFeatureExtractor(SolutionFeatureExtractor[CVRPSolution]):
             "depot_features": solution.instance.depot_location,
             "customer_features": solution.instance.customer_features,
             "neighbours_index": solution.neighbours_per_customer(),
-            "tour_index": solution.route_per_customer(),
+            "route_index": solution.route_per_customer(),
         }
 
 

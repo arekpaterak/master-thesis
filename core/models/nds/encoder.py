@@ -15,7 +15,7 @@ class NDSEncoder(nn.Module):
         num_heads: int = 8,
         ff_dim: int = 512,
         with_neighbours_encoding: bool = True,
-        with_tour_encoding: bool = True,
+        with_route_encoding: bool = True,
         initial_embedding: nn.Module | None = None,
     ) -> None:
         super().__init__()
@@ -46,12 +46,10 @@ class NDSEncoder(nn.Module):
             attention_layer(),
         )
         self.neighbours_encoding = (
-            NeighboursEncodingLayer(hidden_dim=hidden_dim, ff_dim=ff_dim)
-            if with_neighbours_encoding
-            else None
+            NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
         )
-        self.tour_encoding = (
-            TourEncodingLayer(hidden_dim=hidden_dim, ff_dim=ff_dim) if with_tour_encoding else None
+        self.route_encoding = (
+            RouteEncodingLayer(hidden_dim=hidden_dim) if with_route_encoding else None
         )
         self.post_attention = nn.Sequential(
             attention_layer(),
@@ -72,8 +70,8 @@ class NDSEncoder(nn.Module):
         if self.neighbours_encoding is not None and "neighbours_index" in features:
             h = self.neighbours_encoding(h, neighbours_index=features["neighbours_index"])
 
-        if self.tour_encoding is not None and "tour_index" in features:
-            h = self.tour_encoding(h, tour_index=features["tour_index"])
+        if self.route_encoding is not None and "route_index" in features:
+            h = self.route_encoding(h, route_index=features["route_index"])
 
         h = self.post_attention(h)
         return h
@@ -120,16 +118,11 @@ class NeighboursEncodingLayer(nn.Module):
     Named Message Passing Layer in the original paper (Hottung et al. 2025).
     """
 
-    def __init__(self, *, hidden_dim: int, ff_dim: int) -> None:
+    def __init__(self, *, hidden_dim: int) -> None:
         super().__init__()
-        self.W1 = nn.Linear(hidden_dim, hidden_dim, bias=False)  # previous neighbour projection
-        self.W2 = nn.Linear(hidden_dim, hidden_dim, bias=False)  # next neighbour projection
-        self.W3 = nn.Linear(2 * hidden_dim, hidden_dim, bias=False)
-        self.FF = nn.Sequential(
-            nn.Linear(hidden_dim, ff_dim),
-            nn.ReLU(),
-            nn.Linear(ff_dim, hidden_dim),
-        )
+        self.neighbour_projector = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.neighbour_combiner = nn.Linear(2 * hidden_dim, hidden_dim)
+        self.feedforward_layer = nn.Linear(hidden_dim, hidden_dim)
         self.norm = InstanceNorm(hidden_dim)
 
     def forward(
@@ -155,11 +148,9 @@ class NeighboursEncodingLayer(nn.Module):
         previous = self._gather(h, neighbours_index[:, :, 0])  # (B, N, hidden_dim)
         next = self._gather(h, neighbours_index[:, :, 1])  # (B, N, hidden_dim)
 
-        prev_emb = self.W1(previous)
-        next_emb = self.W2(next)
-        agg = prev_emb + next_emb
-
-        update = self.FF(F.relu(self.W3(torch.cat([customer_embeddings, agg], dim=-1))))
+        neighbour_info = self.neighbour_projector(previous) + self.neighbour_projector(next)
+        combined = torch.cat([customer_embeddings, neighbour_info], dim=-1)
+        update = self.feedforward_layer(F.relu(self.neighbour_combiner(combined)))
         updated = self.norm(customer_embeddings + update)
 
         return torch.cat([h[:, :offset], updated], dim=1)
@@ -178,58 +169,52 @@ class NeighboursEncodingLayer(nn.Module):
         return embeddings.gather(1, indices[:, :, None].expand(B, N, hidden_dim))
 
 
-# TODO: Rename to RouteEncodingLayer to unify naming
-class TourEncodingLayer(nn.Module):
-    def __init__(self, *, hidden_dim: int, ff_dim: int) -> None:
+class RouteEncodingLayer(nn.Module):
+    """
+    Named Tour Encoding Layer in the original paper (Hottung et al. 2025).
+    """
+
+    def __init__(self, *, hidden_dim: int) -> None:
         super().__init__()
-        self.tour_combiner = nn.Linear(2 * hidden_dim, hidden_dim, bias=False)
-        self.FF = nn.Sequential(
-            nn.Linear(hidden_dim, ff_dim),
-            nn.ReLU(),
-            nn.Linear(ff_dim, hidden_dim),
-        )
+        self.tour_combiner = nn.Linear(2 * hidden_dim, hidden_dim)
+        self.feedforward_layer = nn.Linear(hidden_dim, hidden_dim)
         self.norm = InstanceNorm(hidden_dim)
 
     def forward(
         self,
         node_embeddings: torch.Tensor,
         *,
-        tour_index: torch.Tensor,
+        route_index: torch.Tensor,
     ) -> torch.Tensor:
         """
         Args:
-            node_embeddings: (B, N+1, hidden_dim)
-            tour_index: (B, N)
+            node_embeddings: (B, N+offset, hidden_dim)
+            route_index: (B, N) integer route assignment per non-depot node.
 
         Returns:
-            (B, N+1, hidden_dim)
+            (B, N+offset, hidden_dim)
         """
-        # TODO: Make it explicit that it is for VRPs with a depot
         B, L, hidden_dim = node_embeddings.shape
-        N = L - 1
+        N = route_index.shape[-1]
+        offset = L - N
 
-        tour_index = tour_index.reshape(B, N)
+        route_index = route_index.reshape(B, N)
+        customer_embeddings = node_embeddings[:, offset:]
 
-        customer_embeddings = node_embeddings[:, 1:]
-
-        max_tours = int(tour_index.max().item()) + 1
-        _, _, hidden_dim = node_embeddings.shape
-        idx = tour_index.unsqueeze(-1).expand(B, N, hidden_dim)
-        tour_embeddings = torch.zeros(
-            B, max_tours, hidden_dim, device=node_embeddings.device, dtype=node_embeddings.dtype
+        max_routes = int(route_index.max().item()) + 1
+        idx = route_index.unsqueeze(-1).expand(B, N, hidden_dim)
+        route_embeddings = torch.zeros(
+            B, max_routes, hidden_dim, device=node_embeddings.device, dtype=node_embeddings.dtype
         )
-        tour_embeddings = tour_embeddings.scatter_reduce(
+        route_embeddings = route_embeddings.scatter_reduce(
             1, idx, customer_embeddings, reduce="mean", include_self=False
         )
-        tour_mean_per_customer = tour_embeddings.gather(1, idx)  # (B, N, hidden_dim)
+        route_mean_per_customer = route_embeddings.gather(1, idx)  # (B, N, hidden_dim)
 
-        update = self.FF(
-            F.relu(
-                self.tour_combiner(torch.cat([customer_embeddings, tour_mean_per_customer], dim=-1))
-            )
+        combined = F.relu(
+            self.tour_combiner(torch.cat([customer_embeddings, route_mean_per_customer], dim=-1))
         )
+        update = self.feedforward_layer(combined)
         updated_customer_embeddings = self.norm(customer_embeddings + update)
 
-        return torch.cat(
-            [node_embeddings[:, :1], updated_customer_embeddings], dim=1
-        )  # (B, N+1, hidden_dim)
+        return torch.cat([node_embeddings[:, :offset], updated_customer_embeddings], dim=1)

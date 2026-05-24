@@ -20,6 +20,8 @@ wheels/
 experiments/results/*
 experiments/runs/*
 !experiments/runs/NOTES.md
+experiments/pretrained/*
+!experiments/pretrained/**/.gitkeep
 
 # Marimo
 __marimo__/
