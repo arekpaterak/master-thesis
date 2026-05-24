@@ -10,14 +10,17 @@ def test_encoder() -> None:
     instance = sampler(B)
     solution = one_customer_per_route(instance)
 
-    neighbours_index, tour_index = solution.neighbours_per_customer(), solution.route_per_customer()
+    neighbours_index, route_index = (
+        solution.neighbours_per_customer(),
+        solution.route_per_customer(),
+    )
 
     encoder = NDSEncoder(problem_name="cvrp")
     embedded_nodes = encoder.forward(
         depot_features=instance.depot_location,
         customer_features=instance.customer_features,
         neighbours_index=neighbours_index,
-        tour_index=tour_index,
+        route_index=route_index,
     )
 
     assert embedded_nodes.shape == (B, N + 1, 128)

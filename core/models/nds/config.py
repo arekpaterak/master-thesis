@@ -25,9 +25,9 @@ class ModelParams(BaseModel):
     poly_dim: int = Field(default=256, description="PolyNet hidden dimension.")
     seed_dim: int = Field(default=10, description="Seed dimension.")
     with_neighbours_encoding: bool = Field(default=True, description="Use neighbours encoding.")
-    with_tour_encoding: bool | None = Field(
+    with_route_encoding: bool | None = Field(
         default=None,
-        description="Use tour encoding. None means problem-specific default (True for CVRP, False for TSP).",
+        description="Use route encoding. None means problem-specific default (True for CVRP, False for TSP).",
     )
     decoder: DecoderConfig = Field(default_factory=AutoregressiveDecoderConfig)
 

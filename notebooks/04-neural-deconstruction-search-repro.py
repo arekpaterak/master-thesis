@@ -180,11 +180,10 @@ def _(mo):
 
 @app.cell
 def _(FF_DIM, HIDDEN_DIM):
-    from core.models.nds.encoder import TourEncodingLayer
+    from core.models.nds.encoder import RouteEncodingLayer
 
-    TourEncodingLayer(
+    RouteEncodingLayer(
         hidden_dim=HIDDEN_DIM,
-        ff_dim=FF_DIM,
     )
     return
 

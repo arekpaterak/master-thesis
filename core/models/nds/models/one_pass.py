@@ -25,15 +25,15 @@ class OnePassNDSModel(nn.Module):
         num_heads: int = 8,
         ff_dim: int = 512,
         with_neighbours_encoding: bool = True,
-        with_tour_encoding: bool | None = None,
+        with_route_encoding: bool | None = None,
         decoder: OnePassDestroyDecoder,
     ) -> None:
         super().__init__()
 
         self.problem_name = problem_name
 
-        if with_tour_encoding is None:
-            with_tour_encoding = problem_name == "cvrp"
+        if with_route_encoding is None:
+            with_route_encoding = problem_name == "cvrp"
 
         match problem_name:
             case "cvrp":
@@ -49,7 +49,7 @@ class OnePassNDSModel(nn.Module):
             num_heads=num_heads,
             ff_dim=ff_dim,
             with_neighbours_encoding=with_neighbours_encoding,
-            with_tour_encoding=with_tour_encoding,
+            with_route_encoding=with_route_encoding,
         )
         self.decoder = decoder
 

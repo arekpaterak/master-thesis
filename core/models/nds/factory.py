@@ -26,7 +26,7 @@ def build_model(config: TrainConfig) -> NDSModel:
         num_heads=config.model.num_heads,
         ff_dim=config.model.ff_dim,
         with_neighbours_encoding=config.model.with_neighbours_encoding,
-        with_tour_encoding=config.model.with_tour_encoding,
+        with_route_encoding=config.model.with_route_encoding,
     )
 
     match decoder_config:
