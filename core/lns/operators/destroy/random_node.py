@@ -1,7 +1,7 @@
 import torch
 
 from core.lns.operators.destroy.base import DestroyOperator
-from core.problems.cvrp import CVRPSolution
+from core.problems.cvrp import CVRPGraphSolution, CVRPSolution
 from core.problems.solution import BaseSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solution import TSPSolution
@@ -26,32 +26,32 @@ class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
             case TSPSolution() | TSPGraphSolution() as s:
                 if self.destruction_size > num_nodes:
                     raise ValueError(
-                        f"Destruction size {self.destruction_size} exceeds nodes {num_nodes}"
+                        f"Destruction size {self.destruction_size} exceeds number of nodes {num_nodes}"
                     )
 
-                to_remove = (
+                nodes_to_remove = (
                     torch.rand((*batch_size, num_nodes), device=device, generator=self._generator)
                     .topk(self.destruction_size, dim=-1)
                     .indices
                 )
-                return s.remove_nodes(to_remove)
+                return s.remove_nodes(nodes_to_remove)
 
-            case CVRPSolution() as s:
+            case CVRPSolution() | CVRPGraphSolution() as s:
                 num_customers = s.instance.num_customers
                 if self.destruction_size > num_customers:
                     raise ValueError(
-                        f"Destruction size {self.destruction_size} exceeds customers {num_customers}"
+                        f"Destruction size {self.destruction_size} exceeds number of customers {num_customers}"
                     )
 
-                to_remove = (
+                nodes_to_remove = (
                     torch.rand(
                         (*batch_size, num_customers), device=device, generator=self._generator
                     )
                     .topk(self.destruction_size, dim=-1)
                     .indices
-                    + 1
+                    + 1  # offset as customers are indexed from 1 to num_customers, while depot is indexed as 0
                 )
-                return s.remove_customers(to_remove)
+                return s.remove_nodes(nodes_to_remove)
 
             case _:
                 raise NotImplementedError(f"Operator not implemented for {type(solution)}")

@@ -100,9 +100,9 @@ class TSPGraphSolution(BaseSolution):
         with_problem_size: bool = True,
         with_objective: bool = True,
     ) -> None:
-        from .render import render_graph_solution
+        from .render import render_solution
 
-        render_graph_solution(
+        render_solution(
             self,
             min_coordinate=min_coordinate,
             max_coordinate=max_coordinate,

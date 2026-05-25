@@ -5,6 +5,7 @@ from typing import Protocol
 import torch
 
 from core.problems.cvrp import CVRPInstance, CVRPSolution
+from core.problems.cvrp.graph_solution import CVRPGraphSolution
 
 
 class CVRPSolveStrategy(Protocol):
@@ -108,6 +109,10 @@ def index_sequential(instance: CVRPInstance) -> CVRPSolution:
         instance=instance,
         sequence=sequence,
     )
+
+
+def one_customer_per_route_graph(instance: CVRPInstance) -> CVRPGraphSolution:
+    return CVRPGraphSolution.one_customer_per_route(instance=instance)
 
 
 STRATEGIES = [

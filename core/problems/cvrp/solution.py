@@ -249,6 +249,12 @@ class CVRPSolution(BaseSolution):
 
         return CVRPSolution.create(instance=instance, sequence=new_sequence)
 
+    def remove_nodes(self, nodes: torch.Tensor) -> CVRPSolution:
+        """
+        Alias for remove_customers, since in CVRP we only remove customers (not depots).
+        """
+        return self.remove_customers(nodes)
+
     def routes(self) -> list[torch.Tensor]:
         """Splits the single-instance sequence into a list of routes (excluding depot)."""
         if self.batch_size.numel() > 1:

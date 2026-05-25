@@ -9,7 +9,10 @@ from matplotlib.axes import Axes
 from core.problems.cvrp import CVRPInstance
 
 if TYPE_CHECKING:
+    from core.problems.cvrp.graph_solution import CVRPGraphSolution
     from core.problems.cvrp.solution import CVRPSolution
+
+    AnyCVRPSolution = CVRPSolution | CVRPGraphSolution
 
 
 def render_instance(
@@ -78,7 +81,7 @@ def render_instance(
 
 
 def render_solution(
-    solution: CVRPSolution,
+    solution: AnyCVRPSolution,
     *,
     min_coordinate: float | None = None,
     max_coordinate: float | None = None,
@@ -91,22 +94,20 @@ def render_solution(
     legend_loc: str | None = "upper right",
 ) -> None:
     if solution.batch_size.numel() > 1:
-        raise ValueError("visualize() only works on a single instance.")
+        raise ValueError(
+            f"visualize() only works on a single instance. "
+            f"Current batch_size is {solution.batch_size}. Try solution[0].visualize()."
+        )
 
-    unbatched_solution = solution.squeeze(0) if solution.batch_size else solution
+    solution = solution.squeeze(0) if solution.batch_size else solution
+    instance = solution.instance.squeeze(0) if solution.instance.batch_size else solution.instance
 
     if ax is None:
         ax = plt.gca()
 
-    instance = (
-        unbatched_solution.instance.squeeze(0)
-        if unbatched_solution.instance.batch_size
-        else unbatched_solution.instance
-    )
-
     all_nodes = instance.locations.cpu().numpy()
     depot = instance.depot_location.squeeze(0).cpu().numpy()
-    routes = unbatched_solution.routes()
+    routes = solution.routes()
 
     if min_coordinate is None or max_coordinate is None:
         min_coordinate = float(all_nodes.min())
@@ -114,7 +115,6 @@ def render_solution(
 
     cmap = plt.get_cmap("tab10")
 
-    # Plot depot
     ax.scatter(
         depot[0],
         depot[1],
@@ -127,19 +127,43 @@ def render_solution(
         zorder=5,
     )
 
+    # Graph solutions can have partial chains; sequence solutions always have complete segments.
+    is_graph = hasattr(solution, "prev_nodes")
+
     num_colours = max(len(routes), 1)
     for r_idx, route in enumerate(routes):
         colour = cmap(r_idx % num_colours)
-        indices = torch.cat([torch.tensor([0]), route.cpu(), torch.tensor([0])])
-        waypoints = all_nodes[indices.numpy()]
+
+        is_complete = (
+            (
+                solution.prev_nodes[route[0].item()] == 0
+                and solution.next_nodes[route[-1].item()] == 0
+            )
+            if is_graph
+            else True
+        )
+        linestyle = "-" if is_complete else "--"
+
+        depot_indices = torch.tensor([0])
+        waypoints = all_nodes[
+            torch.cat([depot_indices, route.cpu(), depot_indices]).numpy()
+            if is_complete
+            else route.cpu().numpy()
+        ]
 
         route_demand = instance.demand[route].sum().item()
-        route_dist = (
-            (torch.tensor(waypoints[1:]) - torch.tensor(waypoints[:-1])).norm(dim=-1).sum().item()
-        )
-        route_label = f"R{r_idx + 1}, # {route.numel()}, c={route_demand:.2f}, d={route_dist:.4f}"
+        route_label = f"R{r_idx + 1}, #{route.numel()}, c={route_demand:.2f}"
+        if is_complete:
+            route_dist = (
+                (torch.tensor(waypoints[1:]) - torch.tensor(waypoints[:-1]))
+                .norm(dim=-1)
+                .sum()
+                .item()
+            )
+            route_label += f", d={route_dist:.4f}"
+        else:
+            route_label += " (partial)"
 
-        # Nodes coloured by route
         route_locs = all_nodes[route.cpu().numpy()]
         ax.scatter(
             route_locs[:, 0],
@@ -152,16 +176,15 @@ def render_solution(
             zorder=4,
         )
 
-        # Edges
         for k in range(len(waypoints) - 1):
-            is_depot_edge = k == 0 or k == len(waypoints) - 2
+            is_depot_edge = is_complete and (k == 0 or k == len(waypoints) - 2)
             if is_depot_edge and not show_depot_edges:
                 continue
             ax.annotate(
                 "",
                 xy=waypoints[k + 1],
                 xytext=waypoints[k],
-                arrowprops=dict(arrowstyle="->", color=colour, lw=1.5),
+                arrowprops=dict(arrowstyle="->", color=colour, lw=1.5, linestyle=linestyle),
                 zorder=2,
             )
 
@@ -169,17 +192,18 @@ def render_solution(
     ax.set_ylim(min_coordinate - 0.1, max_coordinate + 0.1)
     ax.set_aspect("equal", adjustable="box")
 
-    handles, _labels = ax.get_legend_handles_labels()
+    handles, _ = ax.get_legend_handles_labels()
     if handles:
         ax.legend(loc=legend_loc)
 
-    def resolve_routes_num_desc(n: int) -> str:
-        return "no routes" if n == 0 else f"{n} route{'s' if n > 1 else ''}"
-
-    title = f"{resolve_routes_num_desc(len(routes))}"
+    n_routes = len(routes)
+    title = "no routes" if n_routes == 0 else f"{n_routes} route{'s' if n_routes != 1 else ''}"
+    num_unassigned = int(solution.num_unassigned.item())
+    if num_unassigned > 0:
+        title += f", {num_unassigned} unassigned"
     if with_problem_size:
         title = f"CVRP({instance.num_customers}) | " + title
     if with_objective:
-        title += f" | total distance = {unbatched_solution.total_distance().item():.4f}"
+        title += f" | total distance = {solution.objective().item():.4f}"
     ax.set_title(title)
     ax.grid(True, linestyle="--", alpha=0.4)
