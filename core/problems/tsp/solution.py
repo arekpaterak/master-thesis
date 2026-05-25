@@ -129,6 +129,14 @@ class TSPSolution(BaseSolution):
 
         return tour_index_buffer[..., :n]
 
+    @property
+    def next_nodes(self) -> torch.Tensor:
+        return self.neighbours_index()[..., 1]
+
+    @property
+    def prev_nodes(self) -> torch.Tensor:
+        return self.neighbours_index()[..., 0]
+
     def node_degree(self) -> torch.Tensor:
         neighbours = self.neighbours_index()
         return (neighbours != self.UNASSIGNED).sum(dim=-1)
