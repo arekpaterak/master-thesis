@@ -258,14 +258,14 @@ class CVRPGraphSolution(BaseSolution):
         expanded._next.scatter_(
             -1,
             safe_p,
-            torch.where(predecessors >= 0, self.UNASSIGNED, expanded._next.gather(-1, safe_p)),
+            torch.where(predecessors > 0, self.UNASSIGNED, expanded._next.gather(-1, safe_p)),
         )
         expanded._prev.scatter_(-1, customers, self.UNASSIGNED)
         expanded._next.scatter_(-1, customers, self.UNASSIGNED)
         expanded._prev.scatter_(
             -1,
             safe_n,
-            torch.where(successors >= 0, self.UNASSIGNED, expanded._prev.gather(-1, safe_n)),
+            torch.where(successors > 0, self.UNASSIGNED, expanded._prev.gather(-1, safe_n)),
         )
 
         route_id = self._compute_route_ids(expanded.prev_nodes, expanded.instance.num_customers)
