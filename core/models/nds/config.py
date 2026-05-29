@@ -4,9 +4,16 @@ import hashlib
 import json
 import math
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
+
+
+class OriginalPretrainedConfig(BaseModel):
+    """Configuration for initialising from an original NDS pretrained checkpoint."""
+
+    path: str = Field(description="Path to the pretrained checkpoint file.")
+    load_decoder: bool = Field(default=False, description="Also load decoder weights.")
 
 
 class ProblemParams(BaseModel):
@@ -65,6 +72,18 @@ class TrainerParams(BaseModel):
     init_weights: str | None = Field(
         default=None, description="Path to a checkpoint to load model weights from (new run)."
     )
+    original_pretrained_weights: OriginalPretrainedConfig | None = Field(
+        default=None, description="Original NDS pretrained checkpoint to initialise from."
+    )
+    freeze_encoder: bool = Field(
+        default=False, description="Freeze encoder weights during training."
+    )
+
+    @model_validator(mode="after")
+    def _validate_weights_mutually_exclusive(self) -> TrainerParams:
+        if self.init_weights is not None and self.original_pretrained_weights is not None:
+            raise ValueError("init_weights and original_pretrained_weights are mutually exclusive.")
+        return self
 
 
 class LoggingConfig(BaseModel):

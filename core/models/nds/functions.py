@@ -6,9 +6,11 @@ import torch
 
 from core.lns.operators.repair import TSPGreedyReconnectRepair
 from core.lns.operators.repair.greedy_insert import CVRPGreedyInsertRepair
+from core.lns.operators.repair.greedy_reconnect import CVRPGreedyReconnectRepair
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.rollout import Rollout
 from core.problems.cvrp import CVRPSolution
+from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.solution import BaseSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 
@@ -78,6 +80,16 @@ def select_solution(mask: torch.Tensor, a: BaseSolution, b: BaseSolution) -> Bas
                 instance=a_cvrp.instance,
                 sequence=torch.where(mask.unsqueeze(-1), a_cvrp.sequence, b.sequence),
             )
+        case CVRPGraphSolution() as a_cvrp_graph:
+            assert isinstance(b, CVRPGraphSolution)
+            m = mask.unsqueeze(-1)
+            return CVRPGraphSolution(
+                _instance=a_cvrp_graph.instance,
+                _next=torch.where(m, a_cvrp_graph.next_nodes, b.next_nodes),
+                _prev=torch.where(m, a_cvrp_graph.prev_nodes, b.prev_nodes),
+                _route_id=torch.where(m, a_cvrp_graph.route_ids, b.route_ids),
+                batch_size=a_cvrp_graph.batch_size,
+            )
         case TSPGraphSolution() as a_tsp:
             assert isinstance(b, TSPGraphSolution)
             m = mask.unsqueeze(-1)
@@ -95,6 +107,8 @@ def apply_rollout(solution: BaseSolution, rollout: Rollout) -> BaseSolution:
     match solution:
         case CVRPSolution() as s:
             return s.remove_customers(rollout.actions)
+        case CVRPGraphSolution() as s:
+            return s.remove_customers(rollout.actions)
         case TSPGraphSolution() as s:
             return s.remove_nodes(rollout.actions)
         case _:
@@ -103,6 +117,12 @@ def apply_rollout(solution: BaseSolution, rollout: Rollout) -> BaseSolution:
 
 def greedy_cvrp_repair(solution: CVRPSolution, rollout: Rollout) -> CVRPSolution:
     return CVRPGreedyInsertRepair()(solution)
+
+
+def greedy_cvrp_reconnect_repair(
+    solution: CVRPGraphSolution, rollout: Rollout
+) -> CVRPGraphSolution:
+    return CVRPGreedyReconnectRepair()(solution)
 
 
 def greedy_tsp_repair(solution: TSPGraphSolution, rollout: Rollout) -> TSPGraphSolution:

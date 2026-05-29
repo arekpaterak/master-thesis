@@ -21,7 +21,7 @@ experiments/results/*
 experiments/runs/*
 !experiments/runs/NOTES.md
 experiments/pretrained/*
-!experiments/pretrained/**/.gitkeep
+!experiments/pretrained/nds/.gitkeep
 
 # Marimo
 __marimo__/
