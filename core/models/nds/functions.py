@@ -4,8 +4,8 @@ from collections.abc import Callable
 
 import torch
 
-from core.lns.operators.repair.greedy import CVRPSequentialGreedyNodeInsertionRepair
-from core.lns.operators.repair.greedy_edge import TSPGreedyEdgeRepair
+from core.lns.operators.repair import TSPGreedyReconnectRepair
+from core.lns.operators.repair.greedy_insert import CVRPGreedyInsertRepair
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.rollout import Rollout
 from core.problems.cvrp import CVRPSolution
@@ -102,11 +102,11 @@ def apply_rollout(solution: BaseSolution, rollout: Rollout) -> BaseSolution:
 
 
 def greedy_cvrp_repair(solution: CVRPSolution, rollout: Rollout) -> CVRPSolution:
-    return CVRPSequentialGreedyNodeInsertionRepair()(solution)
+    return CVRPGreedyInsertRepair()(solution)
 
 
 def greedy_tsp_repair(solution: TSPGraphSolution, rollout: Rollout) -> TSPGraphSolution:
-    return TSPGreedyEdgeRepair()(solution)
+    return TSPGreedyReconnectRepair()(solution)
 
 
 def only_expanding_apply_rollout(solution: BaseSolution, rollout: Rollout) -> BaseSolution:

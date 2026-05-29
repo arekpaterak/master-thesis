@@ -62,7 +62,11 @@ class CVRPGraphSolution(BaseSolution):
 
         _route_id = cls._compute_route_ids(_prev, instance.num_customers)
         return cls(
-            _instance=instance, _next=_next, _prev=_prev, _route_id=_route_id, batch_size=batch_size
+            _instance=instance,
+            _next=_next,
+            _prev=_prev,
+            _route_id=_route_id,
+            batch_size=batch_size,
         )
 
     @classmethod
@@ -88,7 +92,11 @@ class CVRPGraphSolution(BaseSolution):
         _route_id[..., 0] = cls.UNASSIGNED
 
         return cls(
-            _instance=instance, _next=_next, _prev=_prev, _route_id=_route_id, batch_size=batch_size
+            _instance=instance,
+            _next=_next,
+            _prev=_prev,
+            _route_id=_route_id,
+            batch_size=batch_size,
         )
 
     @staticmethod

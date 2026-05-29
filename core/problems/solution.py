@@ -10,6 +10,10 @@ from core.problems.instance import BaseProblemInstance
 
 class BaseSolution(TensorClass, ABC):
     @property
+    def device(self) -> torch.device:
+        return self.instance.locations.device
+
+    @property
     @abstractmethod
     def instance(self) -> BaseProblemInstance: ...
 

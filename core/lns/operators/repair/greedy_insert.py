@@ -9,7 +9,7 @@ from core.problems.solution import BaseSolution
 from core.problems.tsp.solution import TSPSolution
 
 
-class GreedyNodeRepair[S: BaseSolution](RepairOperator[S]):
+class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
     def __call__(self, partial_solution: S) -> S:
         match partial_solution:
             case TSPSolution() as s:
@@ -91,9 +91,10 @@ class GreedyNodeRepair[S: BaseSolution](RepairOperator[S]):
         return tour
 
 
-class CVRPSequentialGreedyNodeInsertionRepair(RepairOperator[CVRPSolution]):
+class CVRPGreedyInsertRepair(RepairOperator[CVRPSolution]):
     """
-    Inherently sequential. Repairs a single partial solution from a batch at a time.
+    Inherently sequential.
+    Repairs a single partial solution from a batch at a time.
     Can insert inside the existing routes.
     """
 

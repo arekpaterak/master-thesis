@@ -19,7 +19,7 @@ class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
 
     def __call__(self, solution: S) -> S:
         num_nodes = solution.instance.num_nodes
-        device = solution.device
+        device = solution.instance.locations.device
         batch_size = solution.batch_size
 
         match solution:
@@ -30,9 +30,9 @@ class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
                     )
 
                 nodes_to_remove = (
-                    torch.rand((*batch_size, num_nodes), device=device, generator=self._generator)
+                    torch.rand((*batch_size, num_nodes), generator=self._generator)
                     .topk(self.destruction_size, dim=-1)
-                    .indices
+                    .indices.to(device=device)
                 )
                 return s.remove_nodes(nodes_to_remove)
 
@@ -44,11 +44,9 @@ class RandomNodeDestroy[S: BaseSolution](DestroyOperator[S]):
                     )
 
                 nodes_to_remove = (
-                    torch.rand(
-                        (*batch_size, num_customers), device=device, generator=self._generator
-                    )
+                    torch.rand((*batch_size, num_customers), generator=self._generator)
                     .topk(self.destruction_size, dim=-1)
-                    .indices
+                    .indices.to(device=device)
                     + 1  # offset as customers are indexed from 1 to num_customers, while depot is indexed as 0
                 )
                 return s.remove_nodes(nodes_to_remove)

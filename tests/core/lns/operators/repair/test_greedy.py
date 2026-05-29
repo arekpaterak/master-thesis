@@ -4,11 +4,11 @@ import torch
 
 from core.lns.operators.destroy.random_edge import TSPRandomEdgeDestroy
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair.greedy import (
-    CVRPSequentialGreedyNodeInsertionRepair,
-    GreedyNodeRepair,
+from core.lns.operators.repair import TSPGreedyReconnectRepair
+from core.lns.operators.repair.greedy_insert import (
+    CVRPGreedyInsertRepair,
+    TSPGreedyInsertRepair,
 )
-from core.lns.operators.repair.greedy_edge import TSPGreedyEdgeRepair
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.solve import one_customer_per_route
 from core.problems.tsp import TSPConfig, TSPSampler, TSPSolution
@@ -43,7 +43,7 @@ class TestGreedyRepair:
         )
 
         # Repair solution
-        repair = GreedyNodeRepair[TSPSolution]()
+        repair = TSPGreedyInsertRepair[TSPSolution]()
         repaired_solution = repair(destroyed_solution)
 
         # Check if repaired successfully
@@ -78,7 +78,7 @@ class TestGreedyEdgeRepair:
         )
 
         # Repair solution
-        repair = TSPGreedyEdgeRepair()
+        repair = TSPGreedyReconnectRepair()
         repaired_solution = repair(destroyed_solution)
 
         # Check if repaired successfully
@@ -112,7 +112,7 @@ class TestGreedyEdgeRepairWithNodeDestroy:
         assert (destroyed.num_unassigned >= destruction_size + 1).all()
         assert (destroyed.num_unassigned <= 2 * destruction_size).all()
 
-        repair = TSPGreedyEdgeRepair()
+        repair = TSPGreedyReconnectRepair()
         repaired = repair(destroyed)
 
         assert repaired.is_complete.all()
@@ -140,7 +140,7 @@ class TestGreedyCVRPRepair:
 
         assert not destroyed.is_complete.any(), "Destroyed solution should not be complete."
 
-        repair = CVRPSequentialGreedyNodeInsertionRepair(seed=42)
+        repair = CVRPGreedyInsertRepair(seed=42)
         repaired = repair(destroyed)
 
         assert repaired.is_complete.all(), "Repaired solution should be complete."
@@ -158,7 +158,7 @@ class TestGreedyCVRPRepair:
 
         assert partial.batch_size == torch.Size([B, R])
 
-        repair = CVRPSequentialGreedyNodeInsertionRepair(seed=0)
+        repair = CVRPGreedyInsertRepair(seed=0)
         repaired = repair(partial)
 
         assert repaired.batch_size == torch.Size([B, R])
