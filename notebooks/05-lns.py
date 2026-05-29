@@ -27,26 +27,36 @@ def _():
     import torch
 
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
+    from core.lns.operators.repair.greedy_insert import (
+        CVRPGreedyInsertRepair,
+        TSPGreedyInsertRepair,
+    )
     from core.lns.operators.repair.greedy_reconnect import (
         CVRPGreedyReconnectRepair,
         TSPGreedyReconnectRepair,
     )
+    from core.models.nds.models.ar import AutoregressiveNDSModel
     from core.problems.cvrp import CVRPConfig, CVRPSampler
-    from core.problems.cvrp.solve import one_customer_per_route_graph
+    from core.problems.cvrp.solve import one_customer_per_route, one_customer_per_route_graph
     from core.problems.tsp import TSPConfig, TSPSampler
-    from core.problems.tsp.solve import random_permutation_graph
+    from core.problems.tsp.solve import random_permutation, random_permutation_graph
 
     return (
+        AutoregressiveNDSModel,
         CVRPConfig,
+        CVRPGreedyInsertRepair,
         CVRPGreedyReconnectRepair,
         CVRPSampler,
         RandomNodeDestroy,
         TSPConfig,
+        TSPGreedyInsertRepair,
         TSPGreedyReconnectRepair,
         TSPSampler,
         mo,
+        one_customer_per_route,
         one_customer_per_route_graph,
         plt,
+        random_permutation,
         random_permutation_graph,
         time,
         torch,
@@ -402,8 +412,24 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("""
+    mo.md(r"""
     ## Timing benchmark
+
+    Times a single **destroy + repair** step, averaged over the chosen number of repeats.
+    With rollout size `R`, each destroy produces `R` deconstructed solutions per instance, so the repair
+    handles `B x R` of them.
+
+    A comparison for both LNS operators:
+
+    1. **Repair**: greedy reconnect vs. greedy insert, with random node destroy.
+    2. **Destroy**: random node vs. randomly-initialised NDS model, with greedy reconnect repair.
+
+    Each comparison is shown twice: a **batch-size sweep** (x-axis = batch size, at the
+    fixed destruction size) and a **destruction-size sweep** (x-axis = destruction size,
+    at the fixed batch size).
+
+    Note: greedy insert is sequential and CPU-bound, so large `B x R` can take minutes.
+    Increase the rollout size deliberately.
     """)
     return
 
@@ -418,135 +444,262 @@ def _(mo):
     bench_batch_sizes = mo.ui.multiselect(
         [32, 64, 128, 256, 512, 1024],
         value=[128, 256, 512, 1024],
-        label="Batch sizes",
+        label="Batch sizes (x-axis of batch plot)",
+    )
+    bench_batch_size = mo.ui.dropdown(
+        {"32": 32, "64": 64, "128": 128, "256": 256, "512": 512, "1024": 1024},
+        value="128",
+        label="Batch size (fixed for destruction plot)",
     )
     bench_destruction_sizes = mo.ui.multiselect(
         [5, 10, 15, 20],
-        value=[15],
-        label="Destruction sizes",
+        value=[5, 10, 15, 20],
+        label="Destruction sizes (x-axis of destruction plot)",
     )
-    bench_num_repeats = mo.ui.slider(1, 20, value=1, label="Repeats")
-    bench_lns_steps = mo.ui.slider(10, 200, value=50, step=10, label="LNS steps")
+    bench_destruction_size = mo.ui.dropdown(
+        {"5": 5, "10": 10, "15": 15, "20": 20},
+        value="15",
+        label="Destruction size (fixed for batch plot)",
+    )
+    bench_rollout_size = mo.ui.dropdown(
+        {"1": 1, "8": 8, "32": 32, "64": 64, "128": 128},
+        value="1",
+        label="Rollout size",
+    )
+    bench_num_repeats = mo.ui.slider(1, 20, value=10, label="Repeats")
     bench_run = mo.ui.run_button(label="Run")
-    mo.hstack(
+    mo.vstack(
         [
-            bench_n,
-            bench_batch_sizes,
-            bench_destruction_sizes,
-            bench_num_repeats,
-            bench_lns_steps,
-            bench_run,
+            mo.md("**Shared**"),
+            mo.hstack([bench_n, bench_rollout_size, bench_num_repeats, bench_run], gap=2),
+            mo.md("**Batch-size sweep** (x-axis = batch size)"),
+            mo.hstack([bench_batch_sizes, bench_destruction_size], gap=2),
+            mo.md("**Destruction-size sweep** (x-axis = destruction size)"),
+            mo.hstack([bench_destruction_sizes, bench_batch_size], gap=2),
         ],
-        gap=2,
+        gap=1,
     )
     return (
+        bench_batch_size,
         bench_batch_sizes,
+        bench_destruction_size,
         bench_destruction_sizes,
-        bench_lns_steps,
         bench_n,
         bench_num_repeats,
+        bench_rollout_size,
         bench_run,
     )
 
 
 @app.cell(hide_code=True)
 def _(
+    AutoregressiveNDSModel,
     CVRPConfig,
+    CVRPGreedyInsertRepair,
     CVRPGreedyReconnectRepair,
     CVRPSampler,
     RandomNodeDestroy,
     TSPConfig,
+    TSPGreedyInsertRepair,
     TSPGreedyReconnectRepair,
     TSPSampler,
+    bench_batch_size,
     bench_batch_sizes,
-    bench_lns_steps,
+    bench_destruction_size,
+    bench_destruction_sizes,
     bench_n,
     bench_num_repeats,
+    bench_rollout_size,
+    one_customer_per_route,
     one_customer_per_route_graph,
     plt,
     problem_dropdown,
+    random_permutation,
     random_permutation_graph,
     time,
     torch,
 ):
-    def lns_timing_plot(*, destruction_size):
-        n = bench_n.value
-        batch_sizes = sorted(bench_batch_sizes.value)
-        num_repeats = bench_num_repeats.value
-        lns_steps = bench_lns_steps.value
+    # color per (destroy, repair) combo; linestyle per device.
+    _combo_colors = {
+        ("random", "reconnect"): "steelblue",
+        ("nds", "reconnect"): "darkorange",
+        ("random", "insert"): "seagreen",
+        ("nds", "insert"): "crimson",
+    }
+    _device_styles = {"cpu": "-", "cuda": "--"}
+
+    def timing_plot(*, combos, title, x_axis):
+        """Time a destroy+repair step over a swept axis.
+
+        x_axis="batch": sweep batch sizes (bench_batch_sizes) at a fixed destruction
+        size (bench_destruction_size). x_axis="destruction": sweep destruction sizes
+        (bench_destruction_sizes) at a fixed batch size (bench_batch_size).
+        """
         is_cvrp = problem_dropdown.value == "cvrp"
+        problem_name = "cvrp" if is_cvrp else "tsp"
         label = "CVRP" if is_cvrp else "TSP"
+        n = bench_n.value
+        num_repeats = bench_num_repeats.value
+        rollout_size = bench_rollout_size.value
         devices = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
-        colors = {"cpu": "steelblue", "cuda": "darkorange"}
-        results = {}
 
-        for device in devices:
-            loop_ms = []
-            for bs in batch_sizes:
-                if is_cvrp:
-                    inst = CVRPSampler(CVRPConfig.for_n(n), seed=0)(bs)
-                    sol = one_customer_per_route_graph(inst)
-                else:
-                    inst = TSPSampler(TSPConfig(num_locations=n), seed=0)(bs)
-                    sol = random_permutation_graph(inst, seed=0)
-                if device == "cuda":
-                    sol = sol.to(device="cuda")
-                r = CVRPGreedyReconnectRepair() if is_cvrp else TSPGreedyReconnectRepair()
-                d = RandomNodeDestroy(destruction_size=destruction_size, seed=0)
+        # Build the swept axis and the (batch_size, destruction_size) point list.
+        if x_axis == "batch":
+            x_values = sorted(bench_batch_sizes.value)
+            fixed_k = bench_destruction_size.value
+            points = [(bs, fixed_k) for bs in x_values]
+            x_label = "Batch size"
+            log_x = True
+            fixed_text = f"destruction size {fixed_k}"
+        else:
+            x_values = sorted(bench_destruction_sizes.value)
+            fixed_bs = bench_batch_size.value
+            points = [(fixed_bs, k) for k in x_values]
+            x_label = "Destruction size"
+            log_x = False
+            fixed_text = f"batch size {fixed_bs}"
 
-                for _ in range(2):  # warmup
-                    cur = sol
-                    for _ in range(lns_steps):
-                        cur = r(d(cur))
-
-                if device == "cuda":
-                    torch.cuda.synchronize()
-                t0 = time.perf_counter()
-                for _ in range(num_repeats):
-                    cur = sol
-                    for _ in range(lns_steps):
-                        cur = r(d(cur))
-                if device == "cuda":
-                    torch.cuda.synchronize()
-                loop_ms.append((time.perf_counter() - t0) / num_repeats * 1000)
-
-            results[device] = {
-                "ms": loop_ms,
-                "ips": [bs * 1000 / t for bs, t in zip(batch_sizes, loop_ms)],
+        # Each repair operator dictates the solution representation it consumes:
+        # reconnect works on the graph solution, insert on the sequence/tour solution.
+        if is_cvrp:
+            start_builders = {
+                "reconnect": one_customer_per_route_graph,
+                "insert": one_customer_per_route,
             }
+            repair_classes = {
+                "reconnect": CVRPGreedyReconnectRepair,
+                "insert": CVRPGreedyInsertRepair,
+            }
+            sampler = CVRPSampler(CVRPConfig.for_n(n), seed=0)
+        else:
+            start_builders = {
+                "reconnect": random_permutation_graph,
+                "insert": random_permutation,
+            }
+            repair_classes = {
+                "reconnect": TSPGreedyReconnectRepair,
+                "insert": TSPGreedyInsertRepair,
+            }
+            sampler = TSPSampler(TSPConfig(num_locations=n), seed=0)
 
-        def style(ax, ylabel, title):
-            ax.set_xlabel("Batch size")
+        def make_destroy(destroy_name, *, destruction_size, model):
+            if destroy_name == "random":
+                operator = RandomNodeDestroy(destruction_size=destruction_size, seed=0)
+
+                def destroy(start):
+                    # Sample one independent destroy per rollout: (B,) -> (B, R).
+                    expanded = start.unsqueeze(1).expand(*start.batch_size, rollout_size)
+                    return operator(expanded)
+
+                return destroy
+
+            @torch.no_grad()
+            def destroy(start):
+                rollout = model.rollout(
+                    start,
+                    rollouts_per_solution=rollout_size,
+                    deconstruction_size=destruction_size,
+                    greedy=False,
+                )
+                # actions: (B, R, k); broadcasts the (B,) solution to (B, R).
+                return start.remove_nodes(rollout.actions)
+
+            return destroy
+
+        results = {}
+        for device in devices:
+            model = AutoregressiveNDSModel(problem_name=problem_name).to(device).eval()
+            for destroy_name, repair_name in combos:
+                step_ms = []
+                candidates_per_s = []
+                for bs, k in points:
+                    start = start_builders[repair_name](sampler(bs))
+                    if device == "cuda":
+                        start = start.to(device="cuda")
+                    repair = repair_classes[repair_name]()
+                    destroy = make_destroy(destroy_name, destruction_size=k, model=model)
+
+                    for _ in range(2):  # warmup
+                        repair(destroy(start))
+
+                    if device == "cuda":
+                        torch.cuda.synchronize()
+                    t0 = time.perf_counter()
+                    for _ in range(num_repeats):
+                        repair(destroy(start))
+                    if device == "cuda":
+                        torch.cuda.synchronize()
+                    t = (time.perf_counter() - t0) / num_repeats * 1000
+                    step_ms.append(t)
+                    candidates_per_s.append(bs * rollout_size * 1000 / t)
+
+                results[(destroy_name, repair_name, device)] = {
+                    "ms": step_ms,
+                    "candidates_per_s": candidates_per_s,
+                }
+
+        def style(ax, ylabel, subtitle, *, log_y=False):
+            ax.set_xlabel(x_label)
             ax.set_ylabel(ylabel)
-            ax.set_title(title)
-            ax.set_xscale("log", base=2)
-            ax.set_xticks(batch_sizes)
-            ax.set_xticklabels([str(b) for b in batch_sizes])
+            ax.set_title(subtitle)
+            if log_x:
+                ax.set_xscale("log", base=2)
+            if log_y:
+                ax.set_yscale("log")
+            ax.set_xticks(x_values)
+            ax.set_xticklabels([str(v) for v in x_values])
             ax.grid(True, linestyle="--", alpha=0.4)
-            ax.legend()
+            ax.legend(fontsize=8)
 
         fig, axes = plt.subplots(1, 2, figsize=(13, 4))
-        kw = dict(marker="o", linewidth=1.5)
+        for (destroy_name, repair_name, device), data in results.items():
+            line_kw = dict(
+                marker="o",
+                linewidth=1.5,
+                color=_combo_colors[(destroy_name, repair_name)],
+                linestyle=_device_styles[device],
+                label=f"{destroy_name}+{repair_name} ({device})",
+            )
+            axes[0].plot(x_values, data["ms"], **line_kw)
+            axes[1].plot(x_values, data["candidates_per_s"], **line_kw)
 
-        for device, data in results.items():
-            axes[0].plot(batch_sizes, data["ms"], label=device, color=colors[device], **kw)
-            axes[1].plot(batch_sizes, data["ips"], label=device, color=colors[device], **kw)
-
-        style(axes[0], "Time (ms)", f"LNS loop ({lns_steps} steps): time per loop")
-        style(axes[1], "Instances / s", f"LNS loop ({lns_steps} steps): throughput")
+        style(axes[0], "Time per step (ms)", "Wall-clock per destroy+repair step", log_y=True)
+        style(axes[1], "Candidates / s", "Throughput (B x R repaired / s)")
         fig.suptitle(
-            f"{label}(N={n}) greedy reconnect, destruction size {destruction_size}", fontsize=13
+            f"{title} - {label}(N={n}), R={rollout_size}, {fixed_text}",
+            fontsize=12,
         )
         plt.tight_layout()
         return fig
 
-    return (lns_timing_plot,)
+    return (timing_plot,)
 
 
 @app.cell(hide_code=True)
-def _(bench_destruction_sizes, bench_run, lns_timing_plot, mo):
+def _(bench_run, mo, timing_plot):
     mo.stop(not bench_run.value, mo.md("Click **Run** to start the benchmark."))
-    mo.vstack([lns_timing_plot(destruction_size=d) for d in sorted(bench_destruction_sizes.value)])
+    _combos = [("random", "reconnect"), ("random", "insert")]
+    mo.vstack(
+        [
+            mo.md("### Repair: reconnect vs. insert (random node destroy)"),
+            timing_plot(combos=_combos, title="Repair", x_axis="batch"),
+            timing_plot(combos=_combos, title="Repair", x_axis="destruction"),
+        ]
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(bench_run, mo, timing_plot):
+    mo.stop(not bench_run.value, mo.md("Click **Run** to start the benchmark."))
+    _combos = [("random", "reconnect"), ("nds", "reconnect")]
+    mo.vstack(
+        [
+            mo.md("### Destroy: random-node vs. NDS model (greedy reconnect repair)"),
+            timing_plot(combos=_combos, title="Destroy", x_axis="batch"),
+            timing_plot(combos=_combos, title="Destroy", x_axis="destruction"),
+        ]
+    )
     return
 
 
