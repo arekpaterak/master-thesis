@@ -24,11 +24,11 @@ def random_permutation(instance: TSPInstance, *, seed: int | None = None) -> TSP
 
     generator = None
     if seed is not None:
-        generator = torch.Generator(device=device)
+        generator = torch.Generator()
         generator.manual_seed(seed)
 
     random_permutations = torch.argsort(
-        torch.rand(batch_size, num_locations, device=device, generator=generator), dim=-1
+        torch.rand(batch_size, num_locations, generator=generator).to(device=device), dim=-1
     )
 
     if not was_batched:

@@ -22,6 +22,8 @@ class TSPGraphSolution(BaseSolution):
     def create_from_sequence(
         cls, instance: TSPInstance, sequence: torch.Tensor | None = None
     ) -> TSPGraphSolution:
+        device = instance.locations.device
+
         if sequence is None:
             return cls(
                 _instance=instance,
@@ -29,13 +31,13 @@ class TSPGraphSolution(BaseSolution):
                     (*instance.batch_size, instance.num_nodes),
                     cls.UNASSIGNED,
                     dtype=torch.long,
-                    device=instance.device,
+                    device=device,
                 ),
                 _prev=torch.full(
                     (*instance.batch_size, instance.num_nodes),
                     cls.UNASSIGNED,
                     dtype=torch.long,
-                    device=instance.device,
+                    device=device,
                 ),
                 batch_size=instance.batch_size,
             )
@@ -44,12 +46,8 @@ class TSPGraphSolution(BaseSolution):
 
         b_size = instance.batch_size
         n = instance.num_nodes
-        next_nodes = torch.full(
-            (*b_size, n), cls.UNASSIGNED, dtype=torch.long, device=sequence.device
-        )
-        prev_nodes = torch.full(
-            (*b_size, n), cls.UNASSIGNED, dtype=torch.long, device=sequence.device
-        )
+        next_nodes = torch.full((*b_size, n), cls.UNASSIGNED, dtype=torch.long, device=device)
+        prev_nodes = torch.full((*b_size, n), cls.UNASSIGNED, dtype=torch.long, device=device)
 
         next_nodes.scatter_(-1, sequence, sequence.roll(-1, dims=-1))
         prev_nodes.scatter_(-1, sequence, sequence.roll(1, dims=-1))

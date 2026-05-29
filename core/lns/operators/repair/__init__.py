@@ -1,12 +1,11 @@
-from .greedy import CVRPSequentialGreedyNodeInsertionRepair, GreedyNodeRepair
-from .greedy_edge import TSPGreedyEdgeRepair
-from .greedy_reconnect import CVRPGreedyReconnectRepair
+from .greedy_insert import CVRPGreedyInsertRepair, TSPGreedyInsertRepair
+from .greedy_reconnect import CVRPGreedyReconnectRepair, TSPGreedyReconnectRepair
 from .random import RandomRepair
 
 __all__ = [
     "CVRPGreedyReconnectRepair",
-    "CVRPSequentialGreedyNodeInsertionRepair",
-    "GreedyNodeRepair",
+    "CVRPGreedyInsertRepair",
+    "TSPGreedyInsertRepair",
     "RandomRepair",
-    "TSPGreedyEdgeRepair",
+    "TSPGreedyReconnectRepair",
 ]

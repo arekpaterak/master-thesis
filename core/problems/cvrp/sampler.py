@@ -40,9 +40,7 @@ class CVRPSampler(Sampler[CVRPInstance]):
         # After normalisation of the demands, the effective capacity is 1.0
         capacity = torch.ones(batch_size, 1)
 
-        return CVRPInstance(
-            locations=locations, demand=demand, capacity=capacity, batch_size=[batch_size]
-        )
+        return CVRPInstance.create(locations=locations, demand=demand, capacity=capacity)
 
     def _sample_demand(self, batch_size: int) -> torch.Tensor:
         cfg = self._config

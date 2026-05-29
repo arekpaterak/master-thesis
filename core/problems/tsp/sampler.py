@@ -16,11 +16,10 @@ class TSPSampler(Sampler[TSPInstance]):
             self._generator.manual_seed(seed)
 
     def __call__(self, batch_size: int) -> TSPInstance:
-        return TSPInstance(
+        return TSPInstance.create(
             locations=torch.rand(
                 batch_size, self._config.num_locations, 2, generator=self._generator
             )
             * (self._config.max_coordinate - self._config.min_coordinate)
             + self._config.min_coordinate,
-            batch_size=[batch_size],
         )
