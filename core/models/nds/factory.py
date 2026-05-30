@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-from core.models.nds.config import (
+from .config import (
     TrainConfig,
 )
-from core.models.nds.decoders.config import (
+from .decoders.config import (
     AutoregressiveDecoderConfig,
     ProximityDecoderConfig,
     SimpleOnePassDecoderConfig,
     SlotDecoderConfig,
 )
-from core.models.nds.decoders.one_pass.proximity import ProximityDecoder
-from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
-from core.models.nds.decoders.one_pass.slot import SlotDecoder
-from core.models.nds.models.ar import AutoregressiveNDSModel
-from core.models.nds.models.one_pass import OnePassNDSModel
-
-NDSModel = AutoregressiveNDSModel | OnePassNDSModel
+from .decoders.one_pass.proximity import ProximityDecoder
+from .decoders.one_pass.simple import SimpleOnePassDecoder
+from .decoders.one_pass.slot import SlotDecoder
+from .models import NDSModel
+from .models.ar import AutoregressiveNDSModel
+from .models.one_pass import OnePassNDSModel
 
 
 def build_model(config: TrainConfig) -> NDSModel:

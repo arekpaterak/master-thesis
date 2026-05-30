@@ -279,7 +279,7 @@ class CVRPSolution(BaseSolution):
         with_objective: bool = True,
         show_depot_edges: bool = False,
         depot_in_legend: bool = True,
-        with_route_labels: bool = True,
+        with_route_labels: bool = False,
         legend_loc: str | None = "upper right",
     ) -> None:
         from .render import render_solution

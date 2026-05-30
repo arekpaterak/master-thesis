@@ -7,14 +7,15 @@ import torch
 from core.lns.operators.repair import TSPGreedyReconnectRepair
 from core.lns.operators.repair.greedy_insert import CVRPGreedyInsertRepair
 from core.lns.operators.repair.greedy_reconnect import CVRPGreedyReconnectRepair
-from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.rollout import Rollout
 from core.problems.cvrp import CVRPSolution
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.solution import BaseSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 
-ImprovementStep = Callable[[BaseSolution, AutoregressiveNDSModel], BaseSolution]
+from .models import NDSModel
+
+ImprovementStep = Callable[[BaseSolution, NDSModel], BaseSolution]
 
 ApplyRollout = Callable[[BaseSolution, Rollout], BaseSolution]
 
@@ -23,7 +24,7 @@ Repair = Callable[[BaseSolution, Rollout], BaseSolution]
 
 def noop_improvement_step(
     solution: BaseSolution,
-    model: AutoregressiveNDSModel,
+    model: NDSModel,
 ) -> BaseSolution:
     return solution
 
@@ -45,7 +46,7 @@ def make_improvement_step(
     """
 
     @torch.no_grad()
-    def improvement_step(solution: BaseSolution, model: AutoregressiveNDSModel) -> BaseSolution:
+    def improvement_step(solution: BaseSolution, model: NDSModel) -> BaseSolution:
         model.eval()
         rollout = model.rollout(
             solution,

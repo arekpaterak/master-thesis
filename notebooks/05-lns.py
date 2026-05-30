@@ -10,10 +10,6 @@ def _(mo):
     # Large Neighbourhood Search
 
     This notebook enables to check how the LNS work with different destroy and repair operators.
-
-    Available pairs of operators:
-
-    1. random node destroy + greedy reconnection repair
     """)
     return
 

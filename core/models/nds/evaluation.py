@@ -6,9 +6,9 @@ from collections.abc import Callable
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
+from models.nds.models import NDSModel
 from pydantic import BaseModel, computed_field
 
-from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -90,17 +90,18 @@ def configure_validation_step(
     deconstruction_size: int,
     num_improvement_steps: int,
     every_n_lns_steps: int,
-) -> Callable[[AutoregressiveNDSModel, BaseProblemInstance, int], BatchValidationSummary]:
+) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
     snapshot_steps = [0] + list(
         range(every_n_lns_steps, num_improvement_steps + 1, every_n_lns_steps)
     )
 
     def validation_step(
-        model: AutoregressiveNDSModel,
+        model: NDSModel,
         instance: BaseProblemInstance,
         epoch: int,
     ) -> BatchValidationSummary:
         model.eval()
+
         instance = instance.to(next(model.parameters()).device)
         batch_size = instance.batch_size[0]
 
@@ -109,9 +110,10 @@ def configure_validation_step(
             objective_initial = solution.objective().mean().item()
 
             snapshots: list[BaseSolution] = [_unbatch_first(solution)]
-            curve: list[float] = [objective_initial]
+            objective_curve: list[float] = [objective_initial]
 
             for step in range(1, num_improvement_steps + 1):
+                # TODO: Apply all rollouts one after another, match Augmented Simulated Annealing
                 rollout = model.rollout(
                     solution,
                     rollouts_per_solution=1,
@@ -124,7 +126,7 @@ def configure_validation_step(
 
                 if step in snapshot_steps:
                     snapshots.append(_unbatch_first(solution))
-                    curve.append(solution.objective().mean().item())
+                    objective_curve.append(solution.objective().mean().item())
 
             objective_final = solution.objective().mean().item()
 
@@ -132,7 +134,7 @@ def configure_validation_step(
             batch_size=batch_size,
             objective_initial=objective_initial,
             objective_final=objective_final,
-            objective_curve=curve,
+            objective_curve=objective_curve,
             step_labels=snapshot_steps,
             snapshots=snapshots,
         )
@@ -150,11 +152,11 @@ def plot_lns_progress(
     *,
     epoch: int,
 ) -> Figure:
-    num_snapshots = len(snapshots)
-    ncols = min(num_snapshots, 5)
-    nrows = math.ceil(num_snapshots / ncols)
+    n_snapshots = len(snapshots)
+    n_cols = min(n_snapshots, 5)
+    n_rows = math.ceil(n_snapshots / n_cols)
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows))
     axes_flat = axes.flat if hasattr(axes, "flat") else [axes]
 
     for i, (solution, step) in enumerate(zip(snapshots, step_labels)):
@@ -164,7 +166,7 @@ def plot_lns_progress(
             fontsize=9,
         )
 
-    for i in range(num_snapshots, nrows * ncols):
+    for i in range(n_snapshots, n_rows * n_cols):
         axes_flat[i].set_visible(False)
 
     fig.suptitle(f"Epoch {epoch}", fontsize=12)

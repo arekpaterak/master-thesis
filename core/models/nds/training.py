@@ -114,16 +114,18 @@ def configure_training_step(
         instance: BaseProblemInstance,
         **_,
     ) -> BatchTrainSummary:
+        model.train()
+
         start = time.perf_counter()
         device = next(model.parameters()).device
         instance = instance.to(device)
-        model.train()
 
         optimizer.zero_grad()
         solution = generate_start_solution(instance)
 
-        for _ in range(num_initial_improvement_steps):
-            solution = improvement_step(solution, model)
+        with torch.no_grad():
+            for _ in range(num_initial_improvement_steps):
+                solution = improvement_step(solution, model)
 
         objective_before = solution.objective().mean().item()
 

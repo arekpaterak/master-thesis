@@ -19,10 +19,11 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
 
     def __call__(self, partial_solution: CVRPGraphSolution) -> CVRPGraphSolution:
         solution = partial_solution.clone()
-        E = int(solution.num_unassigned.max().item())
+        num_tails = (solution._next[..., 1:] == solution.UNASSIGNED).sum(dim=-1)
+        E = int(num_tails.max().item())
 
         for _ in range(E):
-            is_active = solution.num_unassigned > 0  # (...,)
+            is_active = (solution._next[..., 1:] == solution.UNASSIGNED).any(dim=-1)  # (...,)
             if not is_active.any():
                 break
 
