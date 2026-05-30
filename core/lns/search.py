@@ -7,10 +7,12 @@ from core.problems.solution import BaseSolution
 
 from .acceptance_criterion import AcceptanceCriterion
 from .improvement_step import ImprovementStep
+from .utils import select_solution
 
 
 class SearchResult(NamedTuple):
     solution: BaseSolution
+    best_solution: BaseSolution
     history: list[float]
 
 
@@ -23,11 +25,13 @@ def search[S: BaseSolution](
     on_step: Callable[[int, S], None] | None = None,
 ) -> SearchResult:
     criterion.reset()
+    best = solution
     history: list[float] = []
     for step in range(n_iterations):
         solution = improvement_step(solution, criterion)
+        best = select_solution(solution.objective() < best.objective(), solution, best)
         history.append(solution.objective().mean().item())
         criterion.step()
         if on_step is not None:
             on_step(step + 1, solution)
-    return SearchResult(solution=solution, history=history)
+    return SearchResult(solution=solution, best_solution=best, history=history)

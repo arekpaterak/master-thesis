@@ -4,6 +4,7 @@ __generated_with = "0.23.6"
 app = marimo.App(width="columns")
 
 with app.setup(hide_code=True):
+    import gc
     import sys
     from pathlib import Path
 
@@ -18,6 +19,8 @@ with app.setup(hide_code=True):
     from core.models.nds.config import TrainConfig
 
     load_dotenv(".env")
+
+    _nds_model_holder: list = []
 
 
 @app.cell(hide_code=True)
@@ -338,7 +341,7 @@ def _(defaults):
 
 @app.cell(hide_code=True)
 def _(defaults):
-    _batch_sizes = [8, 16, 32, 64, 128, 256, 512]
+    _batch_sizes = [8, 10, 16, 32, 64, 128, 256, 512]
     validation_num_instances = mo.ui.number(
         32, 5000, value=defaults.validation.num_instances, label="Num instances"
     )
@@ -584,12 +587,13 @@ def _():
 
 @app.cell
 def _(config, device):
-    import gc
-
-    gc.collect()
-    torch.cuda.empty_cache()
-
     from core.models.nds.factory import build_model
+
+    if _nds_model_holder:
+        del _nds_model_holder[0]
+        _nds_model_holder.clear()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     model = build_model(config)
 
@@ -617,6 +621,7 @@ def _(config, device):
         print("Frozen encoder weights")
 
     model = model.to(device)
+    _nds_model_holder.append(model)
     model
     return (model,)
 
@@ -835,6 +840,8 @@ def _(
                 validation_instance_sampler=val_sampler,
             )
         except BaseException:
+            gc.collect()
+            torch.cuda.empty_cache()
             if config.logging.wandb_project:
                 wandb.finish(exit_code=1)
             raise
