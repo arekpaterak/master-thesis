@@ -99,16 +99,22 @@ class ValidationConfig(BaseModel):
     batch_size: int = Field(default=128, description="Batch size.")
     num_improvement_steps: int = Field(
         default=60,
-        description="LNS steps.",
+        description="Number of outer SA iterations.",
     )
     every_n_epochs: int = Field(default=10, description="Run validation every N training epochs.")
     seed: int = Field(default=42, description="Fixed seed for reproducible validation instances.")
     plot_enabled: bool = Field(default=True, description="Plot LNS progress for one instance.")
     plot_every_n_improvement_steps: int = Field(
-        default=5, description="Capture solution snapshot every N LNS steps."
+        default=5, description="Capture solution snapshot every N outer SA iterations."
     )
     plot_save_to_disk: bool = Field(default=True, description="Save plots.")
     plot_show_in_marimo: bool = Field(default=True, description="Display plots inline in marimo.")
+    temperature_start: float = Field(default=0.1, description="SA start temperature.")
+    temperature_min: float = Field(
+        default=0.001, description="SA final temperature (decay target)."
+    )
+    rollouts_per_step: int = Field(default=100, description="Rollouts K applied per outer SA step.")
+    n_repairs: int = Field(default=5, description="Repair attempts per rollout; best is selected.")
 
 
 class TrainConfig(BaseModel):

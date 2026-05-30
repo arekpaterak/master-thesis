@@ -6,9 +6,14 @@ from collections.abc import Callable
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
-from models.nds.models import NDSModel
 from pydantic import BaseModel, computed_field
 
+from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
+from core.lns.operators.repair import RepairOperator
+from core.lns.search import search
+from core.models.nds.functions import apply_rollout as default_apply_rollout
+from core.models.nds.improvement_step import NDSImprovementStep
+from core.models.nds.models import NDSModel
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -85,15 +90,30 @@ class EpochValidationAccumulator:
 def configure_validation_step(
     *,
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-    apply_rollout_fn: Callable[[BaseSolution, Rollout], BaseSolution],
-    repair: Callable[[BaseSolution, Rollout], BaseSolution],
+    apply_rollout_fn: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
+    repair: RepairOperator,
     deconstruction_size: int,
     num_improvement_steps: int,
-    every_n_lns_steps: int,
+    capture_snapshots_every_n_improvement_steps: int | None = 1,
+    rollouts_per_step: int = 1,
+    n_repairs: int = 1,
+    temperature_start: float = 0.1,
+    temperature_min: float = 0.001,
 ) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
-    snapshot_steps = [0] + list(
-        range(every_n_lns_steps, num_improvement_steps + 1, every_n_lns_steps)
-    )
+    _apply_rollout_fn = default_apply_rollout if apply_rollout_fn is None else apply_rollout_fn
+
+    snapshot_step_set = {0}
+    if capture_snapshots_every_n_improvement_steps is not None:
+        assert capture_snapshots_every_n_improvement_steps > 0, (
+            "Expected capture_snapshots_every_n_improvement_steps > 0"
+        )
+        snapshot_step_set |= set(
+            range(
+                capture_snapshots_every_n_improvement_steps,
+                num_improvement_steps + 1,
+                capture_snapshots_every_n_improvement_steps,
+            )
+        )
 
     def validation_step(
         model: NDSModel,
@@ -112,30 +132,42 @@ def configure_validation_step(
             snapshots: list[BaseSolution] = [_unbatch_first(solution)]
             objective_curve: list[float] = [objective_initial]
 
-            for step in range(1, num_improvement_steps + 1):
-                # TODO: Apply all rollouts one after another, match Augmented Simulated Annealing
-                rollout = model.rollout(
-                    solution,
-                    rollouts_per_solution=1,
-                    deconstruction_size=deconstruction_size,
-                    greedy=False,
-                )
-                partial = apply_rollout_fn(solution, rollout)
-                solution_prime = repair(partial, rollout)
-                solution = solution_prime.squeeze(1)
+            criterion = SimulatedAnnealingAcceptance.from_range(
+                temperature_start=temperature_start,
+                temperature_min=temperature_min,
+                n_steps=num_improvement_steps,
+            )
 
-                if step in snapshot_steps:
-                    snapshots.append(_unbatch_first(solution))
-                    objective_curve.append(solution.objective().mean().item())
+            improvement_step = NDSImprovementStep(
+                model=model,
+                apply_rollout_fn=_apply_rollout_fn,
+                repair=repair,
+                num_rollouts=rollouts_per_step,
+                deconstruction_size=deconstruction_size,
+                n_repairs=n_repairs,
+            )
 
-            objective_final = solution.objective().mean().item()
+            def on_step(step: int, sol: BaseSolution) -> None:
+                if step in snapshot_step_set:
+                    snapshots.append(_unbatch_first(sol))
+                    objective_curve.append(sol.objective().mean().item())
+
+            result = search(
+                solution,
+                improvement_step=improvement_step,
+                criterion=criterion,
+                n_iterations=num_improvement_steps,
+                on_step=on_step,
+            )
+
+            objective_final = result.solution.objective().mean().item()
 
         return BatchValidationSummary(
             batch_size=batch_size,
             objective_initial=objective_initial,
             objective_final=objective_final,
             objective_curve=objective_curve,
-            step_labels=snapshot_steps,
+            step_labels=sorted(snapshot_step_set),
             snapshots=snapshots,
         )
 
@@ -143,7 +175,7 @@ def configure_validation_step(
 
 
 def _unbatch_first(solution: BaseSolution) -> BaseSolution:
-    return solution[0] if solution.batch_size else solution
+    return solution[0] if solution.batch_size else solution  # type: ignore
 
 
 def plot_lns_progress(

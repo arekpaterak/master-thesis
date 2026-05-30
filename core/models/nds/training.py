@@ -7,7 +7,11 @@ import torch
 import torch.optim as optim
 from pydantic import BaseModel, computed_field
 
+from core.lns.acceptance_criterion import GreedyAcceptance
+from core.lns.improvement_step import ImprovementStep
+from core.lns.operators.repair import RepairOperator
 from core.models.nds.factory import NDSModel
+from core.models.nds.functions import apply_rollout as default_apply_rollout
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -98,15 +102,17 @@ class EpochTrainAccumulator:
 def configure_training_step(
     *,
     num_main_improvement_steps: int,
-    rollouts_per_solution: int,
     num_initial_improvement_steps: int,
     deconstruction_size: int,
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-    improvement_step: Callable[[BaseSolution, NDSModel], BaseSolution],
-    apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution],
-    repair: Callable[[BaseSolution, Rollout], BaseSolution],
+    improvement_step: ImprovementStep,
+    apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
+    repair: RepairOperator,
+    rollouts_per_solution: int = 1,
     on_improvement_step: Callable[[int, float], None] | None = None,
-) -> Callable[..., BatchTrainSummary]:
+) -> Callable[[NDSModel, optim.Optimizer, BaseProblemInstance], BatchTrainSummary]:
+    _apply_rollout = default_apply_rollout if apply_rollout is None else apply_rollout
+
     def training_step(
         *,
         model: NDSModel,
@@ -125,7 +131,7 @@ def configure_training_step(
 
         with torch.no_grad():
             for _ in range(num_initial_improvement_steps):
-                solution = improvement_step(solution, model)
+                solution = improvement_step(solution, GreedyAcceptance())
 
         objective_before = solution.objective().mean().item()
 
@@ -144,9 +150,9 @@ def configure_training_step(
                 greedy=False,
             )
 
-            solution_partial = apply_rollout(solution, rollout)
+            solution_partial = _apply_rollout(solution, rollout)
             assert solution_partial.batch_dims == 2
-            solution_prime = repair(solution_partial, rollout)
+            solution_prime = repair(solution_partial)
 
             step_objective_before = solution.objective()
             objective_after = solution_prime.objective()
