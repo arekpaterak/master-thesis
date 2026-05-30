@@ -1,36 +1,82 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Self
 
 import torch
 
+from core.constants import EPS
 from core.problems.solution import BaseSolution
 
 
 class AcceptanceCriterion(ABC):
-    def accept(self, *, current: BaseSolution, candidate: BaseSolution) -> torch.Tensor:
-        """
-        Evaluate candidate solutions against current ones.
+    @abstractmethod
+    def _accept(self, *, current: BaseSolution, candidate: BaseSolution) -> torch.Tensor: ...
 
-        Args:
-            current: The current batch of solutions.
-            candidate: The candidate batch of solutions.
-
-        Returns:
-            accept_mask: (batch,) bool tensor where True means the candidate solution is accepted.
-        """
+    def __call__(self, current: BaseSolution, candidate: BaseSolution) -> torch.Tensor:
         assert current.batch_size == candidate.batch_size, (
             "Expected current and candidates to have the same batch size"
         )
         return self._accept(current=current, candidate=candidate)
 
-    @abstractmethod
-    def _accept(self, *, current: BaseSolution, candidate: BaseSolution) -> torch.Tensor: ...
+    def reset(self) -> None:
+        pass
 
-    def __call__(self, *, current: BaseSolution, candidate: BaseSolution) -> torch.Tensor:
-        return self.accept(current=current, candidate=candidate)
+    def step(self) -> None:
+        pass
 
 
 class GreedyAcceptance(AcceptanceCriterion):
+    """Accepts a candidate only if it strictly improves on the current solution."""
+
     def _accept(self, *, current: BaseSolution, candidate: BaseSolution) -> torch.Tensor:
         return candidate.objective() < current.objective()
+
+
+class SimulatedAnnealingAcceptance(AcceptanceCriterion):
+    """Simulated annealing acceptance with exponential temperature decay.
+
+    Temperature is constant within a single improvement step (across all K rollouts)
+    and decays once per outer iteration via step().
+    Call reset() to restart the schedule.
+
+    Always accepts improved solutions. Accepts worse solutions with probability
+    exp(-delta / temperature).
+    """
+
+    def __init__(self, *, temperature: float, decay: float) -> None:
+        self._temperature_start = temperature
+        self._decay = decay
+        self._temperature = temperature
+
+    @classmethod
+    def from_range(cls, *, temperature_start: float, temperature_min: float, n_steps: int) -> Self:
+        """Construct with exponential decay from temperature_start to temperature_min.
+
+        Args:
+            temperature_start: The temperature at the first iteration.
+            temperature_min: The target temperature after n_steps.
+            n_steps: The number of decay steps.
+
+        Returns:
+            A criterion whose temperature decays exponentially over n_steps.
+        """
+        assert n_steps > 0, "Expected n_steps > 0"
+        decay = (temperature_min / temperature_start) ** (1 / n_steps)
+        return cls(temperature=temperature_start, decay=decay)
+
+    def reset(self) -> None:
+        self._temperature = self._temperature_start
+
+    def step(self) -> None:
+        self._temperature *= self._decay
+
+    def _accept(
+        self,
+        *,
+        current: BaseSolution,
+        candidate: BaseSolution,
+    ) -> torch.Tensor:
+        delta = candidate.objective() - current.objective()
+        prob = torch.exp(-delta.clamp(min=0) / self._temperature)
+        return (delta < EPS) | (torch.rand_like(delta) < prob)

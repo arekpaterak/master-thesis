@@ -24,30 +24,28 @@ def _():
     import yaml
     from drawdata import ScatterWidget
 
+    from core.lns.acceptance_criterion import GreedyAcceptance
+    from core.lns.operators.repair.greedy_insert import CVRPGreedyInsertRepair
+    from core.lns.operators.repair.greedy_reconnect import TSPGreedyReconnectRepair
     from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
-    from core.models.nds.functions import (
-        apply_rollout,
-        greedy_cvrp_repair,
-        greedy_tsp_repair,
-        make_improvement_step,
-    )
+    from core.models.nds.improvement_step import NDSImprovementStep
     from core.problems.cvrp.instance import CVRPInstance
     from core.problems.cvrp.solve import one_customer_per_route
     from core.problems.tsp.instance import TSPInstance
     from core.problems.tsp.solve import random_permutation_graph
 
     return (
+        CVRPGreedyInsertRepair,
         CVRPInstance,
         Path,
         ScatterWidget,
+        TSPGreedyReconnectRepair,
         TSPInstance,
         TrainConfig,
-        apply_rollout,
         build_model,
-        greedy_cvrp_repair,
-        greedy_tsp_repair,
-        make_improvement_step,
+        GreedyAcceptance,
+        NDSImprovementStep,
         mo,
         np,
         one_customer_per_route,
@@ -195,13 +193,13 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(
-    apply_rollout,
+    CVRPGreedyInsertRepair,
+    GreedyAcceptance,
+    NDSImprovementStep,
+    TSPGreedyReconnectRepair,
     config,
     current_solution,
-    greedy_cvrp_repair,
-    greedy_tsp_repair,
     instance,
-    make_improvement_step,
     mo,
     model,
     num_rollouts_slider,
@@ -218,13 +216,17 @@ def _(
         return one_customer_per_route(instance)
 
     def _make_step_fn():
-        repair = greedy_tsp_repair if config.problem.name == "tsp" else greedy_cvrp_repair
-        return make_improvement_step(
-            apply_rollout_fn=apply_rollout,
+        repair = (
+            TSPGreedyReconnectRepair() if config.problem.name == "tsp" else CVRPGreedyInsertRepair()
+        )
+        step = NDSImprovementStep(
+            model=model,
             repair=repair,
             num_rollouts=num_rollouts_slider.value,
             deconstruction_size=config.trainer.deconstruction_size,
+            n_repairs=1,
         )
+        return lambda sol: step(sol, GreedyAcceptance())
 
     def _on_reset(_):
         sol = _make_initial()
@@ -237,7 +239,7 @@ def _(
             sol = _make_initial()
             new_objs = [sol.objective().mean().item()]
         else:
-            sol = _make_step_fn()(sol, model)
+            sol = _make_step_fn()(sol)
             new_objs = [*objectives(), sol.objective().mean().item()]
         set_current_solution(sol)
         set_objectives(new_objs)
@@ -251,7 +253,7 @@ def _(
         step_fn = _make_step_fn()
         remaining = num_steps_slider.value - (len(current_objs) - 1)
         for _ in range(max(0, remaining)):
-            sol = step_fn(sol, model)
+            sol = step_fn(sol)
             current_objs.append(sol.objective().mean().item())
         set_current_solution(sol)
         set_objectives(current_objs)

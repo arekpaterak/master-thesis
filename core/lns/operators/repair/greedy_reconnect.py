@@ -86,7 +86,7 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
         is_active: torch.Tensor,
         device: torch.device,
     ) -> torch.Tensor:
-        rand_scores = torch.rand(is_tail.shape, generator=self._generator, device=device)
+        rand_scores = torch.rand(is_tail.shape, generator=self._generator).to(device)
         tail_node = rand_scores.masked_fill(~is_tail, -1.0).argmax(-1) + 1
         return torch.where(is_active, tail_node, torch.ones_like(tail_node))
 
@@ -178,5 +178,5 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
     def _select_start_node(
         self, unassigned_mask: torch.Tensor, device: torch.device
     ) -> torch.Tensor:
-        rand_scores = torch.rand(unassigned_mask.shape, generator=self._generator, device=device)
+        rand_scores = torch.rand(unassigned_mask.shape, generator=self._generator).to(device)
         return rand_scores.masked_fill(~unassigned_mask, -1.0).argmax(dim=-1)

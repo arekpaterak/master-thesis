@@ -5,6 +5,8 @@ from collections.abc import Callable, Iterator
 import torch.nn as nn
 import torch.optim as optim
 
+from core.lns.improvement_step import ImprovementStep, NoopImprovementStep
+from core.lns.operators.repair import RepairOperator
 from core.models.module import Module
 from core.models.nds.config import TrainConfig
 from core.models.nds.evaluation import (
@@ -13,7 +15,7 @@ from core.models.nds.evaluation import (
     configure_validation_step,
 )
 from core.models.nds.factory import NDSModel
-from core.models.nds.functions import noop_improvement_step
+from core.models.nds.functions import apply_rollout as default_apply_rollout
 from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,
@@ -34,30 +36,35 @@ class NDSModule(Module):
         config: TrainConfig,
         model: NDSModel,
         generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-        apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution],
-        repair: Callable[[BaseSolution, Rollout], BaseSolution],
-        improvement_step: Callable[[BaseSolution, NDSModel], BaseSolution] | None = None,
+        apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
+        repair: RepairOperator,
+        improvement_step: ImprovementStep | None = None,
         on_improvement_step: Callable[[int, float], None] | None = None,
     ) -> None:
         self.model = model
+        apply_rollout_fn = default_apply_rollout if apply_rollout is None else apply_rollout
         self._training_step_fn = configure_training_step(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
             rollouts_per_solution=config.trainer.rollouts_per_instance,
             num_initial_improvement_steps=config.trainer.num_initial_improvement_steps,
             deconstruction_size=config.trainer.deconstruction_size,
             generate_start_solution=generate_start_solution,
-            improvement_step=improvement_step or noop_improvement_step,
-            apply_rollout=apply_rollout,
+            improvement_step=improvement_step or NoopImprovementStep(),
+            apply_rollout=apply_rollout_fn,
             repair=repair,
             on_improvement_step=on_improvement_step,
         )
         self._validation_step_fn = configure_validation_step(
             generate_start_solution=generate_start_solution,
-            apply_rollout_fn=apply_rollout,
+            apply_rollout_fn=apply_rollout_fn,
             repair=repair,
             deconstruction_size=config.trainer.deconstruction_size,
             num_improvement_steps=config.validation.num_improvement_steps,
-            every_n_lns_steps=config.validation.plot_every_n_improvement_steps,
+            capture_snapshots_every_n_improvement_steps=config.validation.plot_every_n_improvement_steps,
+            rollouts_per_step=config.validation.rollouts_per_step,
+            n_repairs=config.validation.n_repairs,
+            temperature_start=config.validation.temperature_start,
+            temperature_min=config.validation.temperature_min,
         )
 
     def parameters(self) -> Iterator[nn.Parameter]:

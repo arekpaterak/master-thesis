@@ -31,11 +31,14 @@ def lns(
     best = starting_solutions
     history = [starting_solutions.objective().cpu()]
 
+    accept.reset()
+
     iter_bar = tqdm(range(n_iterations), desc="LNS", disable=not with_progress)
     for _ in iter_bar:
         partial = destroy(current)
         candidate = repair(partial)
-        mask = accept(current, candidate)  # (batch,) bool
+        mask = accept(current, candidate)
+        accept.step()
 
         # update current and best using tensor masking
         current = _select(mask, candidate, current)

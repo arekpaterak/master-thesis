@@ -641,11 +641,12 @@ def _(
     if not is_script_mode:
         mo.stop(not run_button.value)
 
+    from core.lns.operators.repair import NoopRepair
+    from core.lns.operators.repair.greedy_reconnect import (
+        CVRPGreedyReconnectRepair,
+        TSPGreedyReconnectRepair,
+    )
     from core.models.nds.functions import (
-        apply_rollout,
-        greedy_cvrp_reconnect_repair,
-        greedy_tsp_repair,
-        noop_repair,
         only_expanding_apply_rollout,
     )
     from core.problems.cvrp.solve import one_customer_per_route_graph
@@ -693,16 +694,16 @@ def _(
     match config.problem.name:
         case "cvrp":
             generate_start_solution = one_customer_per_route_graph
-            repair_fn = greedy_cvrp_reconnect_repair
+            repair_fn = CVRPGreedyReconnectRepair()
         case "tsp":
             generate_start_solution = random_permutation_graph
-            repair_fn = greedy_tsp_repair
+            repair_fn = TSPGreedyReconnectRepair()
 
     if noop_apply_repair_checkbox.value:
         apply_rollout_fn = only_expanding_apply_rollout
-        repair_fn = noop_repair
+        repair_fn = NoopRepair()
     else:
-        apply_rollout_fn = apply_rollout
+        apply_rollout_fn = None
     return (
         apply_rollout_fn,
         find_latest_checkpoint,
