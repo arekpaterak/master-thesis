@@ -17,11 +17,17 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
     After the loop, any remaining free heads are connected to the depot, completing all routes.
     """
 
+    def __init__(self, *, seed: int | None = None) -> None:
+        self._generator = torch.Generator()
+        if seed is not None:
+            self._generator.manual_seed(seed)
+
     def __call__(self, partial_solution: CVRPGraphSolution) -> CVRPGraphSolution:
         solution = partial_solution.clone()
         num_tails = (solution._next[..., 1:] == solution.UNASSIGNED).sum(dim=-1)
         E = int(num_tails.max().item())
 
+        device = solution.instance.locations.device
         for _ in range(E):
             is_active = (solution._next[..., 1:] == solution.UNASSIGNED).any(dim=-1)  # (...,)
             if not is_active.any():
@@ -30,10 +36,9 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
             is_tail = solution._next[..., 1:] == solution.UNASSIGNED  # (..., N)
             is_free_head = solution._prev[..., 1:] == solution.UNASSIGNED  # (..., N)
 
-            # Pick one tail per batch element. argmax returns 0 when all False (inactive),
-            # giving tail_node = 1 - the dummy node used for the inactive no-op below.
-            tail_node = is_tail.long().argmax(-1) + 1  # (...,) in 1..N
-            tail_node = torch.where(is_active, tail_node, torch.ones_like(tail_node))
+            # Pick one tail per batch element.
+            # When inactive, argmax returns 0 giving tail_node = 1 - the dummy node used for the no-op below.
+            tail_node = self._select_tail(is_tail, is_active, device)  # (...,) in 1..N
 
             # Capacity feasibility per candidate head
             route_demands = solution.demand_per_route()  # (..., max_id+1)
@@ -75,8 +80,25 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
         solution._prev[..., 1:] = solution._prev[..., 1:].clamp(min=0)
         return solution
 
+    def _select_tail(
+        self,
+        is_tail: torch.Tensor,
+        is_active: torch.Tensor,
+        device: torch.device,
+    ) -> torch.Tensor:
+        rand_scores = torch.rand(is_tail.shape, generator=self._generator, device=device)
+        tail_node = rand_scores.masked_fill(~is_tail, -1.0).argmax(-1) + 1
+        return torch.where(is_active, tail_node, torch.ones_like(tail_node))
+
 
 class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
+    """Greedy reconnection repair for TSPGraphSolution."""
+
+    def __init__(self, *, seed: int | None = None) -> None:
+        self._generator = torch.Generator()
+        if seed is not None:
+            self._generator.manual_seed(seed)
+
     def __call__(self, partial_solution: TSPGraphSolution) -> TSPGraphSolution:
         original_batch_size = partial_solution.batch_size
         flat_batch_size = math.prod(original_batch_size) if original_batch_size else 1
@@ -99,7 +121,7 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
                 break
 
             unassigned_mask = next_nodes == UNASSIGNED
-            start_node = unassigned_mask.float().argmax(dim=-1)
+            start_node = self._select_start_node(unassigned_mask, device)
             potential_end_nodes = prev_nodes == UNASSIGNED
 
             needs_cycle_check = active & (num_unassigned > 1)
@@ -152,3 +174,9 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
                 break
             current[mask] = prev[mask]
         return current
+
+    def _select_start_node(
+        self, unassigned_mask: torch.Tensor, device: torch.device
+    ) -> torch.Tensor:
+        rand_scores = torch.rand(unassigned_mask.shape, generator=self._generator, device=device)
+        return rand_scores.masked_fill(~unassigned_mask, -1.0).argmax(dim=-1)
