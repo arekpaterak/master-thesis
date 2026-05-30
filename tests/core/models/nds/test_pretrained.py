@@ -15,7 +15,7 @@ from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
 from core.problems.cvrp.solve import one_customer_per_route
 
-CHECKPOINT = Path("experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt")
+CHECKPOINT = Path("../experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt")
 
 pytestmark = pytest.mark.skipif(
     not CHECKPOINT.exists(),
