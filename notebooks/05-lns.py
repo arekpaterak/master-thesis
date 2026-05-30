@@ -132,10 +132,10 @@ def _(
 ):
     if problem_dropdown.value == "cvrp":
         initial = one_customer_per_route_graph(instance)
-        repair_op = CVRPGreedyReconnectRepair()
+        repair_op = CVRPGreedyReconnectRepair(seed=seed_widget.value)
     else:
         initial = random_permutation_graph(instance, seed=seed_widget.value)
-        repair_op = TSPGreedyReconnectRepair()
+        repair_op = TSPGreedyReconnectRepair(seed=seed_widget.value)
 
     destroy_op = RandomNodeDestroy(
         destruction_size=destruction_widget.value, seed=seed_widget.value
