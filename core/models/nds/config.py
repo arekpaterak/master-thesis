@@ -62,9 +62,9 @@ class TrainerParams(BaseModel):
     num_initial_improvement_steps: int = Field(
         default=10, description="Initial improvement steps before training."
     )
-    num_main_improvement_steps: int = Field(default=50, description="Number of improvement steps.")
+    num_main_improvement_steps: int = Field(default=100, description="Number of improvement steps.")
     deconstruction_size: int = Field(
-        default=5, description="Number of nodes removed per iteration."
+        default=15, description="Number of nodes removed per iteration."
     )
     checkpoint_every_n_epochs: int = Field(
         default=10, description="Save a checkpoint every N epochs (always saves the last epoch)."
@@ -96,10 +96,10 @@ class ValidationConfig(BaseModel):
     """Configuration for validation during training."""
 
     num_instances: int = Field(default=1000, description="Instances to evaluate.")
-    batch_size: int = Field(default=128, description="Batch size.")
+    batch_size: int = Field(default=10, description="Batch size.")
     num_improvement_steps: int = Field(
-        default=60,
-        description="Number of outer SA iterations.",
+        default=50,
+        description="Number of improvement steps.",
     )
     every_n_epochs: int = Field(default=10, description="Run validation every N training epochs.")
     seed: int = Field(default=42, description="Fixed seed for reproducible validation instances.")

@@ -30,8 +30,6 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
         device = solution.instance.locations.device
         for _ in range(E):
             is_active = (solution._next[..., 1:] == solution.UNASSIGNED).any(dim=-1)  # (...,)
-            if not is_active.any():
-                break
 
             is_tail = solution._next[..., 1:] == solution.UNASSIGNED  # (..., N)
             is_free_head = solution._prev[..., 1:] == solution.UNASSIGNED  # (..., N)
@@ -117,8 +115,6 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
 
         for _ in range(E):
             active = num_unassigned > 0
-            if not active.any():
-                break
 
             unassigned_mask = next_nodes == UNASSIGNED
             start_node = self._select_start_node(unassigned_mask, device)
