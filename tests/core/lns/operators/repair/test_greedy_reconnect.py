@@ -105,6 +105,26 @@ class TestCVRPGreedyReconnectRepair:
         assert obj.isfinite().all(), "Objective must be finite for a valid solution."
         assert (obj > 0).all(), "Objective must be positive."
 
+    def test_objective_matches_route_traversal(
+        self, deconstructed_cvrp_graph_solution: CVRPGraphSolution
+    ) -> None:
+        repaired = CVRPGreedyReconnectRepair()(deconstructed_cvrp_graph_solution)
+
+        B = repaired.batch_size[0]
+        device = repaired.instance.locations.device
+        reference = torch.zeros(B, device=device)
+
+        for b in range(B):
+            single = repaired[b]
+            locs = single.instance.locations
+            depot = torch.zeros(1, dtype=torch.long, device=device)
+            for route in single.routes():
+                nodes_in_route = torch.cat([depot, route.to(device), depot])
+                route_locs = locs[nodes_in_route]
+                reference[b] += (route_locs[1:] - route_locs[:-1]).pow(2).sum(-1).sqrt().sum()
+
+        torch.testing.assert_close(repaired.objective(), reference)
+
     def test_already_complete_is_unchanged(self, cvrp_graph_solution: CVRPGraphSolution) -> None:
         """Calling repair on a complete solution should return it unchanged."""
         repaired = CVRPGreedyReconnectRepair()(cvrp_graph_solution)

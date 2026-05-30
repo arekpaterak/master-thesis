@@ -177,8 +177,10 @@ class CVRPGraphSolution(BaseSolution):
 
     @property
     def num_unassigned(self) -> torch.Tensor:
-        """(...) int - number of customers missing a successor."""
-        return (self._next[..., 1:] == self.UNASSIGNED).sum(dim=-1)
+        """(...) int - number of customers missing a successor OR predecessor."""
+        missing_next = self._next[..., 1:] == self.UNASSIGNED
+        missing_prev = self._prev[..., 1:] == self.UNASSIGNED
+        return (missing_next | missing_prev).sum(dim=-1)
 
     @property
     def num_routes(self) -> torch.Tensor:
@@ -223,6 +225,10 @@ class CVRPGraphSolution(BaseSolution):
 
     def objective(self) -> torch.Tensor:
         """(...) float - total tour distance across all routes."""
+        assert self.is_complete.all(), (
+            "objective() requires all customers to be assigned; "
+            f"found {self.num_unassigned.max().item()} unassigned in at least one batch element"
+        )
         locations = self._instance.locations  # (..., N+1, 2)
         from_locs = locations[..., 1:, :]  # (..., N, 2)
 
@@ -371,7 +377,7 @@ class CVRPGraphSolution(BaseSolution):
         with_objective: bool = True,
         show_depot_edges: bool = False,
         depot_in_legend: bool = True,
-        with_route_labels: bool = True,
+        with_route_labels: bool = False,
         legend_loc: str | None = "upper right",
     ) -> None:
         from .render import render_solution
