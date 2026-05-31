@@ -9,7 +9,6 @@ with app.setup(hide_code=True):
     from pathlib import Path
 
     import marimo as mo
-    import matplotlib.pyplot as plt
     import torch
     import torch.nn
     import yaml
@@ -20,7 +19,15 @@ with app.setup(hide_code=True):
 
     load_dotenv(".env")
 
-    _nds_model_holder: list = []
+    nds_model_holder: list = []
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    # Neural Deconstruction Search
+    """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -129,9 +136,7 @@ def _(defaults):
     problem_name = mo.ui.dropdown(
         ["cvrp", "tsp"], value=defaults.problem.name, label="Problem name"
     )
-    problem_size = mo.ui.dropdown(
-        [20, 50, 100, 250, 500, 1000], value=defaults.problem.size, label="Problem size"
-    )
+    problem_size = mo.ui.dropdown([20, 50, 100, 250, 500, 1000], value=100, label="Problem size")
     mo.vstack([mo.md("### Problem"), problem_name, problem_size])
     return problem_name, problem_size
 
@@ -226,7 +231,7 @@ def _(defaults):
     _rollout_sizes = [64, 128, 256]
     trainer_epochs = mo.ui.number(1, 100, value=defaults.trainer.epochs, step=1, label="Epochs")
     trainer_instances_per_epoch = mo.ui.number(
-        100, 1500, value=defaults.trainer.instances_per_epoch, step=100, label="Instances per epoch"
+        0, 1500, value=defaults.trainer.instances_per_epoch, step=100, label="Instances per epoch"
     )
     trainer_batch_size = mo.ui.dropdown(
         _batch_sizes, value=defaults.trainer.batch_size, label="Batch size"
@@ -341,15 +346,15 @@ def _(defaults):
 
 @app.cell(hide_code=True)
 def _(defaults):
-    _batch_sizes = [8, 10, 16, 32, 64, 128, 256, 512]
     validation_num_instances = mo.ui.number(
-        32, 5000, value=defaults.validation.num_instances, label="Num instances"
+        0, 5000, value=defaults.validation.num_instances, label="Num instances"
     )
-    validation_batch_size = mo.ui.dropdown(
-        _batch_sizes, value=defaults.validation.batch_size, label="Batch size"
-    )
+    validation_batch_size = mo.ui.number(value=defaults.validation.batch_size, label="Batch size")
     validation_num_improvement_steps = mo.ui.number(
         1, 200, value=defaults.validation.num_improvement_steps, step=1, label="Improvement steps"
+    )
+    validation_rollouts_per_step = mo.ui.number(
+        value=defaults.validation.rollouts_per_step, label="Rollouts per improvement step"
     )
     validation_every_n_epochs = mo.ui.number(
         1, 100, value=defaults.validation.every_n_epochs, step=1, label="Every N epochs"
@@ -368,21 +373,18 @@ def _(defaults):
     validation_plot_save_to_disk = mo.ui.checkbox(
         value=defaults.validation.plot_save_to_disk, label="Save to disk"
     )
-    validation_plot_show_in_marimo = mo.ui.checkbox(
-        value=defaults.validation.plot_show_in_marimo, label="Show in marimo"
-    )
     mo.vstack(
         [
             mo.md("### Validation"),
             validation_num_instances,
             validation_batch_size,
             validation_num_improvement_steps,
+            validation_rollouts_per_step,
             validation_every_n_epochs,
             validation_seed,
             validation_plot_enabled,
             validation_plot_every_n_improvement_steps,
             validation_plot_save_to_disk,
-            validation_plot_show_in_marimo,
         ]
     )
     return (
@@ -393,7 +395,6 @@ def _(defaults):
         validation_plot_enabled,
         validation_plot_every_n_improvement_steps,
         validation_plot_save_to_disk,
-        validation_plot_show_in_marimo,
         validation_seed,
     )
 
@@ -444,7 +445,6 @@ def _(
     validation_plot_enabled,
     validation_plot_every_n_improvement_steps,
     validation_plot_save_to_disk,
-    validation_plot_show_in_marimo,
     validation_seed,
     yaml_data,
 ):
@@ -542,7 +542,6 @@ def _(
                 plot_enabled=validation_plot_enabled.value,
                 plot_every_n_improvement_steps=validation_plot_every_n_improvement_steps.value,
                 plot_save_to_disk=validation_plot_save_to_disk.value,
-                plot_show_in_marimo=validation_plot_show_in_marimo.value,
             ),
         )
     return (config,)
@@ -589,9 +588,9 @@ def _():
 def _(config, device):
     from core.models.nds.factory import build_model
 
-    if _nds_model_holder:
-        del _nds_model_holder[0]
-        _nds_model_holder.clear()
+    if nds_model_holder:
+        del nds_model_holder[0]
+        nds_model_holder.clear()
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -621,7 +620,7 @@ def _(config, device):
         print("Frozen encoder weights")
 
     model = model.to(device)
-    _nds_model_holder.append(model)
+    nds_model_holder.append(model)
     model
     return (model,)
 
@@ -727,6 +726,7 @@ def _(
     generate_start_solution,
     initial_epoch,
     model,
+    plt,
     repair_fn,
     resume_run_dir,
     run_dir,
@@ -739,125 +739,251 @@ def _(
     from core.models.nds.module import NDSModule
     from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
     from core.models.trainer import Trainer
+    from core.results.wandb_artifacts import (
+        upload_final_checkpoint,
+        upload_validation_plots,
+    )
 
-    with (
-        mo.status.progress_bar(total=config.trainer.epochs, title="Epochs") as epoch_bar,
-        mo.status.progress_bar(
-            total=config.trainer.epochs * config.trainer.batches_per_epoch, title="Batches"
-        ) as step_bar,
-        mo.status.progress_bar(
-            total=config.trainer.epochs
-            * config.trainer.batches_per_epoch
-            * config.trainer.num_main_improvement_steps,
-            title="Improvement Steps",
-        ) as improvement_bar,
-    ):
+    _progress: dict = {
+        "epoch": 0,
+        "epoch_subtitle": "",
+        "batch": 0,
+        "batch_total": 0,
+        "batch_subtitle": "",
+        "step": 0,
+        "step_subtitle": "",
+        "val_batch": 0,
+        "val_batch_total": 0,
+        "val_batch_subtitle": "",
+        "val_step": 0,
+        "val_step_subtitle": "",
+        "show_batch": False,
+        "show_step": False,
+        "show_val_batch": False,
+        "show_val_step": False,
+    }
+    _epoch_log: list[str] = []
 
-        def on_improvement_step(_step: int, loss: float) -> None:
-            improvement_bar.update(subtitle=f"Loss: {loss:.4f}")
+    _epoch_total = config.trainer.epochs
+    _step_total = config.trainer.num_main_improvement_steps
+    _val_step_total = config.validation.num_improvement_steps
 
-        nds_module = NDSModule(
-            config=config,
-            model=model,
-            generate_start_solution=generate_start_solution,
-            apply_rollout=apply_rollout_fn,
-            repair=repair_fn,
-            on_improvement_step=on_improvement_step,
+    def _bar_html(label: str, current: int, total: int, subtitle: str = "") -> str:
+        pct = current / total * 100 if total > 0 else 0
+        sub = f" &mdash; {subtitle}" if subtitle else ""
+        header = (
+            f'<div style="display:flex;justify-content:space-between;'
+            f'font-size:12px;margin-bottom:2px">'
+            f"<span>{label}</span>"
+            f"<span>{current}&thinsp;/&thinsp;{total}{sub}</span>"
+            f"</div>"
         )
-
-        def on_batch_train_end(summary: BatchTrainSummary):
-            step_bar.update(subtitle=f"Loss: {summary.loss:.4f}")
-            if config.logging.wandb_project:
-                wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
-
-        def on_epoch_train_end(summary: EpochTrainSummary):
-            epoch_bar.update(subtitle=f"Avg. Loss: {summary.loss:.4f}")
-            is_last = summary.epoch == config.trainer.epochs - 1
-            is_checkpoint = (summary.epoch + 1) % config.trainer.checkpoint_every_n_epochs == 0
-            if is_last or is_checkpoint:
-                checkpoints_path = run_dir / "checkpoints"
-                checkpoints_path.mkdir(exist_ok=True)
-                torch.save(
-                    {"model": nds_module.model.state_dict(), "optimizer": optimizer.state_dict()},
-                    checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
-                )
-
-        def on_epoch_validation_end(val_summary: EpochValidationSummary):
-            if config.logging.wandb_project:
-                wandb.log(
-                    {
-                        "val/objective_initial": val_summary.objective_initial,
-                        "val/objective_final": val_summary.objective_final,
-                        "val/improvement": val_summary.improvement,
-                        "val/relative_improvement": val_summary.relative_improvement,
-                        "epoch": val_summary.epoch,
-                    }
-                )
-            if config.validation.plot_enabled:
-                fig = plot_lns_progress(
-                    val_summary.snapshots, val_summary.step_labels, epoch=val_summary.epoch
-                )
-                if config.validation.plot_save_to_disk:
-                    plot_path = run_dir / "plots"
-                    plot_path.mkdir(parents=True, exist_ok=True)
-                    fig.savefig(
-                        plot_path / f"epoch_{val_summary.epoch:04d}.png",
-                        dpi=100,
-                        bbox_inches="tight",
-                    )
-                if config.validation.plot_show_in_marimo:
-                    pass
-                plt.close(fig)
-
-        optimizer = optim.AdamW(
-            nds_module.parameters(),
-            lr=config.optimizer.learning_rate,
-            weight_decay=config.optimizer.weight_decay,
+        track = (
+            f'<div style="background:var(--gray-3,#e5e7eb);border-radius:9999px;height:5px">'
+            f'<div style="background:var(--accent,#6366f1);border-radius:9999px;'
+            f'height:5px;width:{pct:.1f}%"></div>'
+            f"</div>"
         )
+        return f'<div style="margin-bottom:7px">{header}{track}</div>'
 
-        if resume_run_dir:
-            _checkpoint_path, _ = find_latest_checkpoint(resume_run_dir)
-            if _checkpoint_path:
-                _ckpt = torch.load(_checkpoint_path, map_location="cpu", weights_only=True)
-                optimizer.load_state_dict(_ckpt["optimizer"])
-
-        try:
-            Trainer(
-                max_epochs=config.trainer.epochs,
-                training_instances=config.trainer.instances_per_epoch,
-                batch_size=config.trainer.batch_size,
-                on_batch_train_end=on_batch_train_end,
-                on_epoch_train_end=[on_epoch_train_end],
-                initial_epoch=initial_epoch,
-                validation_instances=config.validation.num_instances,
-                validation_batch_size=config.validation.batch_size,
-                validate_every_n_epochs=config.validation.every_n_epochs,
-                on_epoch_validation_end=[on_epoch_validation_end],
-            ).fit(
-                module=nds_module,
-                optimizer=optimizer,
-                instance_sampler=sampler,
-                validation_instance_sampler=val_sampler,
+    def _refresh() -> None:
+        p = _progress
+        epoch_label = f"Epoch {p['epoch']}&thinsp;/&thinsp;{_epoch_total}"
+        html = _bar_html("Epochs", p["epoch"], _epoch_total, p["epoch_subtitle"])
+        if p["show_batch"]:
+            html += _bar_html(
+                f"{epoch_label} &mdash; Batches", p["batch"], p["batch_total"], p["batch_subtitle"]
             )
-        except BaseException:
-            gc.collect()
-            torch.cuda.empty_cache()
-            if config.logging.wandb_project:
-                wandb.finish(exit_code=1)
-            raise
-        else:
-            if config.logging.wandb_project:
-                wandb.finish()
+        if p["show_step"]:
+            html += _bar_html("Improvement Steps", p["step"], _step_total, p["step_subtitle"])
+        if p["show_val_batch"]:
+            html += _bar_html(
+                f"{epoch_label} &mdash; Validation Batches",
+                p["val_batch"],
+                p["val_batch_total"],
+                p["val_batch_subtitle"],
+            )
+        if p["show_val_step"]:
+            html += _bar_html(
+                "Validation Improvement Steps",
+                p["val_step"],
+                _val_step_total,
+                p["val_step_subtitle"],
+            )
+        if _epoch_log:
+            html += '<hr style="margin:10px 0;opacity:0.15">'
+            html += "".join(
+                f'<div style="font-size:12px;margin:2px 0">{line}</div>' for line in _epoch_log
+            )
+        mo.output.replace(mo.Html(f'<div style="padding:4px 0">{html}</div>'))
+
+    def on_epoch_train_start(epoch: int) -> None:
+        if config.trainer.batches_per_epoch == 0:
+            return
+        _progress["batch"] = 0
+        _progress["batch_total"] = config.trainer.batches_per_epoch
+        _progress["batch_subtitle"] = ""
+        _progress["step"] = 0
+        _progress["step_subtitle"] = ""
+        _progress["show_batch"] = True
+        _progress["show_step"] = False
+        _refresh()
+
+    def on_improvement_step(_step: int, objective: float) -> None:
+        _progress["step"] = _step + 1
+        _progress["step_subtitle"] = f"Obj: {objective:.4f}"
+        _progress["show_step"] = True
+        _refresh()
+
+    def on_validation_improvement_step(step: int, objective: float) -> None:
+        _progress["val_step"] = step
+        _progress["val_step_subtitle"] = f"Obj: {objective:.4f}"
+        _progress["show_val_step"] = True
+        _refresh()
+
+    nds_module = NDSModule(
+        config=config,
+        model=model,
+        generate_start_solution=generate_start_solution,
+        apply_rollout=apply_rollout_fn,
+        repair=repair_fn,
+        on_improvement_step=on_improvement_step,
+        on_validation_improvement_step=on_validation_improvement_step,
+    )
+
+    def on_batch_train_end(summary: BatchTrainSummary):
+        _progress["batch"] += 1
+        _progress["batch_subtitle"] = f"Obj: {summary.objective_after:.4f}"
+        _progress["show_step"] = False
+        _progress["step"] = 0
+        _refresh()
+        if config.logging.wandb_project:
+            wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
+
+    def on_epoch_train_end(summary: EpochTrainSummary):
+        _progress["epoch"] = summary.epoch + 1
+        _progress["epoch_subtitle"] = f"Obj: {summary.objective_after:.4f}"
+        _progress["show_batch"] = False
+        _progress["show_step"] = False
+        _epoch_log.append(
+            f"<b>Epoch {summary.epoch + 1}</b> &mdash; Obj: {summary.objective_after:.4f}"
+        )
+        _refresh()
+        is_last = summary.epoch == config.trainer.epochs - 1
+        is_checkpoint = (summary.epoch + 1) % config.trainer.checkpoint_every_n_epochs == 0
+        if is_last or is_checkpoint:
+            checkpoints_path = run_dir / "checkpoints"
+            checkpoints_path.mkdir(exist_ok=True)
+            torch.save(
+                {"model": nds_module.model.state_dict(), "optimizer": optimizer.state_dict()},
+                checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
+            )
+
+    def on_epoch_validation_start(epoch: int, num_batches: int) -> None:
+        _progress["val_batch"] = 0
+        _progress["val_batch_total"] = num_batches
+        _progress["val_batch_subtitle"] = ""
+        _progress["val_step"] = 0
+        _progress["val_step_subtitle"] = ""
+        _progress["show_val_batch"] = True
+        _progress["show_val_step"] = False
+        _refresh()
+
+    def on_batch_validation_end(summary) -> None:
+        _progress["val_batch"] += 1
+        _progress["val_batch_subtitle"] = f"Obj: {summary.objective_final:.4f}"
+        _progress["val_step"] = 0
+        _progress["val_step_subtitle"] = ""
+        _progress["show_val_step"] = False
+        _refresh()
+
+    def on_epoch_validation_end(val_summary: EpochValidationSummary):
+        _progress["show_val_batch"] = False
+        _progress["show_val_step"] = False
+        _epoch_log.append(
+            f"&nbsp;&nbsp;Val &mdash; "
+            f"Obj: {val_summary.objective_initial:.4f} &rarr; {val_summary.objective_final:.4f}"
+            f" &mdash; Improvement: {val_summary.relative_improvement:.1%}"
+        )
+        _refresh()
+        if config.logging.wandb_project:
+            wandb.log(
+                {
+                    "val/objective_initial": val_summary.objective_initial,
+                    "val/objective_final": val_summary.objective_final,
+                    "val/improvement": val_summary.improvement,
+                    "val/relative_improvement": val_summary.relative_improvement,
+                    "epoch": val_summary.epoch,
+                }
+            )
+        if config.validation.plot_enabled:
+            fig = plot_lns_progress(
+                val_summary.snapshots, val_summary.step_labels, epoch=val_summary.epoch
+            )
+            if config.validation.plot_save_to_disk:
+                plot_path = run_dir / "plots"
+                plot_path.mkdir(parents=True, exist_ok=True)
+                fig.savefig(
+                    plot_path / f"epoch_{val_summary.epoch:04d}.pdf",
+                    bbox_inches="tight",
+                )
+            plt.close(fig)
+
+    optimizer = optim.AdamW(
+        nds_module.parameters(),
+        lr=config.optimizer.learning_rate,
+        weight_decay=config.optimizer.weight_decay,
+    )
+
+    if resume_run_dir:
+        _checkpoint_path, _ = find_latest_checkpoint(resume_run_dir)
+        if _checkpoint_path:
+            _ckpt = torch.load(_checkpoint_path, map_location="cpu", weights_only=True)
+            optimizer.load_state_dict(_ckpt["optimizer"])
+
+    try:
+        Trainer(
+            max_epochs=config.trainer.epochs,
+            training_instances=config.trainer.instances_per_epoch,
+            batch_size=config.trainer.batch_size,
+            on_epoch_train_start=on_epoch_train_start,
+            on_batch_train_end=on_batch_train_end,
+            on_epoch_train_end=[on_epoch_train_end],
+            initial_epoch=initial_epoch,
+            validation_instances=config.validation.num_instances,
+            validation_batch_size=config.validation.batch_size,
+            validate_every_n_epochs=config.validation.every_n_epochs,
+            on_epoch_validation_start=on_epoch_validation_start,
+            on_batch_validation_end=on_batch_validation_end,
+            on_epoch_validation_end=[on_epoch_validation_end],
+        ).fit(
+            module=nds_module,
+            optimizer=optimizer,
+            instance_sampler=sampler,
+            validation_instance_sampler=val_sampler,
+        )
+    except BaseException:
+        gc.collect()
+        torch.cuda.empty_cache()
+        if config.logging.wandb_project:
+            wandb.finish(exit_code=1)
+        raise
+    else:
+        if config.logging.wandb_project:
+            _final_checkpoint, _final_epoch = find_latest_checkpoint(run_dir)
+            if _final_checkpoint is not None:
+                upload_final_checkpoint(
+                    run_name=config.run_name,
+                    checkpoint_path=_final_checkpoint,
+                    epoch=_final_epoch,
+                )
+            upload_validation_plots(
+                run_name=config.run_name,
+                plots_dir=run_dir / "plots",
+            )
+            wandb.finish()
 
     mo.md("**Training complete.**")
-    return
-
-
-@app.cell(column=4, hide_code=True)
-def _():
-    mo.md(r"""
-    ## Evaluation
-    """)
     return
 
 

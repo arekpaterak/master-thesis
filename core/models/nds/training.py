@@ -172,7 +172,7 @@ def configure_training_step(
 
             total_loss += loss.item()
             if on_improvement_step is not None:
-                on_improvement_step(step, loss.item())
+                on_improvement_step(step, solution.objective().mean().item())
             total_reward += best_reward.mean().item()
             total_reward_baseline += reward_baseline.mean().item()
             total_entropy += rollout.mean_entropy

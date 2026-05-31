@@ -40,6 +40,7 @@ class NDSModule(Module):
         repair: RepairOperator,
         improvement_step: ImprovementStep | None = None,
         on_improvement_step: Callable[[int, float], None] | None = None,
+        on_validation_improvement_step: Callable[[int, float], None] | None = None,
     ) -> None:
         self.model = model
         apply_rollout_fn = default_apply_rollout if apply_rollout is None else apply_rollout
@@ -65,6 +66,7 @@ class NDSModule(Module):
             n_repairs=config.validation.n_repairs,
             temperature_start=config.validation.temperature_start,
             temperature_min=config.validation.temperature_min,
+            on_improvement_step=on_validation_improvement_step,
         )
 
     def parameters(self) -> Iterator[nn.Parameter]:
