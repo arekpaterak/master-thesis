@@ -22,6 +22,7 @@ def _():
     import matplotlib.pyplot as plt
     import torch
 
+    from core.lns import DestroyRepairImprovementStep, GreedyAcceptance, search
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
     from core.lns.operators.repair.greedy_insert import (
         CVRPGreedyInsertRepair,
@@ -43,6 +44,8 @@ def _():
         CVRPGreedyInsertRepair,
         CVRPGreedyReconnectRepair,
         CVRPSampler,
+        DestroyRepairImprovementStep,
+        GreedyAcceptance,
         RandomNodeDestroy,
         TSPConfig,
         TSPGreedyInsertRepair,
@@ -54,6 +57,7 @@ def _():
         plt,
         random_permutation,
         random_permutation_graph,
+        search,
         time,
         torch,
     )
@@ -71,29 +75,59 @@ def _(mo):
         value="20",
         label="N",
     )
-    batch_size_slider = mo.ui.slider(1, 64, value=8, label="Batch size")
-    num_steps_widget = mo.ui.slider(10, 200, step=10, value=50, label="LNS steps")
+    batch_size_slider = mo.ui.dropdown([8, 16, 32, 64, 128], value=8, label="Batch size")
+    num_steps_widget = mo.ui.slider(10, 200, step=10, value=50, label="Improvement steps")
     destruction_widget = mo.ui.slider(5, 25, value=5, step=5, label="Destruction size")
+    rollout_widget = mo.ui.slider(1, 128, value=1, step=1, label="Rollouts per step")
     seed_widget = mo.ui.number(0, 100, value=42, label="Seed")
-    mo.hstack(
-        [
-            problem_dropdown,
-            n_dropdown,
-            batch_size_slider,
-            num_steps_widget,
-            destruction_widget,
-            seed_widget,
-        ],
-        gap=2,
-    )
     return (
         batch_size_slider,
         destruction_widget,
         n_dropdown,
         num_steps_widget,
         problem_dropdown,
+        rollout_widget,
         seed_widget,
     )
+
+
+@app.cell(hide_code=True)
+def _(
+    batch_size_slider,
+    destruction_widget,
+    mo,
+    n_dropdown,
+    num_steps_widget,
+    problem_dropdown,
+    rollout_widget,
+    seed_widget,
+):
+    run = mo.ui.run_button(label="Run")
+    mo.vstack(
+        [
+            mo.hstack(
+                [
+                    problem_dropdown,
+                    n_dropdown,
+                ],
+                gap=2,
+                justify="start",
+            ),
+            mo.hstack(
+                [
+                    batch_size_slider,
+                    num_steps_widget,
+                    destruction_widget,
+                    rollout_widget,
+                    seed_widget,
+                ],
+                gap=2,
+            ),
+            run,
+        ],
+        gap=2,
+    )
+    return (run,)
 
 
 @app.cell
@@ -103,18 +137,22 @@ def _(
     TSPConfig,
     TSPSampler,
     batch_size_slider,
+    mo,
     n_dropdown,
     problem_dropdown,
+    run,
     seed_widget,
 ):
+    mo.stop(not run.value)
+
     if problem_dropdown.value == "cvrp":
         instance = CVRPSampler(CVRPConfig.for_n(n_dropdown.value), seed=seed_widget.value)(
             batch_size_slider.value
-        )[0]
+        )
     else:
         instance = TSPSampler(TSPConfig(num_locations=n_dropdown.value), seed=seed_widget.value)(
             batch_size_slider.value
-        )[0]
+        )
     return (instance,)
 
 
@@ -153,18 +191,19 @@ def _(mo):
 
 @app.cell
 def _(destroy_op, initial, repair_op):
-    deconstructed_first = destroy_op(initial)
+    initial_one = initial[0]
+    deconstructed_first = destroy_op(initial_one)
     repaired_first = repair_op(deconstructed_first)
-    return deconstructed_first, repaired_first
+    return deconstructed_first, initial_one, repaired_first
 
 
 @app.cell(hide_code=True)
-def _(deconstructed_first, initial, plt, problem_dropdown, repaired_first):
+def _(deconstructed_first, initial_one, plt, problem_dropdown, repaired_first):
     _is_cvrp = problem_dropdown.value == "cvrp"
     _fig, _axes = plt.subplots(1, 3, figsize=(17, 5))
 
     if _is_cvrp:
-        initial.visualize(
+        initial_one.visualize(
             ax=_axes[0],
             with_objective=False,
             with_route_labels=False,
@@ -186,11 +225,11 @@ def _(deconstructed_first, initial, plt, problem_dropdown, repaired_first):
             legend_loc="upper right",
         )
     else:
-        initial.visualize(ax=_axes[0], with_objective=False)
+        initial_one.visualize(ax=_axes[0], with_objective=False)
         deconstructed_first.visualize(ax=_axes[1], with_objective=False)
         repaired_first.visualize(ax=_axes[2], with_objective=False)
 
-    _axes[0].set_title(f"Initial | obj: {initial.objective().item():.4f}", fontsize=11)
+    _axes[0].set_title(f"Initial | obj: {initial_one.objective().item():.4f}", fontsize=11)
     _axes[1].set_title(
         f"After destroy | unassigned: {deconstructed_first.num_unassigned.item()}", fontsize=11
     )
@@ -203,144 +242,121 @@ def _(deconstructed_first, initial, plt, problem_dropdown, repaired_first):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## LNS loop
+    ## Search loop
 
-    Continuation of the LNS after the first step.
+    Runs the full search on the whole batch starting from the initial solution.
     """)
     return
 
 
 @app.cell
 def _(
-    deconstructed_first,
+    DestroyRepairImprovementStep,
+    GreedyAcceptance,
     destroy_op,
     initial,
     num_steps_widget,
     repair_op,
-    repaired_first,
+    rollout_widget,
+    search,
+    torch,
 ):
-    _current = repaired_first
-    _best = repaired_first
-    _best_obj = repaired_first.objective().mean().item()
-    _objectives = [
-        initial.objective().mean().item(),
-        repaired_first.objective().mean().item(),
-    ]
-    # Initialise to the first step so num_steps == 1 works without special-casing.
-    _before_last = initial
-    _deconstructed_last = deconstructed_first
-
-    for _step in range(1, num_steps_widget.value):
-        _before_last = _current
-        _deconstructed_last = destroy_op(_current)
-        _current = repair_op(_deconstructed_last)
-        _obj = _current.objective().mean().item()
-        if _obj < _best_obj:
-            _best = _current
-            _best_obj = _obj
-        _objectives.append(_obj)
-
-    best_solution = _best
-    last_solution = _current
-    before_last = _before_last
-    deconstructed_last = _deconstructed_last
-    objectives = _objectives
-    return (
-        before_last,
-        best_solution,
-        deconstructed_last,
-        last_solution,
-        objectives,
+    _step = DestroyRepairImprovementStep(
+        destroy=destroy_op,
+        repair=repair_op,
+        num_rollouts=rollout_widget.value,
     )
+    _trajectory = [initial.objective().detach().cpu()]
+    _result = search(
+        initial,
+        improvement_step=_step,
+        criterion=GreedyAcceptance(),
+        n_iterations=num_steps_widget.value,
+        on_step=lambda _i, _sol: _trajectory.append(_sol.objective().detach().cpu()),
+    )
+    best_solution = _result.best_solution
+    last_solution = _result.solution
+
+    objectives_per_instance = torch.stack(_trajectory)
+    return best_solution, last_solution, objectives_per_instance
+
+
+@app.cell
+def _(destroy_op, last_solution, repair_op):
+    before_last = last_solution[0]
+    deconstructed_last = destroy_op(before_last)
+    last_repaired = repair_op(deconstructed_last)
+    return before_last, deconstructed_last, last_repaired
 
 
 @app.cell(hide_code=True)
-def _(objectives, plt):
+def _(objectives_per_instance, plt):
+    _steps = range(objectives_per_instance.shape[0])
+    _mean = objectives_per_instance.mean(dim=1).numpy()
+    _lo = objectives_per_instance.min(dim=1).values.numpy()
+    _hi = objectives_per_instance.max(dim=1).values.numpy()
     _fig, _ax = plt.subplots(figsize=(9, 4))
-    _ax.plot(objectives, color="steelblue", linewidth=1.5)
-    _ax.scatter(range(len(objectives)), objectives, s=18, color="steelblue", zorder=3)
-    _ax.set_xlabel("Step (0 = initial, 1 = after first repair)")
+    _ax.fill_between(_steps, _lo, _hi, alpha=0.2, color="steelblue", label="min-max")
+    _ax.plot(_steps, _mean, color="steelblue", linewidth=1.8, label="mean")
+    _ax.set_xlabel("Step")
     _ax.set_ylabel("Objective")
-    _ax.set_title("Objective over LNS iterations")
-    _ax.grid(True, linestyle="--", alpha=0.4)
+    _ax.set_title("Objective over improvement steps")
+    _ax.legend()
     _fig
     return
 
 
 @app.cell(hide_code=True)
-def _(
-    best_solution,
-    initial,
-    mo,
-    objectives,
-    problem_dropdown,
-    repaired_first,
-):
+def _(best_solution, initial, mo, num_steps_widget, problem_dropdown):
     _is_cvrp = problem_dropdown.value == "cvrp"
-    _imp_one = (
-        (initial.objective().mean() - repaired_first.objective().mean())
-        / initial.objective().mean()
-        * 100
-    )
-    _imp_all = (
-        (repaired_first.objective().mean() - best_solution.objective().mean())
-        / repaired_first.objective().mean()
-        * 100
-    )
+    _init_mean = initial.objective().mean()
+    _best_mean = best_solution.objective().mean()
+    _imp = (_init_mean - _best_mean) / _init_mean * 100
     _extra_rows = (
-        f"| Routes | {initial.num_routes.item()} | {repaired_first.num_routes.item()} | {best_solution.num_routes.item()} |\n"
-        f"| Feasible | {bool(initial.is_feasible.item())} | {bool(repaired_first.is_feasible.item())} | {bool(best_solution.is_feasible.item())} |"
+        f"| Routes (median) | {initial.num_routes.median()} | {best_solution.num_routes.median()} |\n"
+        f"| All feasible | {bool(initial.is_feasible.all().item())} | {bool(best_solution.is_feasible.all().item())} |"
         if _is_cvrp
         else ""
     )
     mo.md(f"""
-    | | Initial | After first repair | Best found |
-    |---|---|---|---|
-    | LNS steps | 0 | 1 | {len(objectives) - 1} |
-    | Objective | {initial.objective().item():.2f} | {repaired_first.objective().item():.2f} | {best_solution.objective().item():.2f} |
-    | Improvement | - | **{_imp_one.item():.1f}%** vs initial | **{_imp_all.item():.1f}%** vs first repair |
+    | | Initial | Best found |
+    |---|---|---|
+    | Improvement steps | 0 | {num_steps_widget.value} |
+    | Objective (mean) | {_init_mean.item():.2f} | {_best_mean.item():.2f} |
+    | Improvement (mean) | - | **{_imp.item():.1f}%** vs initial |
     {_extra_rows}
     """)
     return
 
 
 @app.cell(hide_code=True)
-def _(best_solution, initial, plt, problem_dropdown, repaired_first):
+def _(best_solution, initial, plt, problem_dropdown):
     _is_cvrp = problem_dropdown.value == "cvrp"
-    _fig, _axes = plt.subplots(1, 3, figsize=(19, 5))
+    _initial_one = initial[0]
+    _best_one = best_solution[0]
+    _fig, _axes = plt.subplots(1, 2, figsize=(13, 5))
 
     if _is_cvrp:
-        initial.visualize(
+        _initial_one.visualize(
             ax=_axes[0],
             with_objective=False,
             with_route_labels=False,
             show_depot_edges=False,
             legend_loc=None,
         )
-        repaired_first.visualize(
+        _best_one.visualize(
             ax=_axes[1],
             with_objective=False,
-            with_route_labels=False,
-            show_depot_edges=False,
-            legend_loc=None,
-        )
-        best_solution.visualize(
-            ax=_axes[2],
-            with_objective=False,
-            with_route_labels=best_solution.num_routes.item() < 5,
+            with_route_labels=_best_one.num_routes.item() < 5,
             show_depot_edges=False,
             legend_loc="upper right",
         )
     else:
-        initial.visualize(ax=_axes[0], with_objective=False)
-        repaired_first.visualize(ax=_axes[1], with_objective=False)
-        best_solution.visualize(ax=_axes[2], with_objective=False)
+        _initial_one.visualize(ax=_axes[0], with_objective=False)
+        _best_one.visualize(ax=_axes[1], with_objective=False)
 
-    _axes[0].set_title(f"Initial | obj: {initial.objective().item():.4f}", fontsize=11)
-    _axes[1].set_title(
-        f"After first repair | obj: {repaired_first.objective().item():.4f}", fontsize=11
-    )
-    _axes[2].set_title(f"Best found | obj: {best_solution.objective().item():.4f}", fontsize=11)
+    _axes[0].set_title(f"Initial | obj: {_initial_one.objective().item():.4f}", fontsize=11)
+    _axes[1].set_title(f"Best found | obj: {_best_one.objective().item():.4f}", fontsize=11)
     plt.tight_layout()
     _fig
     return
@@ -358,8 +374,8 @@ def _(mo):
 def _(
     before_last,
     deconstructed_last,
-    last_solution,
-    objectives,
+    last_repaired,
+    num_steps_widget,
     plt,
     problem_dropdown,
 ):
@@ -381,7 +397,7 @@ def _(
             show_depot_edges=False,
             legend_loc=None,
         )
-        last_solution.visualize(
+        last_repaired.visualize(
             ax=_axes[2],
             with_objective=False,
             with_route_labels=False,
@@ -391,16 +407,16 @@ def _(
     else:
         before_last.visualize(ax=_axes[0], with_objective=False)
         deconstructed_last.visualize(ax=_axes[1], with_objective=False)
-        last_solution.visualize(ax=_axes[2], with_objective=False)
+        last_repaired.visualize(ax=_axes[2], with_objective=False)
 
     _axes[0].set_title(
-        f"Before step {len(objectives) - 1} | obj: {before_last.objective().item():.4f}",
+        f"Before step {num_steps_widget.value} | obj: {before_last.objective().item():.4f}",
         fontsize=11,
     )
     _axes[1].set_title(
         f"After destroy | unassigned: {deconstructed_last.num_unassigned.item()}", fontsize=11
     )
-    _axes[2].set_title(f"After repair | obj: {last_solution.objective().item():.4f}", fontsize=11)
+    _axes[2].set_title(f"After repair | obj: {last_repaired.objective().item():.4f}", fontsize=11)
     plt.tight_layout()
     _fig
     return

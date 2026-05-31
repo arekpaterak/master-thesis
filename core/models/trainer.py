@@ -17,12 +17,15 @@ class Trainer[BatchSummaryT]:
         batch_size: int,
         training_instances: int | None = None,
         training_batches_per_epoch: int | None = None,
+        on_epoch_train_start: Callable[[int], None] | None = None,
         on_batch_train_end: Callable[[BatchSummaryT], None] | None = None,
         on_epoch_train_end: Sequence[Callable] = (),
         initial_epoch: int = 0,
         validation_instances: int | None = None,
         validation_batch_size: int | None = None,
         validate_every_n_epochs: int = 10,
+        on_epoch_validation_start: Callable[[int, int], None] | None = None,
+        on_batch_validation_end: Callable | None = None,
         on_epoch_validation_end: Sequence[Callable] = (),
     ) -> None:
         if (training_instances is None) == (training_batches_per_epoch is None):
@@ -33,22 +36,31 @@ class Trainer[BatchSummaryT]:
         self.batch_size = batch_size
         self.instances_per_epoch = training_instances
         self.batches_per_epoch = training_batches_per_epoch
+        self.on_epoch_train_start = on_epoch_train_start
         self.on_batch_train_end = on_batch_train_end
         self.on_epoch_train_end = on_epoch_train_end
         self.initial_epoch = initial_epoch
         self.validation_instances = validation_instances
         self.validation_batch_size = validation_batch_size
         self.validate_every_n_epochs = validate_every_n_epochs
+        self.on_epoch_validation_start = on_epoch_validation_start
+        self.on_batch_validation_end = on_batch_validation_end
         self.on_epoch_validation_end = on_epoch_validation_end
 
     def _epoch_batch_sizes(self) -> list[int]:
         if self.instances_per_epoch is not None:
             full, remainder = divmod(self.instances_per_epoch, self.batch_size)
             return [self.batch_size] * full + ([remainder] if remainder else [])
-        return [self.batch_size] * self.batches_per_epoch  # type: ignore[operator]
+        if self.batches_per_epoch is not None:
+            return [self.batch_size] * self.batches_per_epoch
+        return []
 
     def _validation_batch_sizes(self) -> list[int]:
-        full, remainder = divmod(self.validation_instances, self.validation_batch_size)  # type: ignore[arg-type]
+        if self.validation_instances is None:
+            raise ValueError("Expected validation_instances to be provided.")
+        if self.validation_batch_size is None:
+            raise ValueError("Expected validation_batch_size to be provided.")
+        full, remainder = divmod(self.validation_instances, self.validation_batch_size)
         return [self.validation_batch_size] * full + ([remainder] if remainder else [])
 
     def fit(
@@ -69,29 +81,38 @@ class Trainer[BatchSummaryT]:
             )
 
         for epoch in range(self.initial_epoch, self.max_epochs):
-            train_accumulator = module.train_accumulator_cls()
-            for size in self._epoch_batch_sizes():
-                instance = instance_sampler(size)
-                batch_summary = module.training_step(
-                    optimizer=optimizer,
-                    instance=instance,
-                    **kwargs,
-                )
-                train_accumulator.update(batch_summary)
-                if self.on_batch_train_end:
-                    self.on_batch_train_end(batch_summary)
+            train_batch_sizes = self._epoch_batch_sizes()
+            if train_batch_sizes:
+                if self.on_epoch_train_start:
+                    self.on_epoch_train_start(epoch)
+                train_accumulator = module.train_accumulator_cls()
+                for size in self._epoch_batch_sizes():
+                    instance = instance_sampler(size)
+                    batch_summary = module.training_step(
+                        optimizer=optimizer,
+                        instance=instance,
+                        **kwargs,
+                    )
+                    train_accumulator.update(batch_summary)
+                    if self.on_batch_train_end:
+                        self.on_batch_train_end(batch_summary)
 
-            epoch_train_summary = train_accumulator.finalize(epoch=epoch)
-            module.on_epoch_train_end(epoch_train_summary)
-            for callback in self.on_epoch_train_end:
-                callback(epoch_train_summary)
+                epoch_train_summary = train_accumulator.finalize(epoch=epoch)
+                module.on_epoch_train_end(epoch_train_summary)
+                for callback in self.on_epoch_train_end:
+                    callback(epoch_train_summary)
 
             if with_validation and epoch % self.validate_every_n_epochs == 0:
+                val_batch_sizes = self._validation_batch_sizes()
+                if self.on_epoch_validation_start:
+                    self.on_epoch_validation_start(epoch, len(val_batch_sizes))
                 val_accumulator = module.validation_accumulator_cls()
-                for size in self._validation_batch_sizes():
-                    validation_instance = validation_instance_sampler(size)  # type: ignore[misc]
+                for size in val_batch_sizes:
+                    validation_instance = validation_instance_sampler(size)
                     batch_validation_summary = module.validation_step(validation_instance, epoch)
                     val_accumulator.update(batch_validation_summary)
+                    if self.on_batch_validation_end:
+                        self.on_batch_validation_end(batch_validation_summary)
                 epoch_validation_summary = val_accumulator.finalize(epoch=epoch)
                 module.on_epoch_validation_end(epoch_validation_summary)
                 for callback in self.on_epoch_validation_end:

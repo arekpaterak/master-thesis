@@ -99,6 +99,7 @@ def configure_validation_step(
     n_repairs: int = 1,
     temperature_start: float = 0.1,
     temperature_min: float = 0.001,
+    on_improvement_step: Callable[[int, float], None] | None = None,
 ) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
     _apply_rollout_fn = default_apply_rollout if apply_rollout_fn is None else apply_rollout_fn
 
@@ -147,10 +148,12 @@ def configure_validation_step(
                 n_repairs=n_repairs,
             )
 
-            def on_step(step: int, sol: BaseSolution) -> None:
+            def on_step(step: int, solution: BaseSolution) -> None:
+                if on_improvement_step is not None:
+                    on_improvement_step(step, solution.objective().mean().item())
                 if step in snapshot_step_set:
-                    snapshots.append(_unbatch_first(sol))
-                    objective_curve.append(sol.objective().mean().item())
+                    snapshots.append(_unbatch_first(solution))
+                    objective_curve.append(solution.objective().mean().item())
 
             result = search(
                 solution,

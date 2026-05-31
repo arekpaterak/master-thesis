@@ -108,12 +108,13 @@ class ValidationConfig(BaseModel):
         default=5, description="Capture solution snapshot every N outer SA iterations."
     )
     plot_save_to_disk: bool = Field(default=True, description="Save plots.")
-    plot_show_in_marimo: bool = Field(default=True, description="Display plots inline in marimo.")
     temperature_start: float = Field(default=0.1, description="SA start temperature.")
     temperature_min: float = Field(
         default=0.001, description="SA final temperature (decay target)."
     )
-    rollouts_per_step: int = Field(default=100, description="Rollouts K applied per outer SA step.")
+    rollouts_per_step: int = Field(
+        default=100, description="Rollouts applied in each improvement step."
+    )
     n_repairs: int = Field(default=5, description="Repair attempts per rollout; best is selected.")
 
 
