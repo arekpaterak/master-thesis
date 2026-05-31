@@ -22,7 +22,7 @@ def _():
     import matplotlib.pyplot as plt
     import torch
 
-    from core.lns import DestroyRepairImprovementStep, GreedyAcceptance, search
+    from core.lns import GreedyAcceptance, search
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
     from core.lns.operators.repair.greedy_insert import (
         CVRPGreedyInsertRepair,
@@ -44,7 +44,6 @@ def _():
         CVRPGreedyInsertRepair,
         CVRPGreedyReconnectRepair,
         CVRPSampler,
-        DestroyRepairImprovementStep,
         GreedyAcceptance,
         RandomNodeDestroy,
         TSPConfig,
@@ -64,7 +63,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _(mo, torch):
     problem_dropdown = mo.ui.dropdown(
         {"CVRP": "cvrp", "TSP": "tsp"},
         value="CVRP",
@@ -80,6 +79,7 @@ def _(mo):
     destruction_widget = mo.ui.slider(5, 25, value=5, step=5, label="Destruction size")
     rollout_widget = mo.ui.slider(1, 128, value=1, step=1, label="Rollouts per step")
     seed_widget = mo.ui.number(0, 100, value=42, label="Seed")
+    use_gpu_widget = mo.ui.checkbox(value=torch.cuda.is_available(), label="Use GPU")
     return (
         batch_size_slider,
         destruction_widget,
@@ -88,6 +88,7 @@ def _(mo):
         problem_dropdown,
         rollout_widget,
         seed_widget,
+        use_gpu_widget,
     )
 
 
@@ -101,6 +102,7 @@ def _(
     problem_dropdown,
     rollout_widget,
     seed_widget,
+    use_gpu_widget,
 ):
     run = mo.ui.run_button(label="Run")
     mo.vstack(
@@ -109,6 +111,7 @@ def _(
                 [
                     problem_dropdown,
                     n_dropdown,
+                    use_gpu_widget,
                 ],
                 gap=2,
                 justify="start",
@@ -142,6 +145,7 @@ def _(
     problem_dropdown,
     run,
     seed_widget,
+    use_gpu_widget,
 ):
     mo.stop(not run.value)
 
@@ -153,6 +157,8 @@ def _(
         instance = TSPSampler(TSPConfig(num_locations=n_dropdown.value), seed=seed_widget.value)(
             batch_size_slider.value
         )
+    if use_gpu_widget.value:
+        instance = instance.to(device="cuda")
     return (instance,)
 
 

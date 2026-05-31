@@ -19,7 +19,7 @@ class NoopImprovementStep(ImprovementStep):
         return solution
 
 
-class DestroyRepairImprovementStep(ImprovementStep):
+class DefaultImprovementStep(ImprovementStep):
     def __init__(
         self,
         *,
