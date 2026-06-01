@@ -7,7 +7,9 @@ from pydantic import BaseModel, Field
 
 class AutoregressiveDecoderConfig(BaseModel):
     type: Literal["ar"] = "ar"
-    use_hidden_decoding_state: bool = Field(default=True)
+    use_hidden_decoding_state: bool = Field(
+        default=True, description="Use hidden decoding state, updated with a GRU."
+    )
 
 
 class SimpleOnePassDecoderConfig(BaseModel):

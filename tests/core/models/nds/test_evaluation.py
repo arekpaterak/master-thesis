@@ -1,11 +1,28 @@
 from __future__ import annotations
 
+from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
 from core.lns.operators.repair.greedy_reconnect import CVRPGreedyReconnectRepair
-from core.models.nds.eval_config import EvaluationConfig
+from core.models.nds.config.common import SearchParams
+from core.models.nds.config.eval import EvaluationConfig
 from core.models.nds.evaluation import EvaluationResult, configure_evaluation_step
+from core.models.nds.improvement_step import ModelSequentialImprovementStep
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.solve import one_customer_per_route_graph
+
+
+def _build_step_and_criterion(model, *, num_rollouts, deconstruction_size, n_repairs, num_steps):
+    improvement_step = ModelSequentialImprovementStep(
+        model=model,
+        repair=CVRPGreedyReconnectRepair(),
+        num_rollouts=num_rollouts,
+        deconstruction_size=deconstruction_size,
+        n_repairs=n_repairs,
+    )
+    criterion = SimulatedAnnealingAcceptance.from_range(
+        temperature_start=0.1, temperature_min=0.001, n_steps=num_steps
+    )
+    return improvement_step, criterion
 
 
 def test_configure_eval_step_shapes() -> None:
@@ -16,16 +33,23 @@ def test_configure_eval_step_shapes() -> None:
     eval_config = EvaluationConfig(
         num_test_instances=batch_size,
         test_seed=7,
-        num_improvement_steps=num_steps,
-        rollouts_per_step=4,
-        n_repairs=1,
+        search=SearchParams(
+            num_improvement_steps=num_steps,
+            num_rollouts=4,
+            deconstruction_size=5,
+            n_repairs=1,
+        ),
         num_plot_instances=plot_k,
+    )
+
+    improvement_step, criterion = _build_step_and_criterion(
+        model, num_rollouts=4, deconstruction_size=5, n_repairs=1, num_steps=num_steps
     )
 
     eval_step = configure_evaluation_step(
         generate_start_solution=one_customer_per_route_graph,
-        repair=CVRPGreedyReconnectRepair(),
-        deconstruction_size=5,
+        improvement_step=improvement_step,
+        criterion=criterion,
         eval_config=eval_config,
         capture_every_n_improvement_steps=1,
     )
@@ -58,15 +82,21 @@ def test_configure_eval_step_plot_count_clamps_to_batch_size() -> None:
     model = AutoregressiveNDSModel(problem_name="cvrp")
     eval_config = EvaluationConfig(
         num_test_instances=2,
-        num_improvement_steps=1,
-        rollouts_per_step=2,
-        n_repairs=1,
+        search=SearchParams(
+            num_improvement_steps=1,
+            num_rollouts=2,
+            deconstruction_size=5,
+            n_repairs=1,
+        ),
         num_plot_instances=10,
+    )
+    improvement_step, criterion = _build_step_and_criterion(
+        model, num_rollouts=2, deconstruction_size=5, n_repairs=1, num_steps=1
     )
     eval_step = configure_evaluation_step(
         generate_start_solution=one_customer_per_route_graph,
-        repair=CVRPGreedyReconnectRepair(),
-        deconstruction_size=5,
+        improvement_step=improvement_step,
+        criterion=criterion,
         eval_config=eval_config,
     )
     result = eval_step(model, sampler(2))

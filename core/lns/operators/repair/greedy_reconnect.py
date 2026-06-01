@@ -15,17 +15,33 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
     In each step, it connects one chain tail (next == UNASSIGNED) to the nearest valid free head (prev == UNASSIGNED), respecting capacity.
     If no feasible head exists, the tail is closed to the depot.
     After the loop, any remaining free heads are connected to the depot, completing all routes.
+
+    Pass ``deconstruction_size`` to use a static upper bound on the inner loop
+    and skip the host-device sync that would otherwise be needed to size it.
+    Removing M customers creates at most 2M tails (M removed nodes plus up to
+    M of their non-removed predecessors), so the bound is ``2 * M``.
     """
 
-    def __init__(self, *, seed: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        seed: int | None = None,
+        deconstruction_size: int | None = None,
+    ) -> None:
         self._generator = torch.Generator()
         if seed is not None:
             self._generator.manual_seed(seed)
+        self._deconstruction_size = deconstruction_size
 
     def __call__(self, partial_solution: CVRPGraphSolution) -> CVRPGraphSolution:
         solution = partial_solution.clone()
-        num_tails = (solution._next[..., 1:] == solution.UNASSIGNED).sum(dim=-1)
-        E = int(num_tails.max().item())
+        N = solution.instance.num_customers
+        if self._deconstruction_size is None:
+            num_tails = (solution._next[..., 1:] == solution.UNASSIGNED).sum(dim=-1)
+            E = int(num_tails.max().item())
+        else:
+            # Iterations past the true max are no-ops gated by `is_active`.
+            E = min(2 * self._deconstruction_size, N)
 
         device = solution.instance.locations.device
         for _ in range(E):
@@ -90,12 +106,24 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
 
 
 class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
-    """Greedy reconnection repair for TSPGraphSolution."""
+    """Greedy reconnection repair for TSPGraphSolution.
 
-    def __init__(self, *, seed: int | None = None) -> None:
+    Pass ``deconstruction_size`` to use a static upper bound on the inner loop
+    and skip the host-device sync that would otherwise be needed to size it.
+    Removing M nodes from a tour creates at most 2M unassigned successors, so
+    the bound is ``2 * M``.
+    """
+
+    def __init__(
+        self,
+        *,
+        seed: int | None = None,
+        deconstruction_size: int | None = None,
+    ) -> None:
         self._generator = torch.Generator()
         if seed is not None:
             self._generator.manual_seed(seed)
+        self._deconstruction_size = deconstruction_size
 
     def __call__(self, partial_solution: TSPGraphSolution) -> TSPGraphSolution:
         original_batch_size = partial_solution.batch_size
@@ -111,7 +139,12 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
 
         UNASSIGNED = partial_solution.UNASSIGNED
         num_unassigned = (next_nodes == UNASSIGNED).sum(dim=-1)
-        E = int(num_unassigned.max().item())
+        if self._deconstruction_size is None:
+            E = int(num_unassigned.max().item())
+        else:
+            # See CVRP variant for the 2M reasoning. Iterations past the true
+            # max are no-ops gated by the `active` mask below.
+            E = min(2 * self._deconstruction_size, num_nodes)
 
         for _ in range(E):
             active = num_unassigned > 0

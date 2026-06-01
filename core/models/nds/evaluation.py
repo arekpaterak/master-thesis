@@ -3,38 +3,20 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable
-from typing import Literal
 
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from pydantic import BaseModel, computed_field
 
-from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
-from core.lns.operators.repair import RepairOperator
+from core.lns.acceptance_criterion import AcceptanceCriterion
+from core.lns.improvement_step import ImprovementStep
 from core.lns.search import search
-from core.models.nds.eval_config import EvaluationConfig
-from core.models.nds.functions import apply_rollout as default_apply_rollout
-from core.models.nds.improvement_step import (
-    ModelParallelImprovementStep,
-    ModelSequentialImprovementStep,
-)
+from core.models.module import EpochAccumulator
+from core.models.nds.config.eval import EvaluationConfig
 from core.models.nds.models import NDSModel
-from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
-
-ImprovementStepType = Literal["sequential", "parallel"]
-
-
-def _improvement_step_class(
-    improvement_step_type: ImprovementStepType,
-) -> type[ModelSequentialImprovementStep] | type[ModelParallelImprovementStep]:
-    if improvement_step_type == "sequential":
-        return ModelSequentialImprovementStep
-    if improvement_step_type == "parallel":
-        return ModelParallelImprovementStep
-    raise ValueError(f"Unknown improvement_step_type: {improvement_step_type!r}")
 
 
 class BatchValidationSummary(BaseModel):
@@ -71,7 +53,7 @@ class EpochValidationSummary(BaseModel):
         return self.improvement / self.objective_initial
 
 
-class EpochValidationAccumulator:
+class EpochValidationAccumulator(EpochAccumulator):
     def __init__(self) -> None:
         self._total_instances = 0
         self._total_objective_initial = 0.0
@@ -93,7 +75,7 @@ class EpochValidationAccumulator:
             for i, v in enumerate(summary.objective_curve):
                 self._weighted_curve[i] += v * n
 
-    def finalize(self, *, epoch: int) -> EpochValidationSummary:
+    def complete(self, *, epoch: int) -> EpochValidationSummary:
         n = self._total_instances
         return EpochValidationSummary(
             epoch=epoch,
@@ -108,21 +90,12 @@ class EpochValidationAccumulator:
 def configure_validation_step(
     *,
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-    apply_rollout_fn: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
-    repair: RepairOperator,
-    deconstruction_size: int,
+    improvement_step: ImprovementStep,
+    criterion: AcceptanceCriterion,
     num_improvement_steps: int,
     capture_snapshots_every_n_improvement_steps: int | None = 1,
-    rollouts_per_step: int = 1,
-    n_repairs: int = 1,
-    temperature_start: float = 0.1,
-    temperature_min: float = 0.001,
-    improvement_step_type: ImprovementStepType = "sequential",
     on_improvement_step: Callable[[int, float], None] | None = None,
 ) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
-    _apply_rollout_fn = default_apply_rollout if apply_rollout_fn is None else apply_rollout_fn
-    step_cls = _improvement_step_class(improvement_step_type)
-
     snapshot_step_set = {0}
     if capture_snapshots_every_n_improvement_steps is not None:
         assert capture_snapshots_every_n_improvement_steps > 0, (
@@ -152,21 +125,6 @@ def configure_validation_step(
 
             snapshots: list[BaseSolution] = [_unbatch_first(solution)]
             objective_curve: list[float] = [objective_initial]
-
-            criterion = SimulatedAnnealingAcceptance.from_range(
-                temperature_start=temperature_start,
-                temperature_min=temperature_min,
-                n_steps=num_improvement_steps,
-            )
-
-            improvement_step = step_cls(
-                model=model,
-                apply_rollout_fn=_apply_rollout_fn,
-                repair=repair,
-                num_rollouts=rollouts_per_step,
-                deconstruction_size=deconstruction_size,
-                n_repairs=n_repairs,
-            )
 
             def on_step(step: int, solution: BaseSolution) -> None:
                 if on_improvement_step is not None:
@@ -218,20 +176,18 @@ class EvaluationResult(BaseModel):
 def configure_evaluation_step(
     *,
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-    repair: RepairOperator,
-    deconstruction_size: int,
+    improvement_step: ImprovementStep,
+    criterion: AcceptanceCriterion,
     eval_config: EvaluationConfig,
-    apply_rollout_fn: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
     capture_every_n_improvement_steps: int = 1,
 ) -> Callable[[NDSModel, BaseProblemInstance], EvaluationResult]:
-    _apply_rollout_fn = default_apply_rollout if apply_rollout_fn is None else apply_rollout_fn
-    step_cls = _improvement_step_class(eval_config.improvement_step_type)
+    num_improvement_steps = eval_config.search.num_improvement_steps
 
     assert capture_every_n_improvement_steps > 0, "Expected capture_every_n_improvement_steps > 0"
     snapshot_step_set = {0} | set(
         range(
             capture_every_n_improvement_steps,
-            eval_config.num_improvement_steps + 1,
+            num_improvement_steps + 1,
             capture_every_n_improvement_steps,
         )
     )
@@ -254,21 +210,6 @@ def configure_evaluation_step(
             for plot_idx in range(k_plots):
                 plot_snapshots.append([_unbatch_at(solution, plot_idx)])
 
-            criterion = SimulatedAnnealingAcceptance.from_range(
-                temperature_start=eval_config.temperature_start,
-                temperature_min=eval_config.temperature_min,
-                n_steps=eval_config.num_improvement_steps,
-            )
-
-            improvement_step = step_cls(
-                model=model,
-                apply_rollout_fn=_apply_rollout_fn,
-                repair=repair,
-                num_rollouts=eval_config.rollouts_per_step,
-                deconstruction_size=deconstruction_size,
-                n_repairs=eval_config.n_repairs,
-            )
-
             def on_step(step: int, solution: BaseSolution) -> None:
                 if step in snapshot_step_set:
                     per_instance_objective.append(solution.objective().detach().cpu().tolist())
@@ -280,7 +221,7 @@ def configure_evaluation_step(
                 solution,
                 improvement_step=improvement_step,
                 criterion=criterion,
-                n_iterations=eval_config.num_improvement_steps,
+                n_iterations=num_improvement_steps,
                 on_step=on_step,
             )
 

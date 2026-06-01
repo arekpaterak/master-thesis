@@ -36,14 +36,19 @@ def get_functions_by_problem(
     problem_name: str,
     *,
     noop: bool = False,
+    deconstruction_size: int | None = None,
 ) -> tuple[GenerateInitialSolutionFn, RepairOperator, ApplyRolloutFn | None]:
+    # Passing ``deconstruction_size`` lets the repair operator skip the
+    # host-device sync that would otherwise size its inner loop.
     match problem_name:
         case "cvrp":
             generate_start_solution: GenerateInitialSolutionFn = one_customer_per_route_graph
-            repair_fn: RepairOperator = CVRPGreedyReconnectRepair()
+            repair_fn: RepairOperator = CVRPGreedyReconnectRepair(
+                deconstruction_size=deconstruction_size
+            )
         case "tsp":
             generate_start_solution = random_permutation_graph
-            repair_fn = TSPGreedyReconnectRepair()
+            repair_fn = TSPGreedyReconnectRepair(deconstruction_size=deconstruction_size)
         case _:
             raise ValueError(f"Unsupported problem name: {problem_name}")
 

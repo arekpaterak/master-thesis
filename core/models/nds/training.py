@@ -10,6 +10,7 @@ from pydantic import BaseModel, computed_field
 from core.lns.acceptance_criterion import GreedyAcceptance
 from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.repair import RepairOperator
+from core.models.module import EpochAccumulator
 from core.models.nds.factory import NDSModel
 from core.models.nds.functions import apply_rollout as default_apply_rollout
 from core.models.rollout import Rollout
@@ -54,7 +55,7 @@ class EpochTrainSummary(BaseModel):
         return self.objective_before - self.objective_after
 
 
-class EpochTrainAccumulator:
+class EpochTrainAccumulator(EpochAccumulator):
     def __init__(self) -> None:
         self._total_instances = 0
         self._total_time = 0.0
@@ -82,7 +83,7 @@ class EpochTrainAccumulator:
         self._total_objective_after += summary.objective_after * n
         self._total_grad_norm += summary.grad_norm * n
 
-    def finalize(self, *, epoch: int) -> EpochTrainSummary:
+    def complete(self, *, epoch: int) -> EpochTrainSummary:
         n = self._total_instances
         return EpochTrainSummary(
             epoch=epoch,

@@ -314,7 +314,7 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
     import torch.optim as optim
 
     from core.lns.operators.repair import NoopRepair
-    from core.models.nds.config import TrainConfig, TrainerParams
+    from core.models.nds.config.train import TrainConfig, TrainerParams
     from core.models.nds.functions import only_expanding_apply_rollout
     from core.models.nds.module import NDSModule
     from core.models.trainer import Trainer

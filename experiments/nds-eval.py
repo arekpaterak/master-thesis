@@ -13,10 +13,21 @@ with app.setup(hide_code=True):
     import torch
     import yaml
     from dotenv import load_dotenv
+    from rich.console import Console
+    from rich.table import Table
+    from wigglystuff import EnvConfig
 
     import wandb
-    from core.models.nds.config import TrainConfig
-    from core.models.nds.eval_config import EvaluationConfig
+    from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
+    from core.models.nds.config.common import SearchParams
+    from core.models.nds.config.eval import EvaluationConfig
+    from core.models.nds.config.train import TrainConfig
+    from core.models.nds.evaluation import configure_evaluation_step, plot_lns_progress
+    from core.models.nds.factory import build_model
+    from core.models.nds.improvement_step import resolve_improvement_step
+    from core.problems.setup import get_functions_by_problem, make_sampler
+    from core.results.wandb_artifacts import upload_eval_plots, upload_eval_results
+    from core.results.writer import write_eval_results
 
     load_dotenv(".env")
 
@@ -40,7 +51,7 @@ def _():
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device
@@ -49,8 +60,6 @@ def _():
 
 @app.cell(hide_code=True)
 def _():
-    from wigglystuff import EnvConfig
-
     is_script_mode = mo.app_meta().mode == "script"
 
     env_config_widget = mo.ui.anywidget(
@@ -67,9 +76,6 @@ def _():
         _cli_args = mo.cli_args()
 
         if not _cli_args or _cli_args.get("help"):
-            from rich.console import Console
-            from rich.table import Table
-
             _usage = Table(title="NDS Evaluation -- CLI Usage")
             _usage.add_column("Flag", style="cyan")
             _usage.add_column("Description")
@@ -118,6 +124,20 @@ def _():
 
 
 @app.cell(hide_code=True)
+def _(completed_runs, is_script_mode):
+    if is_script_mode:
+        run_dropdown = None
+    else:
+        if not completed_runs:
+            mo.stop(True, mo.md("**No completed runs found under `experiments/runs/`.**"))
+        run_dropdown = mo.ui.dropdown(
+            completed_runs, value=completed_runs[-1], label="Training run"
+        )
+    run_dropdown
+    return (run_dropdown,)
+
+
+@app.cell(hide_code=True)
 def _():
     def list_completed_runs() -> list[str]:
         if not RUNS_DIR.exists():
@@ -138,18 +158,12 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(cli_run_name, completed_runs, is_script_mode):
+def _(cli_run_name: str | None, is_script_mode, run_dropdown):
     if is_script_mode:
         if cli_run_name is None:
             raise ValueError("Pass --run <run_name> in script mode.")
         chosen_run_name = cli_run_name
     else:
-        if not completed_runs:
-            mo.stop(True, mo.md("**No completed runs found under `experiments/runs/`.**"))
-        run_dropdown = mo.ui.dropdown(
-            completed_runs, value=completed_runs[-1], label="Training run"
-        )
-        run_dropdown
         chosen_run_name = run_dropdown.value
     return (chosen_run_name,)
 
@@ -167,12 +181,12 @@ def _(chosen_run_name):
 @app.cell(hide_code=True)
 def _(config_yml_text):
     mo.md(f"""
-### Training config
+    ### Training config
 
-```yaml
-{config_yml_text}
-```
-""")
+    ```yaml
+    {config_yml_text}
+    ```
+    """)
     return
 
 
@@ -187,7 +201,7 @@ def _():
 @app.cell(hide_code=True)
 def _():
     presets = (
-        ["(defaults)"] + sorted(p.name for p in EVAL_CONFIGS_DIR.glob("*.yaml"))
+        ["(defaults)"] + sorted(p.name for p in EVAL_CONFIGS_DIR.glob("*.y*ml"))
         if EVAL_CONFIGS_DIR.exists()
         else ["(defaults)"]
     )
@@ -197,16 +211,26 @@ def _():
 @app.cell(hide_code=True)
 def _(is_script_mode, presets):
     if is_script_mode:
-        preset_dropdown_value = "(defaults)"
+        preset_dropdown = None
     else:
-        preset_dropdown = mo.ui.dropdown(presets, value=presets[0], label="Eval preset")
-        preset_dropdown
-        preset_dropdown_value = preset_dropdown.value
+        preset_dropdown = mo.ui.dropdown(presets, value=presets[0], label="Evaluation preset")
+    preset_dropdown
+    return (preset_dropdown,)
+
+
+@app.cell(hide_code=True)
+def _(is_script_mode, preset_dropdown):
+    preset_dropdown_value = "(defaults)" if is_script_mode else preset_dropdown.value
     return (preset_dropdown_value,)
 
 
 @app.cell(hide_code=True)
-def _(cli_eval_yaml, is_script_mode, preset_dropdown_value):
+def _(
+    cli_eval_yaml: dict,
+    is_script_mode,
+    preset_dropdown_value,
+    train_config,
+):
     if is_script_mode:
         preset_yaml = dict(cli_eval_yaml)
     elif preset_dropdown_value == "(defaults)":
@@ -214,92 +238,113 @@ def _(cli_eval_yaml, is_script_mode, preset_dropdown_value):
     else:
         with open(EVAL_CONFIGS_DIR / preset_dropdown_value) as _f:
             preset_yaml = yaml.safe_load(_f) or {}
+    preset_yaml.setdefault("problem", train_config.problem.model_dump())
     preset_defaults = EvaluationConfig.model_validate(preset_yaml)
     return (preset_defaults,)
 
 
 @app.cell(hide_code=True)
 def _(preset_defaults):
-    num_test_instances_w = mo.ui.number(
-        1, 10000, value=preset_defaults.num_test_instances, step=1, label="Num test instances"
+    _ef = EvaluationConfig.model_fields
+    _sf = SearchParams.model_fields
+
+    num_test_instances_widget = mo.ui.number(
+        0,
+        10000,
+        value=preset_defaults.num_test_instances,
+        step=100,
+        label=_ef["num_test_instances"].description,
     )
-    test_seed_w = mo.ui.number(
-        0, 2**31 - 1, value=preset_defaults.test_seed, step=1, label="Test seed"
+    test_seed_widget = mo.ui.number(
+        0, 2**31 - 1, value=preset_defaults.test_seed, step=1, label=_ef["test_seed"].description
     )
-    num_improvement_steps_w = mo.ui.number(
-        1, 5000, value=preset_defaults.num_improvement_steps, step=10, label="LNS steps"
+    num_improvement_steps_widget = mo.ui.number(
+        0,
+        500,
+        value=preset_defaults.search.num_improvement_steps,
+        step=10,
+        label=_sf["num_improvement_steps"].description,
     )
-    rollouts_per_step_w = mo.ui.number(
-        1, 1000, value=preset_defaults.rollouts_per_step, step=10, label="Rollouts/step"
+    num_rollouts_widget = mo.ui.number(
+        0,
+        1000,
+        value=preset_defaults.search.num_rollouts,
+        step=10,
+        label=_sf["num_rollouts"].description,
     )
-    n_repairs_w = mo.ui.number(
-        1, 100, value=preset_defaults.n_repairs, step=1, label="Repairs/rollout"
+    deconstruction_size_widget = mo.ui.number(
+        0,
+        50,
+        value=preset_defaults.search.deconstruction_size,
+        step=1,
+        label=_sf["deconstruction_size"].description,
     )
-    temperature_start_w = mo.ui.number(
-        0.0, 10.0, value=preset_defaults.temperature_start, step=0.01, label="SA start temp"
+    n_repairs_widget = mo.ui.number(
+        1, 10, value=preset_defaults.search.n_repairs, step=1, label=_sf["n_repairs"].description
     )
-    temperature_min_w = mo.ui.number(
-        0.0, 10.0, value=preset_defaults.temperature_min, step=0.001, label="SA min temp"
+    num_plot_instances_widget = mo.ui.number(
+        0,
+        100,
+        value=preset_defaults.num_plot_instances,
+        step=1,
+        label=_ef["num_plot_instances"].description,
     )
-    num_plot_instances_w = mo.ui.number(
-        0, 100, value=preset_defaults.num_plot_instances, step=1, label="Plot first K instances"
-    )
-    method_suffix_w = mo.ui.text(
-        value=preset_defaults.method_suffix or "", label="Method suffix (optional)"
+    method_suffix_widget = mo.ui.text(
+        value=preset_defaults.method_suffix or "", label=_ef["method_suffix"].description
     )
     mo.vstack(
         [
-            num_test_instances_w,
-            test_seed_w,
-            num_improvement_steps_w,
-            rollouts_per_step_w,
-            n_repairs_w,
-            temperature_start_w,
-            temperature_min_w,
-            num_plot_instances_w,
-            method_suffix_w,
+            num_test_instances_widget,
+            test_seed_widget,
+            num_improvement_steps_widget,
+            num_rollouts_widget,
+            deconstruction_size_widget,
+            n_repairs_widget,
+            num_plot_instances_widget,
+            method_suffix_widget,
         ]
     )
     return (
-        method_suffix_w,
-        n_repairs_w,
-        num_improvement_steps_w,
-        num_plot_instances_w,
-        num_test_instances_w,
-        rollouts_per_step_w,
-        temperature_min_w,
-        temperature_start_w,
-        test_seed_w,
+        deconstruction_size_widget,
+        method_suffix_widget,
+        n_repairs_widget,
+        num_improvement_steps_widget,
+        num_plot_instances_widget,
+        num_rollouts_widget,
+        num_test_instances_widget,
+        test_seed_widget,
     )
 
 
 @app.cell(hide_code=True)
 def _(
+    deconstruction_size_widget,
     is_script_mode,
-    method_suffix_w,
-    n_repairs_w,
-    num_improvement_steps_w,
-    num_plot_instances_w,
-    num_test_instances_w,
+    method_suffix_widget,
+    n_repairs_widget,
+    num_improvement_steps_widget,
+    num_plot_instances_widget,
+    num_rollouts_widget,
+    num_test_instances_widget,
     preset_defaults,
-    rollouts_per_step_w,
-    temperature_min_w,
-    temperature_start_w,
-    test_seed_w,
+    test_seed_widget,
 ):
     if is_script_mode:
         eval_config = preset_defaults
     else:
         eval_config = EvaluationConfig(
-            num_test_instances=num_test_instances_w.value,
-            test_seed=test_seed_w.value,
-            num_improvement_steps=num_improvement_steps_w.value,
-            rollouts_per_step=rollouts_per_step_w.value,
-            n_repairs=n_repairs_w.value,
-            temperature_start=temperature_start_w.value,
-            temperature_min=temperature_min_w.value,
-            num_plot_instances=num_plot_instances_w.value,
-            method_suffix=(method_suffix_w.value.strip() or None),
+            num_test_instances=num_test_instances_widget.value,
+            test_seed=test_seed_widget.value,
+            search=SearchParams(
+                num_improvement_steps=num_improvement_steps_widget.value,
+                num_rollouts=num_rollouts_widget.value,
+                deconstruction_size=deconstruction_size_widget.value,
+                n_repairs=n_repairs_widget.value,
+                temperature_start=preset_defaults.search.temperature_start,
+                temperature_min=preset_defaults.search.temperature_min,
+            ),
+            num_plot_instances=num_plot_instances_widget.value,
+            method_suffix=(method_suffix_widget.value.strip() or None),
         )
     return (eval_config,)
 
@@ -314,14 +359,13 @@ def _(is_script_mode):
 @app.cell(column=3, hide_code=True)
 def _():
     mo.md(r"""
-    ## Execute
+    ## Evaluate
     """)
     return
 
 
 @app.cell
 def _(
-    chosen_run_name,
     device,
     eval_config,
     is_script_mode,
@@ -331,12 +375,6 @@ def _(
 ):
     if not is_script_mode:
         mo.stop(not run_eval_button.value, mo.md("Click 'Run evaluation' to start."))
-
-    from core.models.nds.evaluation import configure_evaluation_step, plot_lns_progress
-    from core.models.nds.factory import build_model
-    from core.problems.setup import get_start_solution_and_repair, make_sampler
-    from core.results.wandb_artifacts import upload_eval_plots, upload_eval_results
-    from core.results.writer import write_eval_results
 
     def find_latest_checkpoint(dir_: Path) -> tuple[Path | None, int]:
         ckpts = sorted((dir_ / "checkpoints").glob("epoch_*.pt"))
@@ -353,29 +391,59 @@ def _(
     model.eval()
 
     test_sampler = make_sampler(
-        train_config.problem.name, train_config.problem.size, seed=eval_config.test_seed
+        eval_config.problem.name, eval_config.problem.size, seed=eval_config.test_seed
     )
-    generate_start, repair_fn, apply_rollout_fn = get_start_solution_and_repair(
-        train_config.problem.name, noop=False
+    generate_start, repair_fn, _ = get_functions_by_problem(
+        eval_config.problem.name,
+        noop=False,
+        deconstruction_size=eval_config.search.deconstruction_size,
+    )
+
+    _step_cls = resolve_improvement_step(eval_config.search.improvement_step_type)
+    improvement_step = _step_cls(
+        model=model,
+        repair=repair_fn,
+        num_rollouts=eval_config.search.num_rollouts,
+        deconstruction_size=eval_config.search.deconstruction_size,
+        n_repairs=eval_config.search.n_repairs,
+    )
+    criterion = SimulatedAnnealingAcceptance.from_range(
+        temperature_start=eval_config.search.temperature_start,
+        temperature_min=eval_config.search.temperature_min,
+        n_steps=eval_config.search.num_improvement_steps,
     )
 
     eval_step = configure_evaluation_step(
         generate_start_solution=generate_start,
-        apply_rollout_fn=apply_rollout_fn,
-        repair=repair_fn,
-        deconstruction_size=train_config.search.deconstruction_size,
+        improvement_step=improvement_step,
+        criterion=criterion,
         eval_config=eval_config,
     )
+    return eval_step, final_epoch, model, test_sampler
 
+
+@app.cell
+def _(eval_config, eval_step, model, test_sampler):
     instance = test_sampler(eval_config.num_test_instances)
     result = eval_step(model, instance)
+    return (result,)
 
+
+@app.cell
+def _(
+    chosen_run_name,
+    eval_config,
+    final_epoch,
+    result,
+    run_dir,
+    train_config,
+):
     method = f"nds-{train_config.model.decoder.type}"
     if eval_config.method_suffix:
         method = f"{method}-{eval_config.method_suffix}"
 
     eval_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    problem_tag = f"{train_config.problem.name}{train_config.problem.size}"
+    problem_tag = f"{eval_config.problem.name}{eval_config.problem.size}"
 
     rows = [
         {
@@ -426,7 +494,7 @@ def _(
                 "method": method,
                 "num_test_instances": eval_config.num_test_instances,
                 "test_seed": eval_config.test_seed,
-                "num_improvement_steps": eval_config.num_improvement_steps,
+                "num_improvement_steps": eval_config.search.num_improvement_steps,
             },
         )
         if eval_config.num_plot_instances > 0:
@@ -435,7 +503,7 @@ def _(
 
     summary_md = (
         f"**Eval complete.** id=`{eval_id}` method=`{method}` "
-        f"instances={eval_config.num_test_instances} steps={eval_config.num_improvement_steps}\n\n"
+        f"instances={eval_config.num_test_instances} steps={eval_config.search.num_improvement_steps}\n\n"
         f"- parquet: `{parquet_path}`\n"
         f"- plots: `{plots_dir}` ({eval_config.num_plot_instances} PDFs)\n"
     )

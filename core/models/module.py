@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any, Protocol
+from typing import Any
 
 
-class EpochAccumulator(Protocol):
+class EpochAccumulator(ABC):
     def update(self, batch_summary: Any) -> None: ...
-    def finalize(self, *, epoch: int) -> Any: ...
+    def complete(self, *, epoch: int) -> Any: ...
 
 
 class Module(ABC):

@@ -15,7 +15,7 @@ with app.setup(hide_code=True):
     from dotenv import load_dotenv
 
     import wandb
-    from core.models.nds.config import TrainConfig
+    from core.models.nds.config.train import TrainConfig
 
     load_dotenv(".env")
 
@@ -523,13 +523,13 @@ def _(
     validation_seed,
     yaml_data,
 ):
-    from core.models.nds.config import (
+    from core.models.nds.config.common import SearchParams
+    from core.models.nds.config.train import (
         LoggingConfig,
         ModelParams,
         OptimizerParams,
         OriginalPretrainedConfig,
         ProblemParams,
-        SearchParams,
         TrainerParams,
         ValidationConfig,
     )
@@ -765,7 +765,12 @@ def _(
         wandb.define_metric("val/*", step_metric="epoch")
 
     generate_start_solution, repair_fn, apply_rollout_fn = get_functions_by_problem(
-        config.problem.name, noop=noop_apply_repair_checkbox.value
+        config.problem.name,
+        noop=noop_apply_repair_checkbox.value,
+        deconstruction_size=max(
+            config.search.deconstruction_size,
+            config.validation.search.deconstruction_size,
+        ),
     )
     return (
         apply_rollout_fn,
@@ -900,32 +905,12 @@ def _(
         _progress["show_val_step"] = True
         _refresh()
 
-    from core.models.nds.improvement_step import (
-        ModelParallelImprovementStep,
-        ModelSequentialImprovementStep,
-    )
-
-    _step_cls = (
-        ModelSequentialImprovementStep
-        if config.search.improvement_step_type == "sequential"
-        else ModelParallelImprovementStep
-    )
-    initial_improvement_step = _step_cls(
-        model=model,
-        apply_rollout_fn=apply_rollout_fn,
-        repair=repair_fn,
-        num_rollouts=config.search.num_rollouts,
-        deconstruction_size=config.search.deconstruction_size,
-        n_repairs=config.search.n_repairs,
-    )
-
     nds_module = NDSModule(
         config=config,
         model=model,
         generate_start_solution=generate_start_solution,
         apply_rollout=apply_rollout_fn,
         repair=repair_fn,
-        improvement_step=initial_improvement_step,
         on_improvement_step=on_improvement_step,
         on_validation_improvement_step=on_validation_improvement_step,
     )

@@ -25,7 +25,7 @@ def test_trainer_runs_epochs_and_callbacks_in_order():
         def update(self, batch_summary: str) -> None:
             self._batch_summaries.append(batch_summary)
 
-        def finalize(self, *, epoch: int) -> EpochSummary:
+        def complete(self, *, epoch: int) -> EpochSummary:
             assert self._batch_summaries == ["batch:instance-4", "batch:instance-4"]
             return EpochSummary(f"epoch-{epoch}")
 
