@@ -17,10 +17,13 @@ trainer:
   epochs: 10
   batches_per_epoch: 500
   batch_size: 64
-  rollouts_per_instance: 128
-  num_initial_improvement_steps: 0
   num_main_improvement_steps: 2
+
+search:
+  num_improvement_steps: 0
+  num_rollouts: 128
   deconstruction_size: 15
+  improvement_step_type: sequential
 
 logging:
   wandb_project: nds

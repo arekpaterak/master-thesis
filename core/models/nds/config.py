@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from typing import Literal
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
@@ -24,7 +25,7 @@ class ProblemParams(BaseModel):
 
 
 class ModelParams(BaseModel):
-    """Configuration for the model architecture."""
+    """Configuration for the model architecture and weight initialisation."""
 
     hidden_dim: int = Field(default=128, description="Hidden dimension.")
     num_heads: int = Field(default=8, description="Number of attention heads.")
@@ -38,37 +39,6 @@ class ModelParams(BaseModel):
     )
     decoder: DecoderConfig = Field(default_factory=AutoregressiveDecoderConfig)
 
-
-class OptimizerParams(BaseModel):
-    """Configuration for the optimizer."""
-
-    learning_rate: float = Field(default=1e-4, description="Learning rate.")
-    weight_decay: float = Field(default=1e-6, description="Weight decay.")
-
-
-class TrainerParams(BaseModel):
-    """Configuration for the training process."""
-
-    epochs: int = Field(default=1, description="Number of training epochs.")
-    instances_per_epoch: int = Field(default=1500, description="Instances per epoch.")
-    batch_size: int = Field(default=128, description="Training batch size.")
-
-    @computed_field
-    @property
-    def batches_per_epoch(self) -> int:
-        return math.ceil(self.instances_per_epoch / self.batch_size)
-
-    rollouts_per_instance: int = Field(default=128, description="Rollouts per instance.")
-    num_initial_improvement_steps: int = Field(
-        default=10, description="Initial improvement steps before training."
-    )
-    num_main_improvement_steps: int = Field(default=100, description="Number of improvement steps.")
-    deconstruction_size: int = Field(
-        default=15, description="Number of nodes removed per iteration."
-    )
-    checkpoint_every_n_epochs: int = Field(
-        default=10, description="Save a checkpoint every N epochs (always saves the last epoch)."
-    )
     init_weights: str | None = Field(
         default=None, description="Path to a checkpoint to load model weights from (new run)."
     )
@@ -80,10 +50,64 @@ class TrainerParams(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_weights_mutually_exclusive(self) -> TrainerParams:
+    def _validate_weights_mutually_exclusive(self) -> ModelParams:
         if self.init_weights is not None and self.original_pretrained_weights is not None:
             raise ValueError("init_weights and original_pretrained_weights are mutually exclusive.")
         return self
+
+
+class OptimizerParams(BaseModel):
+    """Configuration for the optimizer."""
+
+    learning_rate: float = Field(default=1e-4, description="Learning rate.")
+    weight_decay: float = Field(default=1e-6, description="Weight decay.")
+
+
+class SearchParams(BaseModel):
+    """Configuration for an LNS-style search (destroy / repair / accept loop).
+
+    The same shape is reused for both training's initial improvement phase
+    (under ``TrainConfig.search``) and validation (under
+    ``ValidationConfig.search``). ``temperature_start`` / ``temperature_min``
+    only apply when the surrounding loop uses simulated-annealing
+    acceptance; the training initial phase uses greedy acceptance and
+    ignores them.
+    """
+
+    num_improvement_steps: int = Field(default=10, description="Number of search iterations.")
+    num_rollouts: int = Field(default=128, description="Rollouts per step.")
+    deconstruction_size: int = Field(default=15, description="Number of nodes removed per rollout.")
+    n_repairs: int = Field(default=1, description="Repair attempts per rollout; best is kept.")
+    improvement_step_type: Literal["sequential", "parallel"] = Field(
+        default="sequential",
+        description="Model-driven improvement step variant.",
+    )
+    temperature_start: float = Field(
+        default=0.1, description="SA initial temperature (unused for greedy acceptance)."
+    )
+    temperature_min: float = Field(
+        default=0.001, description="SA minimum temperature (unused for greedy acceptance)."
+    )
+
+
+class TrainerParams(BaseModel):
+    """Configuration for the training loop (excluding search and model weights)."""
+
+    epochs: int = Field(default=1, description="Number of training epochs.")
+    instances_per_epoch: int = Field(default=1500, description="Instances per epoch.")
+    batch_size: int = Field(default=128, description="Training batch size.")
+
+    @computed_field
+    @property
+    def batches_per_epoch(self) -> int:
+        return math.ceil(self.instances_per_epoch / self.batch_size)
+
+    num_main_improvement_steps: int = Field(
+        default=100, description="Number of gradient-bearing improvement steps per batch."
+    )
+    checkpoint_every_n_epochs: int = Field(
+        default=10, description="Save a checkpoint every N epochs (always saves the last epoch)."
+    )
 
 
 class LoggingConfig(BaseModel):
@@ -97,10 +121,6 @@ class ValidationConfig(BaseModel):
 
     num_instances: int = Field(default=1000, description="Instances to evaluate.")
     batch_size: int = Field(default=10, description="Batch size.")
-    num_improvement_steps: int = Field(
-        default=50,
-        description="Number of improvement steps.",
-    )
     every_n_epochs: int = Field(default=10, description="Run validation every N training epochs.")
     seed: int = Field(default=42, description="Fixed seed for reproducible validation instances.")
     plot_enabled: bool = Field(default=True, description="Plot LNS progress for one instance.")
@@ -108,14 +128,12 @@ class ValidationConfig(BaseModel):
         default=5, description="Capture solution snapshot every N outer SA iterations."
     )
     plot_save_to_disk: bool = Field(default=True, description="Save plots.")
-    temperature_start: float = Field(default=0.1, description="SA start temperature.")
-    temperature_min: float = Field(
-        default=0.001, description="SA final temperature (decay target)."
+    search: SearchParams = Field(
+        default_factory=lambda: SearchParams(
+            num_improvement_steps=50, num_rollouts=100, n_repairs=5
+        ),
+        description="Search-loop knobs used during validation.",
     )
-    rollouts_per_step: int = Field(
-        default=100, description="Rollouts applied in each improvement step."
-    )
-    n_repairs: int = Field(default=5, description="Repair attempts per rollout; best is selected.")
 
 
 class TrainConfig(BaseModel):
@@ -125,6 +143,10 @@ class TrainConfig(BaseModel):
     model: ModelParams = Field(default_factory=ModelParams)
     optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
     trainer: TrainerParams = Field(default_factory=TrainerParams)
+    search: SearchParams = Field(
+        default_factory=SearchParams,
+        description="Search-loop knobs used during the training initial phase and main loop.",
+    )
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
 

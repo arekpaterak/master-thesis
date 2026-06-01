@@ -19,7 +19,7 @@ class NoopImprovementStep(ImprovementStep):
         return solution
 
 
-class DefaultImprovementStep(ImprovementStep):
+class SequentialImprovementStep(ImprovementStep):
     def __init__(
         self,
         *,
@@ -46,3 +46,34 @@ class DefaultImprovementStep(ImprovementStep):
             mask = accept(current, candidate)
             current = select_solution(mask, candidate, current)
         return current
+
+
+class ParallelImprovementStep(ImprovementStep):
+    def __init__(
+        self,
+        *,
+        destroy: DestroyOperator,
+        repair: RepairOperator,
+        num_rollouts: int = 1,
+        n_repairs: int = 1,
+    ) -> None:
+        self._destroy = destroy
+        self._repair = repair
+        self._num_rollouts = num_rollouts
+        self._n_repairs = n_repairs
+
+    def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
+        R = self._num_rollouts
+        expanded = solution.unsqueeze(-1).expand(*solution.batch_size, R)
+
+        deconstructed = self._destroy(expanded)
+        candidate = self._repair(deconstructed)
+        for _ in range(self._n_repairs - 1):
+            repaired = self._repair(deconstructed)
+            candidate = select_solution(
+                repaired.objective() < candidate.objective(), repaired, candidate
+            )
+        best_idx = candidate.objective().argmin(dim=-1, keepdim=True)
+        best_from_candidate = candidate.gather(-1, best_idx).squeeze(-1)
+        mask = accept(solution, best_from_candidate)
+        return select_solution(mask, best_from_candidate, solution)
