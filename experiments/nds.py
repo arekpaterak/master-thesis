@@ -15,7 +15,7 @@ with app.setup(hide_code=True):
     from dotenv import load_dotenv
 
     import wandb
-    from core.models.nds.config.train import TrainConfig
+    from core.models.nds.config import TrainConfig
 
     load_dotenv(".env")
 
@@ -523,8 +523,8 @@ def _(
     validation_seed,
     yaml_data,
 ):
-    from core.models.nds.config.common import SearchParams
-    from core.models.nds.config.train import (
+    from core.lns.config import SearchParams
+    from core.models.nds.config import (
         LoggingConfig,
         ModelParams,
         OptimizerParams,

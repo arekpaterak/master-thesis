@@ -9,11 +9,12 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from pydantic import BaseModel, computed_field
 
+from core.eval_config import EvaluationConfig
 from core.lns.acceptance_criterion import AcceptanceCriterion
 from core.lns.improvement_step import ImprovementStep
 from core.lns.search import search
+from core.methods.base import Method
 from core.models.module import EpochAccumulator
-from core.models.nds.config.eval import EvaluationConfig
 from core.models.nds.models import NDSModel
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -175,13 +176,11 @@ class EvaluationResult(BaseModel):
 
 def configure_evaluation_step(
     *,
-    generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-    improvement_step: ImprovementStep,
-    criterion: AcceptanceCriterion,
+    method: Method,
     eval_config: EvaluationConfig,
     capture_every_n_improvement_steps: int = 1,
-) -> Callable[[NDSModel, BaseProblemInstance], EvaluationResult]:
-    num_improvement_steps = eval_config.search.num_improvement_steps
+) -> Callable[[BaseProblemInstance], EvaluationResult]:
+    num_improvement_steps = method.search.num_improvement_steps
 
     assert capture_every_n_improvement_steps > 0, "Expected capture_every_n_improvement_steps > 0"
     snapshot_step_set = {0} | set(
@@ -192,17 +191,14 @@ def configure_evaluation_step(
         )
     )
 
-    def evaluation_step(model: NDSModel, instance: BaseProblemInstance) -> EvaluationResult:
-        model.eval()
-        instance = instance.to(next(model.parameters()).device)
-
+    def evaluation_step(instance: BaseProblemInstance) -> EvaluationResult:
         per_instance_objective: list[list[float]] = []
         cumulative_time_s: list[float] = []
         plot_snapshots: list[list[BaseSolution]] = []
         k_plots = min(eval_config.num_plot_instances, instance.batch_size[0])
 
         with torch.no_grad():
-            solution = generate_start_solution(instance)
+            solution = method.generate_start_solution(instance)
 
             t0 = time.perf_counter()
             per_instance_objective.append(solution.objective().detach().cpu().tolist())
@@ -219,8 +215,8 @@ def configure_evaluation_step(
 
             search(
                 solution,
-                improvement_step=improvement_step,
-                criterion=criterion,
+                improvement_step=method.improvement_step,
+                criterion=method.criterion,
                 n_iterations=num_improvement_steps,
                 on_step=on_step,
             )

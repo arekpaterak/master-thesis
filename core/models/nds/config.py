@@ -6,8 +6,9 @@ import math
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
-from core.models.nds.config.common import ProblemParams, SearchParams
+from core.lns.config import SearchParams
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
+from core.problems.config import ProblemParams
 
 
 class OriginalPretrainedConfig(BaseModel):
@@ -91,14 +92,13 @@ class ValidationConfig(BaseModel):
     seed: int = Field(default=42, description="Fixed seed for reproducible validation instances.")
     plot_enabled: bool = Field(default=True, description="Plot LNS progress for one instance.")
     plot_every_n_improvement_steps: int = Field(
-        default=5, description="Capture solution snapshot every N outer SA iterations."
+        default=5, description="Capture solution snapshot every N main search iterations."
     )
     plot_save_to_disk: bool = Field(default=True, description="Save plots.")
     search: SearchParams = Field(
         default_factory=lambda: SearchParams(
             num_improvement_steps=50, num_rollouts=100, n_repairs=5
         ),
-        description="Search-loop knobs used during validation.",
     )
 
 
@@ -111,7 +111,6 @@ class TrainConfig(BaseModel):
     trainer: TrainerParams = Field(default_factory=TrainerParams)
     search: SearchParams = Field(
         default_factory=SearchParams,
-        description="Search-loop knobs used during the training initial phase and main loop.",
     )
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)

@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core.models.nds.config.common import SearchParams
-from core.models.nds.config.train import (
+from core.lns.config import SearchParams
+from core.models.nds.config import (
     LoggingConfig,
     ProblemParams,
     TrainConfig,

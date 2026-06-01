@@ -27,7 +27,7 @@ def _():
     from core.lns.acceptance_criterion import GreedyAcceptance
     from core.lns.operators.repair.greedy_insert import CVRPGreedyInsertRepair
     from core.lns.operators.repair.greedy_reconnect import TSPGreedyReconnectRepair
-    from core.models.nds.config.train import TrainConfig
+    from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
     from core.models.nds.improvement_step import ModelSequentialImprovementStep
     from core.problems.cvrp.instance import CVRPInstance

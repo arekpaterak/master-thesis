@@ -4,12 +4,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
-class ProblemParams(BaseModel):
-    """Configuration for the optimisation problem."""
-
-    name: str = Field(default="cvrp", description="Problem to solve.")
-    size: int = Field(default=20, description="Number of customers.")
+from core.lns.acceptance_criterion import (
+    AcceptanceCriterionConfig,
+    SimulatedAnnealingAcceptanceConfig,
+)
 
 
 class SearchParams(BaseModel):
@@ -23,11 +21,9 @@ class SearchParams(BaseModel):
     n_repairs: int = Field(default=1, description="Repair attempts per rollout; best is kept.")
     improvement_step_type: Literal["sequential", "parallel"] = Field(
         default="sequential",
-        description="Model-driven improvement step variant.",
+        description="Improvement step variant.",
     )
-    temperature_start: float = Field(
-        default=0.1, description="SA initial temperature (unused for greedy acceptance)."
-    )
-    temperature_min: float = Field(
-        default=0.001, description="SA minimum temperature (unused for greedy acceptance)."
+    acceptance: AcceptanceCriterionConfig = Field(
+        default_factory=SimulatedAnnealingAcceptanceConfig,
+        description="Acceptance criterion (greedy or simulated annealing).",
     )

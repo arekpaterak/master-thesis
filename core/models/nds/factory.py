@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.models.nds.config.train import (
+from core.models.nds.config import (
     TrainConfig,
 )
 

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Self
+from typing import Annotated, Literal, Self
 
 import torch
+from pydantic import BaseModel, Field
 
 from core.constants import EPS
 from core.problems.solution import BaseSolution
@@ -80,3 +81,31 @@ class SimulatedAnnealingAcceptance(AcceptanceCriterion):
         delta = candidate.objective() - current.objective()
         prob = torch.exp(-delta.clamp(min=0) / self._temperature)
         return (delta < EPS) | (torch.rand_like(delta) < prob)
+
+
+class GreedyAcceptanceConfig(BaseModel):
+    type: Literal["greedy"] = "greedy"
+
+
+class SimulatedAnnealingAcceptanceConfig(BaseModel):
+    type: Literal["sa"] = "sa"
+    temperature_start: float = Field(default=0.1, description="SA initial temperature.")
+    temperature_min: float = Field(default=0.001, description="SA minimum temperature.")
+
+
+AcceptanceCriterionConfig = Annotated[
+    GreedyAcceptanceConfig | SimulatedAnnealingAcceptanceConfig,
+    Field(discriminator="type"),
+]
+
+
+def build_criterion(config: AcceptanceCriterionConfig, *, n_steps: int) -> AcceptanceCriterion:
+    match config:
+        case GreedyAcceptanceConfig():
+            return GreedyAcceptance()
+        case SimulatedAnnealingAcceptanceConfig():
+            return SimulatedAnnealingAcceptance.from_range(
+                temperature_start=config.temperature_start,
+                temperature_min=config.temperature_min,
+                n_steps=n_steps,
+            )

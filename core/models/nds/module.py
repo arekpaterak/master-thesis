@@ -5,11 +5,11 @@ from collections.abc import Callable, Iterator
 import torch.nn as nn
 import torch.optim as optim
 
-from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
+from core.lns.acceptance_criterion import build_criterion
+from core.lns.config import SearchParams
 from core.lns.operators.repair import RepairOperator
 from core.models.module import Module
-from core.models.nds.config.common import SearchParams
-from core.models.nds.config.train import TrainConfig
+from core.models.nds.config import TrainConfig
 from core.models.nds.evaluation import (
     BatchValidationSummary,
     EpochValidationAccumulator,
@@ -73,10 +73,8 @@ class NDSModule(Module):
 
         validation_search = config.validation.search
         validation_improvement_step = _build_improvement_step(model, repair, validation_search)
-        validation_criterion = SimulatedAnnealingAcceptance.from_range(
-            temperature_start=validation_search.temperature_start,
-            temperature_min=validation_search.temperature_min,
-            n_steps=validation_search.num_improvement_steps,
+        validation_criterion = build_criterion(
+            validation_search.acceptance, n_steps=validation_search.num_improvement_steps
         )
 
         self._validation_step_fn = configure_validation_step(
