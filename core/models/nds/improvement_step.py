@@ -17,7 +17,7 @@ from .models import NDSModel
 ApplyRollout = Callable[[BaseSolution, Rollout], BaseSolution]
 
 
-class NDSImprovementStep(ImprovementStep):
+class ModelSequentialImprovementStep(ImprovementStep):
     def __init__(
         self,
         *,
@@ -64,3 +64,47 @@ class NDSImprovementStep(ImprovementStep):
             mask = accept(current, candidate)
             current = select_solution(mask, candidate, current)
         return current
+
+
+class ModelParallelImprovementStep(ImprovementStep):
+    def __init__(
+        self,
+        *,
+        model: NDSModel,
+        repair: RepairOperator,
+        num_rollouts: int,
+        deconstruction_size: int,
+        n_repairs: int,
+        apply_rollout_fn: ApplyRollout | None = None,
+    ) -> None:
+        self._model = model
+        self._apply_rollout_fn = (
+            default_apply_rollout if apply_rollout_fn is None else apply_rollout_fn
+        )
+        self._repair = repair
+        self._num_rollouts = num_rollouts
+        self._deconstruction_size = deconstruction_size
+        self._n_repairs = n_repairs
+
+    @torch.no_grad()
+    def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
+        self._model.eval()
+        rollout = self._model.rollout(
+            solution,
+            rollouts_per_solution=self._num_rollouts,
+            deconstruction_size=self._deconstruction_size,
+            greedy=False,
+        )
+        deconstructed = self._apply_rollout_fn(solution, rollout)
+        candidate = self._repair(deconstructed)
+        for _ in range(self._n_repairs - 1):
+            repaired = self._repair(deconstructed)
+            candidate = select_solution(
+                repaired.objective() < candidate.objective(), repaired, candidate
+            )
+
+        best_idx = candidate.objective().argmin(dim=-1, keepdim=True)
+        best_from_candidate = candidate.gather(-1, best_idx).squeeze(-1)
+
+        mask = accept(solution, best_from_candidate)
+        return select_solution(mask, best_from_candidate, solution)

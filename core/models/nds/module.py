@@ -38,7 +38,7 @@ class NDSModule(Module):
         generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
         apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
         repair: RepairOperator,
-        improvement_step: ImprovementStep | None = None,
+        improvement_step: ImprovementStep | None,
         on_improvement_step: Callable[[int, float], None] | None = None,
         on_validation_improvement_step: Callable[[int, float], None] | None = None,
     ) -> None:
@@ -46,9 +46,9 @@ class NDSModule(Module):
         apply_rollout_fn = default_apply_rollout if apply_rollout is None else apply_rollout
         self._training_step_fn = configure_training_step(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
-            rollouts_per_solution=config.trainer.rollouts_per_instance,
-            num_initial_improvement_steps=config.trainer.num_initial_improvement_steps,
-            deconstruction_size=config.trainer.deconstruction_size,
+            rollouts_per_solution=config.search.num_rollouts,
+            num_initial_improvement_steps=config.search.num_improvement_steps,
+            deconstruction_size=config.search.deconstruction_size,
             generate_start_solution=generate_start_solution,
             improvement_step=improvement_step or NoopImprovementStep(),
             apply_rollout=apply_rollout_fn,
@@ -59,13 +59,14 @@ class NDSModule(Module):
             generate_start_solution=generate_start_solution,
             apply_rollout_fn=apply_rollout_fn,
             repair=repair,
-            deconstruction_size=config.trainer.deconstruction_size,
-            num_improvement_steps=config.validation.num_improvement_steps,
+            deconstruction_size=config.validation.search.deconstruction_size,
+            num_improvement_steps=config.validation.search.num_improvement_steps,
             capture_snapshots_every_n_improvement_steps=config.validation.plot_every_n_improvement_steps,
-            rollouts_per_step=config.validation.rollouts_per_step,
-            n_repairs=config.validation.n_repairs,
-            temperature_start=config.validation.temperature_start,
-            temperature_min=config.validation.temperature_min,
+            rollouts_per_step=config.validation.search.num_rollouts,
+            n_repairs=config.validation.search.n_repairs,
+            temperature_start=config.validation.search.temperature_start,
+            temperature_min=config.validation.search.temperature_min,
+            improvement_step_type=config.validation.search.improvement_step_type,
             on_improvement_step=on_validation_improvement_step,
         )
 

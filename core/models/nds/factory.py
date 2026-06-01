@@ -54,7 +54,7 @@ def build_model(config: TrainConfig) -> NDSModel:
                     seed_dim=config.model.seed_dim,
                     poly_dim=config.model.poly_dim,
                     num_heads=config.model.num_heads,
-                    k=config.trainer.deconstruction_size,
+                    k=config.search.deconstruction_size,
                 ),
             )
         case ProximityDecoderConfig():

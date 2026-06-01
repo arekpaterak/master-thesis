@@ -1,10 +1,10 @@
 from .acceptance_criterion import GreedyAcceptance, SimulatedAnnealingAcceptance
-from .improvement_step import DestroyRepairImprovementStep, ImprovementStep
+from .improvement_step import ImprovementStep, SequentialImprovementStep
 from .search import SearchResult, search
 from .utils import select_solution
 
 __all__ = [
-    "DestroyRepairImprovementStep",
+    "SequentialImprovementStep",
     "GreedyAcceptance",
     "ImprovementStep",
     "SimulatedAnnealingAcceptance",

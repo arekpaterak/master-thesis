@@ -1,0 +1,9 @@
+num_test_instances: 10000
+test_seed: 2026
+num_improvement_steps: 200
+rollouts_per_step: 200
+n_repairs: 5
+temperature_start: 0.1
+temperature_min: 0.001
+num_plot_instances: 4
+method_suffix:

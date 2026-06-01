@@ -29,7 +29,7 @@ def _():
     from core.lns.operators.repair.greedy_reconnect import TSPGreedyReconnectRepair
     from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
-    from core.models.nds.improvement_step import NDSImprovementStep
+    from core.models.nds.improvement_step import ModelSequentialImprovementStep
     from core.problems.cvrp.instance import CVRPInstance
     from core.problems.cvrp.solve import one_customer_per_route
     from core.problems.tsp.instance import TSPInstance
@@ -45,7 +45,7 @@ def _():
         TrainConfig,
         build_model,
         GreedyAcceptance,
-        NDSImprovementStep,
+        ModelSequentialImprovementStep,
         mo,
         np,
         one_customer_per_route,
@@ -223,7 +223,7 @@ def _(
             model=model,
             repair=repair,
             num_rollouts=num_rollouts_slider.value,
-            deconstruction_size=config.trainer.deconstruction_size,
+            deconstruction_size=config.search.deconstruction_size,
             n_repairs=1,
         )
         return lambda sol: step(sol, GreedyAcceptance())

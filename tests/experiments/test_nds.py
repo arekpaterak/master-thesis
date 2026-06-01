@@ -5,7 +5,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core.models.nds.config import LoggingConfig, ProblemParams, TrainConfig, TrainerParams
+from core.models.nds.config import (
+    LoggingConfig,
+    ProblemParams,
+    SearchParams,
+    TrainConfig,
+    TrainerParams,
+)
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "nds.py"
@@ -16,9 +22,11 @@ _MINIMAL_CONFIG = TrainConfig(
         epochs=1,
         instances_per_epoch=5,
         batch_size=2,
-        rollouts_per_instance=2,
-        num_initial_improvement_steps=1,
         num_main_improvement_steps=1,
+    ),
+    search=SearchParams(
+        num_improvement_steps=1,
+        num_rollouts=2,
         deconstruction_size=3,
     ),
     logging=LoggingConfig(wandb_project=""),

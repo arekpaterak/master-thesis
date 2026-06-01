@@ -227,8 +227,53 @@ def _(decoder_sigma_widget, decoder_type_widget, decoder_use_hidden_widget):
 
 @app.cell(hide_code=True)
 def _(defaults):
+    model_init_weights = mo.ui.text(
+        value=defaults.model.init_weights or "",
+        label="Own checkpoint path (empty = none)",
+    )
+    _pretrained = defaults.model.original_pretrained_weights
+    _pretrained_dir = Path("experiments/pretrained/nds")
+    _pretrained_options = {"(none)": ""}
+    for _pt in sorted(_pretrained_dir.glob("**/*.pt")):
+        _pretrained_options[f"{_pt.parent.name}/{_pt.name}"] = str(_pt)
+    _pretrained_default_path = _pretrained.path if _pretrained else ""
+    _pretrained_default_key = next(
+        (k for k, v in _pretrained_options.items() if v == _pretrained_default_path),
+        "(none)",
+    )
+    model_original_pretrained_path = mo.ui.dropdown(
+        options=_pretrained_options,
+        value=_pretrained_default_key,
+        label="Original pretrained checkpoint",
+    )
+    model_original_pretrained_load_decoder = mo.ui.checkbox(
+        value=_pretrained.load_decoder if _pretrained else False,
+        label="Load decoder from original pretrained",
+    )
+    model_freeze_encoder = mo.ui.checkbox(
+        value=defaults.model.freeze_encoder,
+        label="Freeze encoder",
+    )
+    mo.vstack(
+        [
+            mo.md("### Weights"),
+            model_original_pretrained_path,
+            model_original_pretrained_load_decoder,
+            model_init_weights,
+            model_freeze_encoder,
+        ]
+    )
+    return (
+        model_freeze_encoder,
+        model_init_weights,
+        model_original_pretrained_load_decoder,
+        model_original_pretrained_path,
+    )
+
+
+@app.cell(hide_code=True)
+def _(defaults):
     _batch_sizes = [8, 16, 32, 64, 128, 256, 512]
-    _rollout_sizes = [64, 128, 256]
     trainer_epochs = mo.ui.number(1, 100, value=defaults.trainer.epochs, step=1, label="Epochs")
     trainer_instances_per_epoch = mo.ui.number(
         0, 1500, value=defaults.trainer.instances_per_epoch, step=100, label="Instances per epoch"
@@ -236,17 +281,8 @@ def _(defaults):
     trainer_batch_size = mo.ui.dropdown(
         _batch_sizes, value=defaults.trainer.batch_size, label="Batch size"
     )
-    trainer_rollouts_per_instance = mo.ui.dropdown(
-        _rollout_sizes, value=defaults.trainer.rollouts_per_instance, label="Rollouts/instance"
-    )
-    trainer_num_initial_improvement_steps = mo.ui.slider(
-        0, 10, value=defaults.trainer.num_initial_improvement_steps, step=5, label="Initial steps"
-    )
     trainer_num_main_improvement_steps = mo.ui.slider(
         10, 200, value=defaults.trainer.num_main_improvement_steps, step=10, label="Main steps"
-    )
-    trainer_deconstruction_size = mo.ui.slider(
-        5, 25, step=5, value=defaults.trainer.deconstruction_size, label="Deconstruction size"
     )
     trainer_checkpoint_every_n_epochs = mo.ui.number(
         1,
@@ -261,68 +297,59 @@ def _(defaults):
             trainer_epochs,
             trainer_instances_per_epoch,
             trainer_batch_size,
-            trainer_rollouts_per_instance,
-            trainer_num_initial_improvement_steps,
             trainer_num_main_improvement_steps,
-            trainer_deconstruction_size,
             trainer_checkpoint_every_n_epochs,
         ]
     )
     return (
         trainer_batch_size,
         trainer_checkpoint_every_n_epochs,
-        trainer_deconstruction_size,
         trainer_epochs,
         trainer_instances_per_epoch,
-        trainer_num_initial_improvement_steps,
         trainer_num_main_improvement_steps,
-        trainer_rollouts_per_instance,
     )
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    trainer_init_weights = mo.ui.text(
-        value=defaults.trainer.init_weights or "",
-        label="Own checkpoint path (empty = none)",
+    _rollout_sizes = [64, 128, 256]
+    search_num_improvement_steps = mo.ui.slider(
+        0,
+        100,
+        value=defaults.search.num_improvement_steps,
+        step=5,
+        label="Initial steps",
     )
-    _pretrained = defaults.trainer.original_pretrained_weights
-    _pretrained_dir = Path("experiments/pretrained/nds")
-    _pretrained_options = {"(none)": ""}
-    for _pt in sorted(_pretrained_dir.glob("**/*.pt")):
-        _pretrained_options[f"{_pt.parent.name}/{_pt.name}"] = str(_pt)
-    _pretrained_default_path = _pretrained.path if _pretrained else ""
-    _pretrained_default_key = next(
-        (k for k, v in _pretrained_options.items() if v == _pretrained_default_path),
-        "(none)",
+    search_num_rollouts = mo.ui.dropdown(
+        _rollout_sizes, value=defaults.search.num_rollouts, label="Rollouts/instance"
     )
-    trainer_original_pretrained_path = mo.ui.dropdown(
-        options=_pretrained_options,
-        value=_pretrained_default_key,
-        label="Original pretrained checkpoint",
+    search_deconstruction_size = mo.ui.slider(
+        5, 25, step=5, value=defaults.search.deconstruction_size, label="Deconstruction size"
     )
-    trainer_original_pretrained_load_decoder = mo.ui.checkbox(
-        value=_pretrained.load_decoder if _pretrained else False,
-        label="Load decoder from original pretrained",
+    search_n_repairs = mo.ui.number(
+        1, 20, value=defaults.search.n_repairs, step=1, label="n_repairs"
     )
-    trainer_freeze_encoder = mo.ui.checkbox(
-        value=defaults.trainer.freeze_encoder,
-        label="Freeze encoder",
+    search_improvement_step_type = mo.ui.dropdown(
+        ["sequential", "parallel"],
+        value=defaults.search.improvement_step_type,
+        label="Improvement step type",
     )
     mo.vstack(
         [
-            mo.md("### Weights"),
-            trainer_original_pretrained_path,
-            trainer_original_pretrained_load_decoder,
-            trainer_init_weights,
-            trainer_freeze_encoder,
+            mo.md("### Search (training)"),
+            search_improvement_step_type,
+            search_num_improvement_steps,
+            search_num_rollouts,
+            search_deconstruction_size,
+            search_n_repairs,
         ]
     )
     return (
-        trainer_freeze_encoder,
-        trainer_init_weights,
-        trainer_original_pretrained_load_decoder,
-        trainer_original_pretrained_path,
+        search_deconstruction_size,
+        search_improvement_step_type,
+        search_n_repairs,
+        search_num_improvement_steps,
+        search_num_rollouts,
     )
 
 
@@ -350,12 +377,6 @@ def _(defaults):
         0, 5000, value=defaults.validation.num_instances, label="Num instances"
     )
     validation_batch_size = mo.ui.number(value=defaults.validation.batch_size, label="Batch size")
-    validation_num_improvement_steps = mo.ui.number(
-        1, 200, value=defaults.validation.num_improvement_steps, step=1, label="Improvement steps"
-    )
-    validation_rollouts_per_step = mo.ui.number(
-        value=defaults.validation.rollouts_per_step, label="Rollouts per improvement step"
-    )
     validation_every_n_epochs = mo.ui.number(
         1, 100, value=defaults.validation.every_n_epochs, step=1, label="Every N epochs"
     )
@@ -378,8 +399,6 @@ def _(defaults):
             mo.md("### Validation"),
             validation_num_instances,
             validation_batch_size,
-            validation_num_improvement_steps,
-            validation_rollouts_per_step,
             validation_every_n_epochs,
             validation_seed,
             validation_plot_enabled,
@@ -390,12 +409,60 @@ def _(defaults):
     return (
         validation_batch_size,
         validation_every_n_epochs,
-        validation_num_improvement_steps,
         validation_num_instances,
         validation_plot_enabled,
         validation_plot_every_n_improvement_steps,
         validation_plot_save_to_disk,
         validation_seed,
+    )
+
+
+@app.cell(hide_code=True)
+def _(defaults):
+    _search = defaults.validation.search
+    validation_search_num_improvement_steps = mo.ui.number(
+        1, 200, value=_search.num_improvement_steps, step=1, label="Improvement steps"
+    )
+    validation_search_num_rollouts = mo.ui.number(
+        value=_search.num_rollouts, label="Rollouts per improvement step"
+    )
+    validation_search_deconstruction_size = mo.ui.slider(
+        5, 25, step=5, value=_search.deconstruction_size, label="Deconstruction size"
+    )
+    validation_search_n_repairs = mo.ui.number(
+        1, 20, value=_search.n_repairs, step=1, label="n_repairs"
+    )
+    validation_search_improvement_step_type = mo.ui.dropdown(
+        ["sequential", "parallel"],
+        value=_search.improvement_step_type,
+        label="Improvement step type",
+    )
+    validation_search_temperature_start = mo.ui.number(
+        0.0, 10.0, value=_search.temperature_start, step=0.01, label="SA start temperature"
+    )
+    validation_search_temperature_min = mo.ui.number(
+        0.0, 10.0, value=_search.temperature_min, step=0.001, label="SA min temperature"
+    )
+    mo.vstack(
+        [
+            mo.md("### Search (validation)"),
+            validation_search_improvement_step_type,
+            validation_search_num_improvement_steps,
+            validation_search_num_rollouts,
+            validation_search_deconstruction_size,
+            validation_search_n_repairs,
+            validation_search_temperature_start,
+            validation_search_temperature_min,
+        ]
+    )
+    return (
+        validation_search_deconstruction_size,
+        validation_search_improvement_step_type,
+        validation_search_n_repairs,
+        validation_search_num_improvement_steps,
+        validation_search_num_rollouts,
+        validation_search_temperature_min,
+        validation_search_temperature_start,
     )
 
 
@@ -417,8 +484,12 @@ def _(
     is_script_mode,
     logging_wandb_project,
     model_ff_dim,
+    model_freeze_encoder,
     model_hidden_dim,
+    model_init_weights,
     model_num_heads,
+    model_original_pretrained_load_decoder,
+    model_original_pretrained_path,
     model_poly_dim,
     model_seed_dim,
     model_with_neighbours_encoding,
@@ -426,25 +497,29 @@ def _(
     problem_name,
     problem_size,
     run_button,
+    search_deconstruction_size,
+    search_improvement_step_type,
+    search_n_repairs,
+    search_num_improvement_steps,
+    search_num_rollouts,
     trainer_batch_size,
     trainer_checkpoint_every_n_epochs,
-    trainer_deconstruction_size,
     trainer_epochs,
-    trainer_freeze_encoder,
-    trainer_init_weights,
     trainer_instances_per_epoch,
-    trainer_num_initial_improvement_steps,
     trainer_num_main_improvement_steps,
-    trainer_original_pretrained_load_decoder,
-    trainer_original_pretrained_path,
-    trainer_rollouts_per_instance,
     validation_batch_size,
     validation_every_n_epochs,
-    validation_num_improvement_steps,
     validation_num_instances,
     validation_plot_enabled,
     validation_plot_every_n_improvement_steps,
     validation_plot_save_to_disk,
+    validation_search_deconstruction_size,
+    validation_search_improvement_step_type,
+    validation_search_n_repairs,
+    validation_search_num_improvement_steps,
+    validation_search_num_rollouts,
+    validation_search_temperature_min,
+    validation_search_temperature_start,
     validation_seed,
     yaml_data,
 ):
@@ -454,6 +529,7 @@ def _(
         OptimizerParams,
         OriginalPretrainedConfig,
         ProblemParams,
+        SearchParams,
         TrainerParams,
         ValidationConfig,
     )
@@ -489,12 +565,12 @@ def _(
             case "proximity":
                 _decoder_config = _ProximityDecoderConfig(sigma=decoder_sigma_widget.value)
 
-        _init_weights = trainer_init_weights.value.strip() or None
-        _pretrained_path = trainer_original_pretrained_path.value
+        _init_weights = model_init_weights.value.strip() or None
+        _pretrained_path = model_original_pretrained_path.value
         _original_pretrained = (
             OriginalPretrainedConfig(
                 path=_pretrained_path,
-                load_decoder=trainer_original_pretrained_load_decoder.value,
+                load_decoder=model_original_pretrained_load_decoder.value,
             )
             if _pretrained_path
             else None
@@ -513,6 +589,9 @@ def _(
                 seed_dim=model_seed_dim.value,
                 with_neighbours_encoding=model_with_neighbours_encoding.value,
                 decoder=_decoder_config,
+                init_weights=_init_weights,
+                original_pretrained_weights=_original_pretrained,
+                freeze_encoder=model_freeze_encoder.value,
             ),
             optimizer=OptimizerParams(
                 learning_rate=optimizer_learning_rate.value,
@@ -521,14 +600,15 @@ def _(
                 epochs=trainer_epochs.value,
                 instances_per_epoch=trainer_instances_per_epoch.value,
                 batch_size=trainer_batch_size.value,
-                rollouts_per_instance=trainer_rollouts_per_instance.value,
-                num_initial_improvement_steps=trainer_num_initial_improvement_steps.value,
                 num_main_improvement_steps=trainer_num_main_improvement_steps.value,
-                deconstruction_size=trainer_deconstruction_size.value,
                 checkpoint_every_n_epochs=trainer_checkpoint_every_n_epochs.value,
-                init_weights=_init_weights,
-                original_pretrained_weights=_original_pretrained,
-                freeze_encoder=trainer_freeze_encoder.value,
+            ),
+            search=SearchParams(
+                num_improvement_steps=search_num_improvement_steps.value,
+                num_rollouts=search_num_rollouts.value,
+                deconstruction_size=search_deconstruction_size.value,
+                n_repairs=search_n_repairs.value,
+                improvement_step_type=search_improvement_step_type.value,
             ),
             logging=LoggingConfig(
                 wandb_project=logging_wandb_project.value,
@@ -536,12 +616,20 @@ def _(
             validation=ValidationConfig(
                 num_instances=validation_num_instances.value,
                 batch_size=validation_batch_size.value,
-                num_improvement_steps=validation_num_improvement_steps.value,
                 every_n_epochs=validation_every_n_epochs.value,
                 seed=validation_seed.value,
                 plot_enabled=validation_plot_enabled.value,
                 plot_every_n_improvement_steps=validation_plot_every_n_improvement_steps.value,
                 plot_save_to_disk=validation_plot_save_to_disk.value,
+                search=SearchParams(
+                    num_improvement_steps=validation_search_num_improvement_steps.value,
+                    num_rollouts=validation_search_num_rollouts.value,
+                    deconstruction_size=validation_search_deconstruction_size.value,
+                    n_repairs=validation_search_n_repairs.value,
+                    improvement_step_type=validation_search_improvement_step_type.value,
+                    temperature_start=validation_search_temperature_start.value,
+                    temperature_min=validation_search_temperature_min.value,
+                ),
             ),
         )
     return (config,)
@@ -557,22 +645,12 @@ def _():
 
 @app.cell
 def _(config):
-    from core.problems.cvrp import CVRPConfig, CVRPSampler
-    from core.problems.tsp import TSPConfig, TSPSampler
+    from core.problems.setup import make_sampler
 
-    match config.problem.name:
-        case "cvrp":
-            sampler = CVRPSampler(CVRPConfig.for_n(config.problem.size))
-            val_sampler = CVRPSampler(
-                CVRPConfig.for_n(config.problem.size), seed=config.validation.seed
-            )
-        case "tsp":
-            sampler = TSPSampler(TSPConfig(num_locations=config.problem.size))
-            val_sampler = TSPSampler(
-                TSPConfig(num_locations=config.problem.size), seed=config.validation.seed
-            )
-        case _:
-            raise ValueError(f"Unsupported problem name: {config.problem.name}")
+    sampler = make_sampler(config.problem.name, config.problem.size)
+    val_sampler = make_sampler(
+        config.problem.name, config.problem.size, seed=config.validation.seed
+    )
     return sampler, val_sampler
 
 
@@ -596,26 +674,26 @@ def _(config, device):
 
     model = build_model(config)
 
-    if config.trainer.original_pretrained_weights:
+    if config.model.original_pretrained_weights:
         from core.models.nds.pretrained import (
             load_original_pretrained_decoder_weights,
             load_original_pretrained_encoder_weights,
         )
 
-        _pretrained = config.trainer.original_pretrained_weights
+        _pretrained = config.model.original_pretrained_weights
         load_original_pretrained_encoder_weights(model.encoder, _pretrained.path)
         print(f"Loaded pretrained encoder weights from {_pretrained.path}")
         if _pretrained.load_decoder:
             load_original_pretrained_decoder_weights(model.decoder, _pretrained.path)
             print(f"Loaded pretrained decoder weights from {_pretrained.path}")
 
-    elif config.trainer.init_weights:
+    elif config.model.init_weights:
         from core.models.utils import load_checkpoint
 
-        load_checkpoint(config.trainer.init_weights, model)
-        print(f"Initiated model with weights from {config.trainer.init_weights}")
+        load_checkpoint(config.model.init_weights, model)
+        print(f"Initiated model with weights from {config.model.init_weights}")
 
-    if config.trainer.freeze_encoder:
+    if config.model.freeze_encoder:
         model.encoder.requires_grad_(False)
         print("Frozen encoder weights")
 
@@ -645,16 +723,7 @@ def _(
     if not is_script_mode:
         mo.stop(not run_button.value)
 
-    from core.lns.operators.repair import NoopRepair
-    from core.lns.operators.repair.greedy_reconnect import (
-        CVRPGreedyReconnectRepair,
-        TSPGreedyReconnectRepair,
-    )
-    from core.models.nds.functions import (
-        only_expanding_apply_rollout,
-    )
-    from core.problems.cvrp.solve import one_customer_per_route_graph
-    from core.problems.tsp.solve import random_permutation_graph
+    from core.problems.setup import get_functions_by_problem
 
     def find_latest_checkpoint(run_dir: Path):
         checkpoints = sorted((run_dir / "checkpoints").glob("epoch_*.pt"))
@@ -695,19 +764,9 @@ def _(
             _wandb_id_path.write_text(wandb.run.id)
         wandb.define_metric("val/*", step_metric="epoch")
 
-    match config.problem.name:
-        case "cvrp":
-            generate_start_solution = one_customer_per_route_graph
-            repair_fn = CVRPGreedyReconnectRepair()
-        case "tsp":
-            generate_start_solution = random_permutation_graph
-            repair_fn = TSPGreedyReconnectRepair()
-
-    if noop_apply_repair_checkbox.value:
-        apply_rollout_fn = only_expanding_apply_rollout
-        repair_fn = NoopRepair()
-    else:
-        apply_rollout_fn = None
+    generate_start_solution, repair_fn, apply_rollout_fn = get_functions_by_problem(
+        config.problem.name, noop=noop_apply_repair_checkbox.value
+    )
     return (
         apply_rollout_fn,
         find_latest_checkpoint,
@@ -766,7 +825,7 @@ def _(
 
     _epoch_total = config.trainer.epochs
     _step_total = config.trainer.num_main_improvement_steps
-    _val_step_total = config.validation.num_improvement_steps
+    _val_step_total = config.validation.search.num_improvement_steps
 
     def _bar_html(label: str, current: int, total: int, subtitle: str = "") -> str:
         pct = current / total * 100 if total > 0 else 0
@@ -841,12 +900,32 @@ def _(
         _progress["show_val_step"] = True
         _refresh()
 
+    from core.models.nds.improvement_step import (
+        ModelParallelImprovementStep,
+        ModelSequentialImprovementStep,
+    )
+
+    _step_cls = (
+        ModelSequentialImprovementStep
+        if config.search.improvement_step_type == "sequential"
+        else ModelParallelImprovementStep
+    )
+    initial_improvement_step = _step_cls(
+        model=model,
+        apply_rollout_fn=apply_rollout_fn,
+        repair=repair_fn,
+        num_rollouts=config.search.num_rollouts,
+        deconstruction_size=config.search.deconstruction_size,
+        n_repairs=config.search.n_repairs,
+    )
+
     nds_module = NDSModule(
         config=config,
         model=model,
         generate_start_solution=generate_start_solution,
         apply_rollout=apply_rollout_fn,
         repair=repair_fn,
+        improvement_step=initial_improvement_step,
         on_improvement_step=on_improvement_step,
         on_validation_improvement_step=on_validation_improvement_step,
     )

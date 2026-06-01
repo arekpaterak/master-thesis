@@ -335,6 +335,7 @@ def _(CVRPConfig, CVRPSampler, DEVICE, model, one_customer_per_route):
         generate_start_solution=one_customer_per_route,
         apply_rollout=only_expanding_apply_rollout,
         repair=NoopRepair(),
+        improvement_step=None,
     )
     optimizer = optim.Adam(nds_module.parameters(), lr=1e-4)
 
