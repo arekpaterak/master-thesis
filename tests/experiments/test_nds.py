@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core.models.nds.config import (
+from core.models.nds.config.common import SearchParams
+from core.models.nds.config.train import (
     LoggingConfig,
     ProblemParams,
-    SearchParams,
     TrainConfig,
     TrainerParams,
 )

@@ -1,7 +1,8 @@
 import torch
 
 from core.lns.operators.repair import NoopRepair
-from core.models.nds.config import SearchParams, TrainConfig, TrainerParams
+from core.models.nds.config.common import SearchParams
+from core.models.nds.config.train import TrainConfig, TrainerParams
 from core.models.nds.functions import only_expanding_apply_rollout
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.nds.module import NDSModule
@@ -21,7 +22,7 @@ def test_train():
                 num_main_improvement_steps=3,
             ),
             search=SearchParams(
-                num_improvement_steps=10,
+                num_improvement_steps=0,
                 num_rollouts=R,
                 deconstruction_size=15,
             ),
@@ -30,7 +31,6 @@ def test_train():
         generate_start_solution=one_customer_per_route,
         apply_rollout=only_expanding_apply_rollout,
         repair=NoopRepair(),
-        improvement_step=None,
     )
     optimizer = torch.optim.AdamW(nds_module.parameters())
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from .config import (
+from core.models.nds.config.train import (
     TrainConfig,
 )
+
 from .decoders.config import (
     AutoregressiveDecoderConfig,
     ProximityDecoderConfig,

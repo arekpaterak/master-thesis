@@ -97,7 +97,8 @@ class Trainer[BatchSummaryT]:
                     if self.on_batch_train_end:
                         self.on_batch_train_end(batch_summary)
 
-                epoch_train_summary = train_accumulator.finalize(epoch=epoch)
+                epoch_train_summary = train_accumulator.complete(epoch=epoch)
+
                 module.on_epoch_train_end(epoch_train_summary)
                 for callback in self.on_epoch_train_end:
                     callback(epoch_train_summary)
@@ -113,7 +114,8 @@ class Trainer[BatchSummaryT]:
                     val_accumulator.update(batch_validation_summary)
                     if self.on_batch_validation_end:
                         self.on_batch_validation_end(batch_validation_summary)
-                epoch_validation_summary = val_accumulator.finalize(epoch=epoch)
+                epoch_validation_summary = val_accumulator.complete(epoch=epoch)
+
                 module.on_epoch_validation_end(epoch_validation_summary)
                 for callback in self.on_epoch_validation_end:
                     callback(epoch_validation_summary)

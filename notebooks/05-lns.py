@@ -257,7 +257,6 @@ def _(mo):
 
 @app.cell
 def _(
-    DestroyRepairImprovementStep,
     GreedyAcceptance,
     destroy_op,
     initial,
@@ -267,7 +266,9 @@ def _(
     search,
     torch,
 ):
-    _step = DestroyRepairImprovementStep(
+    from core.lns.improvement_step import SequentialImprovementStep
+
+    _step = SequentialImprovementStep(
         destroy=destroy_op,
         repair=repair_op,
         num_rollouts=rollout_widget.value,

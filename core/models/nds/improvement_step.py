@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 
 import torch
 
@@ -16,6 +17,18 @@ from .models import NDSModel
 
 ApplyRollout = Callable[[BaseSolution, Rollout], BaseSolution]
 
+ImprovementStepType = Literal["sequential", "parallel"]
+
+
+def resolve_improvement_step(
+    improvement_step_type: ImprovementStepType,
+) -> type[ModelSequentialImprovementStep] | type[ModelParallelImprovementStep]:
+    if improvement_step_type == "sequential":
+        return ModelSequentialImprovementStep
+    if improvement_step_type == "parallel":
+        return ModelParallelImprovementStep
+    raise ValueError(f"Unknown improvement_step_type: {improvement_step_type!r}")
+
 
 class ModelSequentialImprovementStep(ImprovementStep):
     def __init__(
@@ -26,12 +39,9 @@ class ModelSequentialImprovementStep(ImprovementStep):
         num_rollouts: int,
         deconstruction_size: int,
         n_repairs: int,
-        apply_rollout_fn: ApplyRollout | None = None,
     ) -> None:
         self._model = model
-        self._apply_rollout_fn = (
-            default_apply_rollout if apply_rollout_fn is None else apply_rollout_fn
-        )
+        self._apply_rollout_fn = default_apply_rollout
         self._repair = repair
         self._num_rollouts = num_rollouts
         self._deconstruction_size = deconstruction_size
@@ -75,12 +85,9 @@ class ModelParallelImprovementStep(ImprovementStep):
         num_rollouts: int,
         deconstruction_size: int,
         n_repairs: int,
-        apply_rollout_fn: ApplyRollout | None = None,
     ) -> None:
         self._model = model
-        self._apply_rollout_fn = (
-            default_apply_rollout if apply_rollout_fn is None else apply_rollout_fn
-        )
+        self._apply_rollout_fn = default_apply_rollout
         self._repair = repair
         self._num_rollouts = num_rollouts
         self._deconstruction_size = deconstruction_size

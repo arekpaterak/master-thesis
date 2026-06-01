@@ -57,7 +57,7 @@ class EpochTrainAccumulator:
         self._total_grad_norm += summary.grad_norm * n
         self._total_log_p += summary.log_p * n
 
-    def finalize(self, *, epoch: int) -> EpochSummary:
+    def complete(self, *, epoch: int) -> EpochSummary:
         n = self._total_instances
         return EpochSummary(
             epoch=epoch,

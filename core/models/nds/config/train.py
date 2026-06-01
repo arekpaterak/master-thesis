@@ -3,10 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from typing import Literal
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
+from core.models.nds.config.common import ProblemParams, SearchParams
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 
 
@@ -15,13 +15,6 @@ class OriginalPretrainedConfig(BaseModel):
 
     path: str = Field(description="Path to the pretrained checkpoint file.")
     load_decoder: bool = Field(default=False, description="Also load decoder weights.")
-
-
-class ProblemParams(BaseModel):
-    """Configuration for the optimisation problem."""
-
-    name: str = Field(default="cvrp", description="Problem to solve.")
-    size: int = Field(default=20, description="Number of customers.")
 
 
 class ModelParams(BaseModel):
@@ -61,33 +54,6 @@ class OptimizerParams(BaseModel):
 
     learning_rate: float = Field(default=1e-4, description="Learning rate.")
     weight_decay: float = Field(default=1e-6, description="Weight decay.")
-
-
-class SearchParams(BaseModel):
-    """Configuration for an LNS-style search (destroy / repair / accept loop).
-
-    The same shape is reused for both training's initial improvement phase
-    (under ``TrainConfig.search``) and validation (under
-    ``ValidationConfig.search``). ``temperature_start`` / ``temperature_min``
-    only apply when the surrounding loop uses simulated-annealing
-    acceptance; the training initial phase uses greedy acceptance and
-    ignores them.
-    """
-
-    num_improvement_steps: int = Field(default=10, description="Number of search iterations.")
-    num_rollouts: int = Field(default=128, description="Rollouts per step.")
-    deconstruction_size: int = Field(default=15, description="Number of nodes removed per rollout.")
-    n_repairs: int = Field(default=1, description="Repair attempts per rollout; best is kept.")
-    improvement_step_type: Literal["sequential", "parallel"] = Field(
-        default="sequential",
-        description="Model-driven improvement step variant.",
-    )
-    temperature_start: float = Field(
-        default=0.1, description="SA initial temperature (unused for greedy acceptance)."
-    )
-    temperature_min: float = Field(
-        default=0.001, description="SA minimum temperature (unused for greedy acceptance)."
-    )
 
 
 class TrainerParams(BaseModel):
