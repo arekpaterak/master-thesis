@@ -9,13 +9,47 @@ with app.setup(hide_code=True):
     from pathlib import Path
 
     import marimo as mo
+    import matplotlib.pyplot as plt
     import torch
     import torch.nn
+    import torch.optim as optim
     import yaml
     from dotenv import load_dotenv
+    from rich.console import Console
+    from rich.table import Table
+    from wigglystuff import EnvConfig
 
     import wandb
-    from core.models.nds.config import TrainConfig
+    from core.lns.acceptance_criterion import GreedyAcceptanceConfig
+    from core.lns.config import SearchParams
+    from core.models.nds.config import (
+        LoggingConfig,
+        ModelParams,
+        OptimizerParams,
+        OriginalPretrainedConfig,
+        ProblemParams,
+        TrainConfig,
+        TrainerParams,
+        ValidationConfig,
+    )
+    from core.models.nds.decoders.config import (
+        AutoregressiveDecoderConfig,
+        ProximityDecoderConfig,
+        SimpleOnePassDecoderConfig,
+        SlotDecoderConfig,
+    )
+    from core.models.nds.evaluation import EpochValidationSummary, plot_lns_progress
+    from core.models.nds.factory import build_model
+    from core.models.nds.module import NDSModule
+    from core.models.nds.pretrained import (
+        load_original_pretrained_decoder_weights,
+        load_original_pretrained_encoder_weights,
+    )
+    from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
+    from core.models.trainer import Trainer
+    from core.models.utils import load_checkpoint
+    from core.problems.setup import make_sampler
+    from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
 
     load_dotenv(".env")
 
@@ -47,8 +81,6 @@ def _():
 
 @app.cell(hide_code=True)
 def _():
-    from wigglystuff import EnvConfig
-
     is_script_mode = mo.app_meta().mode == "script"
 
     env_config_widget = mo.ui.anywidget(
@@ -64,9 +96,6 @@ def _():
         _cli_args = mo.cli_args()
 
         if not _cli_args:
-            from rich.console import Console
-            from rich.table import Table
-
             _usage = Table(title="NDS Training — CLI Usage")
             _usage.add_column("Flag", style="cyan")
             _usage.add_column("Description")
@@ -182,13 +211,6 @@ def _(defaults):
 
 @app.cell(hide_code=True)
 def _(defaults):
-    from core.models.nds.decoders.config import (
-        AutoregressiveDecoderConfig as _AutoregressiveDecoderConfig,
-    )
-    from core.models.nds.decoders.config import (
-        ProximityDecoderConfig as _ProximityDecoderConfig,
-    )
-
     _default_decoder = defaults.model.decoder
 
     decoder_type_widget = mo.ui.dropdown(
@@ -198,7 +220,7 @@ def _(defaults):
     )
     decoder_use_hidden_widget = mo.ui.checkbox(
         value=_default_decoder.use_hidden_decoding_state
-        if isinstance(_default_decoder, _AutoregressiveDecoderConfig)
+        if isinstance(_default_decoder, AutoregressiveDecoderConfig)
         else True,
         label="Use hidden decoding state",
     )
@@ -206,7 +228,7 @@ def _(defaults):
         0.01,
         2.0,
         value=_default_decoder.sigma
-        if isinstance(_default_decoder, _ProximityDecoderConfig)
+        if isinstance(_default_decoder, ProximityDecoderConfig)
         else 0.1,
         step=0.01,
         label="Sigma",
@@ -437,12 +459,6 @@ def _(defaults):
         value=_search.improvement_step_type,
         label="Improvement step type",
     )
-    validation_search_temperature_start = mo.ui.number(
-        0.0, 10.0, value=_search.temperature_start, step=0.01, label="SA start temperature"
-    )
-    validation_search_temperature_min = mo.ui.number(
-        0.0, 10.0, value=_search.temperature_min, step=0.001, label="SA min temperature"
-    )
     mo.vstack(
         [
             mo.md("### Search (validation)"),
@@ -451,8 +467,6 @@ def _(defaults):
             validation_search_num_rollouts,
             validation_search_deconstruction_size,
             validation_search_n_repairs,
-            validation_search_temperature_start,
-            validation_search_temperature_min,
         ]
     )
     return (
@@ -461,17 +475,13 @@ def _(defaults):
         validation_search_n_repairs,
         validation_search_num_improvement_steps,
         validation_search_num_rollouts,
-        validation_search_temperature_min,
-        validation_search_temperature_start,
     )
 
 
 @app.cell(hide_code=True)
 def _(is_script_mode):
     run_button = mo.ui.run_button(label="Start Training")
-    noop_apply_repair_checkbox = mo.ui.checkbox(
-        value=False, label="Noop apply+repair (timing benchmark)"
-    )
+    noop_apply_repair_checkbox = mo.ui.checkbox(value=False, label="Noop apply+repair")
     mo.vstack([run_button, noop_apply_repair_checkbox]) if not is_script_mode else None
     return noop_apply_repair_checkbox, run_button
 
@@ -518,34 +528,9 @@ def _(
     validation_search_n_repairs,
     validation_search_num_improvement_steps,
     validation_search_num_rollouts,
-    validation_search_temperature_min,
-    validation_search_temperature_start,
     validation_seed,
     yaml_data,
 ):
-    from core.lns.config import SearchParams
-    from core.models.nds.config import (
-        LoggingConfig,
-        ModelParams,
-        OptimizerParams,
-        OriginalPretrainedConfig,
-        ProblemParams,
-        TrainerParams,
-        ValidationConfig,
-    )
-    from core.models.nds.decoders.config import (
-        AutoregressiveDecoderConfig as _AutoregressiveDecoderConfig,
-    )
-    from core.models.nds.decoders.config import (
-        ProximityDecoderConfig as _ProximityDecoderConfig,
-    )
-    from core.models.nds.decoders.config import (
-        SimpleOnePassDecoderConfig as _SimpleDecoderConfig,
-    )
-    from core.models.nds.decoders.config import (
-        SlotDecoderConfig as _SlotDecoderConfig,
-    )
-
     if is_script_mode:
         config = TrainConfig.model_validate(yaml_data)
     else:
@@ -555,15 +540,15 @@ def _(
         )
         match decoder_type_widget.value:
             case "ar":
-                _decoder_config = _AutoregressiveDecoderConfig(
+                _decoder_config = AutoregressiveDecoderConfig(
                     use_hidden_decoding_state=decoder_use_hidden_widget.value
                 )
             case "simple":
-                _decoder_config = _SimpleDecoderConfig()
+                _decoder_config = SimpleOnePassDecoderConfig()
             case "slot":
-                _decoder_config = _SlotDecoderConfig()
+                _decoder_config = SlotDecoderConfig()
             case "proximity":
-                _decoder_config = _ProximityDecoderConfig(sigma=decoder_sigma_widget.value)
+                _decoder_config = ProximityDecoderConfig(sigma=decoder_sigma_widget.value)
 
         _init_weights = model_init_weights.value.strip() or None
         _pretrained_path = model_original_pretrained_path.value
@@ -627,8 +612,7 @@ def _(
                     deconstruction_size=validation_search_deconstruction_size.value,
                     n_repairs=validation_search_n_repairs.value,
                     improvement_step_type=validation_search_improvement_step_type.value,
-                    temperature_start=validation_search_temperature_start.value,
-                    temperature_min=validation_search_temperature_min.value,
+                    acceptance=GreedyAcceptanceConfig(),
                 ),
             ),
         )
@@ -645,8 +629,6 @@ def _():
 
 @app.cell
 def _(config):
-    from core.problems.setup import make_sampler
-
     sampler = make_sampler(config.problem.name, config.problem.size)
     val_sampler = make_sampler(
         config.problem.name, config.problem.size, seed=config.validation.seed
@@ -664,8 +646,6 @@ def _():
 
 @app.cell
 def _(config, device):
-    from core.models.nds.factory import build_model
-
     if nds_model_holder:
         del nds_model_holder[0]
         nds_model_holder.clear()
@@ -675,11 +655,6 @@ def _(config, device):
     model = build_model(config)
 
     if config.model.original_pretrained_weights:
-        from core.models.nds.pretrained import (
-            load_original_pretrained_decoder_weights,
-            load_original_pretrained_encoder_weights,
-        )
-
         _pretrained = config.model.original_pretrained_weights
         load_original_pretrained_encoder_weights(model.encoder, _pretrained.path)
         print(f"Loaded pretrained encoder weights from {_pretrained.path}")
@@ -688,8 +663,6 @@ def _(config, device):
             print(f"Loaded pretrained decoder weights from {_pretrained.path}")
 
     elif config.model.init_weights:
-        from core.models.utils import load_checkpoint
-
         load_checkpoint(config.model.init_weights, model)
         print(f"Initiated model with weights from {config.model.init_weights}")
 
@@ -722,8 +695,6 @@ def _(
 ):
     if not is_script_mode:
         mo.stop(not run_button.value)
-
-    from core.problems.setup import get_functions_by_problem
 
     def find_latest_checkpoint(run_dir: Path):
         checkpoints = sorted((run_dir / "checkpoints").glob("epoch_*.pt"))
@@ -764,50 +735,27 @@ def _(
             _wandb_id_path.write_text(wandb.run.id)
         wandb.define_metric("val/*", step_metric="epoch")
 
-    generate_start_solution, repair_fn, apply_rollout_fn = get_functions_by_problem(
-        config.problem.name,
-        noop=noop_apply_repair_checkbox.value,
-        deconstruction_size=max(
-            config.search.deconstruction_size,
-            config.validation.search.deconstruction_size,
-        ),
-    )
+    repair_type = "noop" if noop_apply_repair_checkbox.value else "greedy_reconnect"
     return (
-        apply_rollout_fn,
         find_latest_checkpoint,
-        generate_start_solution,
         initial_epoch,
-        repair_fn,
+        repair_type,
         run_dir,
     )
 
 
 @app.cell(hide_code=True)
 def _(
-    apply_rollout_fn,
     config,
     find_latest_checkpoint,
-    generate_start_solution,
     initial_epoch,
     model,
-    plt,
-    repair_fn,
+    repair_type,
     resume_run_dir,
     run_dir,
     sampler,
     val_sampler,
 ):
-    import torch.optim as optim
-
-    from core.models.nds.evaluation import EpochValidationSummary, plot_lns_progress
-    from core.models.nds.module import NDSModule
-    from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
-    from core.models.trainer import Trainer
-    from core.results.wandb_artifacts import (
-        upload_final_checkpoint,
-        upload_validation_plots,
-    )
-
     _progress: dict = {
         "epoch": 0,
         "epoch_subtitle": "",
@@ -908,9 +856,7 @@ def _(
     nds_module = NDSModule(
         config=config,
         model=model,
-        generate_start_solution=generate_start_solution,
-        apply_rollout=apply_rollout_fn,
-        repair=repair_fn,
+        repair_type=repair_type,
         on_improvement_step=on_improvement_step,
         on_validation_improvement_step=on_validation_improvement_step,
     )

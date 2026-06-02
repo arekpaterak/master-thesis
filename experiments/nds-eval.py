@@ -31,7 +31,7 @@ with app.setup(hide_code=True):
     from core.methods.base import Method
     from core.models.nds.config import TrainConfig
     from core.models.nds.evaluation import configure_evaluation_step, plot_lns_progress
-    from core.problems.setup import get_functions_by_problem, make_sampler
+    from core.problems.setup import make_sampler, resolve_repair, resolve_start_solution
     from core.results.wandb_artifacts import upload_eval_plots, upload_eval_results
     from core.results.writer import write_eval_results
 
@@ -478,7 +478,10 @@ def _(
     test_sampler = make_sampler(
         eval_config.problem.name, eval_config.problem.size, seed=eval_config.test_seed
     )
-    generate_start, repair_fn, _ = get_functions_by_problem(eval_config.problem.name, noop=False)
+    generate_start = resolve_start_solution(eval_config.problem.name)
+    repair_fn = resolve_repair(
+        eval_config.problem.name, "greedy_reconnect", deconstruction_size=None
+    )
 
     _name_override = name_override_widget.value.strip() or None
 

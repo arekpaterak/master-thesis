@@ -16,27 +16,20 @@ from core.models.nds.evaluation import (
     configure_validation_step,
 )
 from core.models.nds.factory import NDSModel
-from core.models.nds.functions import apply_rollout as default_apply_rollout
+from core.models.nds.functions import (
+    apply_rollout as default_apply_rollout,
+)
+from core.models.nds.functions import (
+    only_expanding_apply_rollout,
+)
 from core.models.nds.improvement_step import resolve_improvement_step
 from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,
     configure_training_step,
 )
-from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
-from core.problems.solution import BaseSolution
-
-
-def _build_improvement_step(model: NDSModel, repair: RepairOperator, search: SearchParams):
-    step_cls = resolve_improvement_step(search.improvement_step_type)
-    return step_cls(
-        model=model,
-        repair=repair,
-        num_rollouts=search.num_rollouts,
-        deconstruction_size=search.deconstruction_size,
-        n_repairs=search.n_repairs,
-    )
+from core.problems.setup import RepairType, resolve_repair, resolve_start_solution
 
 
 class NDSModule(Module):
@@ -48,16 +41,26 @@ class NDSModule(Module):
         *,
         config: TrainConfig,
         model: NDSModel,
-        generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-        apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
-        repair: RepairOperator,
+        repair_type: RepairType = "greedy_reconnect",
         on_improvement_step: Callable[[int, float], None] | None = None,
         on_validation_improvement_step: Callable[[int, float], None] | None = None,
     ) -> None:
         self.model = model
-        apply_rollout_fn = default_apply_rollout if apply_rollout is None else apply_rollout
 
-        training_improvement_step = _build_improvement_step(model, repair, config.search)
+        generate_start_solution = resolve_start_solution(config.problem.name)
+        repair = resolve_repair(
+            config.problem.name,
+            repair_type,
+            deconstruction_size=max(
+                config.search.deconstruction_size,
+                config.validation.search.deconstruction_size,
+            ),
+        )
+        apply_rollout_fn = (
+            only_expanding_apply_rollout if repair_type == "noop" else default_apply_rollout
+        )
+
+        training_improvement_step = self._build_improvement_step(model, repair, config.search)
 
         self._training_step_fn = configure_training_step(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
@@ -71,17 +74,19 @@ class NDSModule(Module):
             on_improvement_step=on_improvement_step,
         )
 
-        validation_search = config.validation.search
-        validation_improvement_step = _build_improvement_step(model, repair, validation_search)
+        validation_improvement_step = self._build_improvement_step(
+            model, repair, config.validation.search
+        )
         validation_criterion = build_criterion(
-            validation_search.acceptance, n_steps=validation_search.num_improvement_steps
+            config.validation.search.acceptance,
+            n_steps=config.validation.search.num_improvement_steps,
         )
 
         self._validation_step_fn = configure_validation_step(
             generate_start_solution=generate_start_solution,
             improvement_step=validation_improvement_step,
             criterion=validation_criterion,
-            num_improvement_steps=validation_search.num_improvement_steps,
+            num_improvement_steps=config.validation.search.num_improvement_steps,
             capture_snapshots_every_n_improvement_steps=config.validation.plot_every_n_improvement_steps,
             on_improvement_step=on_validation_improvement_step,
         )
@@ -104,3 +109,14 @@ class NDSModule(Module):
         epoch: int,
     ) -> BatchValidationSummary:
         return self._validation_step_fn(self.model, instance, epoch)
+
+    @staticmethod
+    def _build_improvement_step(model: NDSModel, repair: RepairOperator, search: SearchParams):
+        step_cls = resolve_improvement_step(search.improvement_step_type)
+        return step_cls(
+            model=model,
+            repair=repair,
+            num_rollouts=search.num_rollouts,
+            deconstruction_size=search.deconstruction_size,
+            n_repairs=search.n_repairs,
+        )

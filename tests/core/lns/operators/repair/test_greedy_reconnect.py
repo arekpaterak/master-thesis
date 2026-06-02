@@ -2,10 +2,16 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair.greedy_reconnect import CVRPGreedyReconnectRepair
+from core.lns.operators.repair.greedy_reconnect import (
+    CVRPGreedyReconnectRepair,
+    TSPGreedyReconnectRepair,
+)
 from core.problems.cvrp import CVRPConfig, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.solve import one_customer_per_route_graph
+from core.problems.tsp import TSPConfig, TSPSampler
+from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.problems.tsp.solve import random_permutation
 
 
 @pytest.fixture(params=[5, 10])
@@ -133,3 +139,42 @@ class TestCVRPGreedyReconnectRepair:
         assert repaired.is_feasible.all()
         # Objective should match the original (no extra edges added)
         assert torch.allclose(repaired.objective(), cvrp_graph_solution.objective())
+
+
+def _make_deconstructed_cvrp(batch_size: int, num_nodes: int, destruction_size: int):
+    config = CVRPConfig.for_n(num_nodes)
+    instance = CVRPSampler(config, seed=42)(batch_size)
+    solution = one_customer_per_route_graph(instance)
+    destroy = RandomNodeDestroy[CVRPGraphSolution](destruction_size=destruction_size, seed=42)
+    return destroy(solution), CVRPGreedyReconnectRepair
+
+
+def _make_deconstructed_tsp(batch_size: int, num_nodes: int, destruction_size: int):
+    config = TSPConfig(num_locations=num_nodes)
+    instance = TSPSampler(config, seed=42)(batch_size)
+    torch.manual_seed(42)
+    sequence = random_permutation(instance).tour
+    solution = TSPGraphSolution.create_from_sequence(instance=instance, sequence=sequence)
+    destroy = RandomNodeDestroy[TSPGraphSolution](destruction_size=destruction_size, seed=42)
+    return destroy(solution), TSPGreedyReconnectRepair
+
+
+@pytest.mark.parametrize(
+    "problem, make_deconstructed",
+    [
+        ("cvrp", _make_deconstructed_cvrp),
+        ("tsp", _make_deconstructed_tsp),
+    ],
+)
+def test_repair_is_stochastic(problem: str, make_deconstructed) -> None:
+    """Repeated repair calls must produce different solutions so n_repairs > 1 is meaningful."""
+    deconstructed, repair_cls = make_deconstructed(batch_size=4, num_nodes=20, destruction_size=8)
+
+    first = repair_cls(seed=0)(deconstructed)
+    second = repair_cls(seed=1)(deconstructed)
+
+    assert first.is_complete.all() and second.is_complete.all()
+    assert not torch.equal(first.next_nodes, second.next_nodes), (
+        f"{problem} reconnect repair produced identical solutions across seeds; "
+        "n_repairs > 1 would be wasted work."
+    )

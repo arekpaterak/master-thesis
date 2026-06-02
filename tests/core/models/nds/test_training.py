@@ -1,14 +1,11 @@
 import torch
 
 from core.lns.config import SearchParams
-from core.lns.operators.repair import NoopRepair
 from core.models.nds.config import TrainConfig, TrainerParams
-from core.models.nds.functions import only_expanding_apply_rollout
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.nds.module import NDSModule
 from core.models.trainer import Trainer
 from core.problems.cvrp import CVRPConfig, CVRPSampler
-from core.problems.cvrp.solve import one_customer_per_route
 
 
 def test_train():
@@ -28,9 +25,7 @@ def test_train():
             ),
         ),
         model=model,
-        generate_start_solution=one_customer_per_route,
-        apply_rollout=only_expanding_apply_rollout,
-        repair=NoopRepair(),
+        repair_type="noop",
     )
     optimizer = torch.optim.AdamW(nds_module.parameters())
 

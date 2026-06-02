@@ -6,6 +6,7 @@ import math
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
+from core.lns.acceptance_criterion import GreedyAcceptanceConfig
 from core.lns.config import SearchParams
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 from core.problems.config import ProblemParams
@@ -87,7 +88,7 @@ class ValidationConfig(BaseModel):
     """Configuration for validation during training."""
 
     num_instances: int = Field(default=1000, description="Instances to evaluate.")
-    batch_size: int = Field(default=10, description="Batch size.")
+    batch_size: int = Field(default=20, description="Batch size.")
     every_n_epochs: int = Field(default=10, description="Run validation every N training epochs.")
     seed: int = Field(default=42, description="Fixed seed for reproducible validation instances.")
     plot_enabled: bool = Field(default=True, description="Plot LNS progress for one instance.")
@@ -97,7 +98,10 @@ class ValidationConfig(BaseModel):
     plot_save_to_disk: bool = Field(default=True, description="Save plots.")
     search: SearchParams = Field(
         default_factory=lambda: SearchParams(
-            num_improvement_steps=50, num_rollouts=100, n_repairs=5
+            num_improvement_steps=50,
+            num_rollouts=100,
+            n_repairs=1,
+            acceptance=GreedyAcceptanceConfig(),
         ),
     )
 
