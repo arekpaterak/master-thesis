@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 
 import torch.nn as nn
 import torch.optim as optim
@@ -42,8 +42,10 @@ class NDSModule(Module):
         config: TrainConfig,
         model: NDSModel,
         repair_type: RepairType = "greedy_reconnect",
-        on_improvement_step: Callable[[int, float], None] | None = None,
-        on_validation_improvement_step: Callable[[int, float], None] | None = None,
+        improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
+        validation_improvement_step_progress: Callable[
+            [Iterable[int]], Iterable[int]
+        ] = lambda it: it,
     ) -> None:
         self.model = model
 
@@ -72,7 +74,7 @@ class NDSModule(Module):
             apply_rollout=apply_rollout_fn,
             repair=repair,
             n_repairs=config.search.n_repairs,
-            on_improvement_step=on_improvement_step,
+            improvement_step_progress=improvement_step_progress,
         )
 
         validation_improvement_step = self._build_improvement_step(
@@ -89,7 +91,7 @@ class NDSModule(Module):
             criterion=validation_criterion,
             num_improvement_steps=config.validation.search.num_improvement_steps,
             capture_snapshots_every_n_improvement_steps=config.validation.plot_every_n_improvement_steps,
-            on_improvement_step=on_validation_improvement_step,
+            step_progress=validation_improvement_step_progress,
         )
 
     def parameters(self) -> Iterator[nn.Parameter]:

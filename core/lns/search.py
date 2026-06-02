@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import NamedTuple
 
 from core.problems.solution import BaseSolution
@@ -23,11 +23,12 @@ def search[S: BaseSolution](
     criterion: AcceptanceCriterion,
     n_iterations: int,
     on_step: Callable[[int, S], None] | None = None,
+    step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> SearchResult:
     criterion.reset()
     best = solution
     history: list[float] = []
-    for step in range(n_iterations):
+    for step in step_progress(range(n_iterations)):
         solution = improvement_step(solution, criterion)
         best = select_solution(solution.objective() < best.objective(), solution, best)
         history.append(solution.objective().mean().item())

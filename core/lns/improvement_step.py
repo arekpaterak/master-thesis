@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from lns.utils import best_repair
-
 from core.lns.acceptance_criterion import AcceptanceCriterion
 from core.lns.operators.destroy.base import DestroyOperator
 from core.lns.operators.repair.base import RepairOperator
-from core.lns.utils import select_solution
+from core.lns.utils import best_repair, select_solution
 from core.problems.solution import BaseSolution
 
 

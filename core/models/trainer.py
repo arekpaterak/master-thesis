@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
 import torch
@@ -27,6 +27,9 @@ class Trainer[BatchSummaryT]:
         on_epoch_validation_start: Callable[[int, int], None] | None = None,
         on_batch_validation_end: Callable | None = None,
         on_epoch_validation_end: Sequence[Callable] = (),
+        epoch_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
+        batch_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
+        validation_batch_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
     ) -> None:
         if (training_instances is None) == (training_batches_per_epoch is None):
             raise ValueError(
@@ -46,6 +49,9 @@ class Trainer[BatchSummaryT]:
         self.on_epoch_validation_start = on_epoch_validation_start
         self.on_batch_validation_end = on_batch_validation_end
         self.on_epoch_validation_end = on_epoch_validation_end
+        self.epoch_progress = epoch_progress
+        self.batch_progress = batch_progress
+        self.validation_batch_progress = validation_batch_progress
 
     def _epoch_batch_sizes(self) -> list[int]:
         if self.instances_per_epoch is not None:
@@ -80,13 +86,13 @@ class Trainer[BatchSummaryT]:
                 "validation_instances and validation_batch_size are required when validation_instance_sampler is provided."
             )
 
-        for epoch in range(self.initial_epoch, self.max_epochs):
+        for epoch in self.epoch_progress(range(self.initial_epoch, self.max_epochs)):
             train_batch_sizes = self._epoch_batch_sizes()
             if train_batch_sizes:
                 if self.on_epoch_train_start:
                     self.on_epoch_train_start(epoch)
                 train_accumulator = module.train_accumulator_cls()
-                for size in self._epoch_batch_sizes():
+                for size in self.batch_progress(train_batch_sizes):
                     instance = instance_sampler(size)
                     batch_summary = module.training_step(
                         optimizer=optimizer,
@@ -108,7 +114,7 @@ class Trainer[BatchSummaryT]:
                 if self.on_epoch_validation_start:
                     self.on_epoch_validation_start(epoch, len(val_batch_sizes))
                 val_accumulator = module.validation_accumulator_cls()
-                for size in val_batch_sizes:
+                for size in self.validation_batch_progress(val_batch_sizes):
                     validation_instance = validation_instance_sampler(size)
                     batch_validation_summary = module.validation_step(validation_instance, epoch)
                     val_accumulator.update(batch_validation_summary)

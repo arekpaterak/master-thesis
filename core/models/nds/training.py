@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 import torch
 import torch.optim as optim
@@ -112,7 +112,7 @@ def configure_training_step(
     repair: RepairOperator,
     n_repairs: int = 1,
     rollouts_per_solution: int = 1,
-    on_improvement_step: Callable[[int, float], None] | None = None,
+    improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> Callable[[NDSModel, optim.Optimizer, BaseProblemInstance], BatchTrainSummary]:
     _apply_rollout = default_apply_rollout if apply_rollout is None else apply_rollout
 
@@ -143,7 +143,7 @@ def configure_training_step(
         total_entropy_norm = 0.0
         total_log_p = 0.0
 
-        for step in range(num_main_improvement_steps):
+        for _step in improvement_step_progress(range(num_main_improvement_steps)):
             rollout = model.rollout(
                 solution,
                 rollouts_per_solution=rollouts_per_solution,
@@ -172,8 +172,6 @@ def configure_training_step(
             solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
             total_loss += loss.item()
-            if on_improvement_step is not None:
-                on_improvement_step(step, solution.objective().mean().item())
             total_reward += best_reward.mean().item()
             total_reward_baseline += reward_baseline.mean().item()
             total_entropy += rollout.mean_entropy

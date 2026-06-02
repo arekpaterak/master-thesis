@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 import torch
 from matplotlib import pyplot as plt
@@ -95,7 +95,7 @@ def configure_validation_step(
     criterion: AcceptanceCriterion,
     num_improvement_steps: int,
     capture_snapshots_every_n_improvement_steps: int | None = 1,
-    on_improvement_step: Callable[[int, float], None] | None = None,
+    step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
     snapshot_step_set = {0}
     if capture_snapshots_every_n_improvement_steps is not None:
@@ -128,8 +128,6 @@ def configure_validation_step(
             objective_curve: list[float] = [objective_initial]
 
             def on_step(step: int, solution: BaseSolution) -> None:
-                if on_improvement_step is not None:
-                    on_improvement_step(step, solution.objective().mean().item())
                 if step in snapshot_step_set:
                     snapshots.append(_unbatch_first(solution))
                     objective_curve.append(solution.objective().mean().item())
@@ -140,6 +138,7 @@ def configure_validation_step(
                 criterion=criterion,
                 n_iterations=num_improvement_steps,
                 on_step=on_step,
+                step_progress=step_progress,
             )
 
             objective_final = result.solution.objective().mean().item()
