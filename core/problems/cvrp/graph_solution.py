@@ -211,15 +211,16 @@ class CVRPGraphSolution(BaseSolution):
         return self._route_id[..., 1:]
 
     def demand_per_route(self) -> torch.Tensor:
-        """(..., max_route_id+1) float - total demand accumulated per route.
+        """(..., N+1) float - total demand accumulated per route.
 
-        Route IDs are head-node indices (sparse in 1..N), so the output tensor
-        is sized to max(route_id)+1. All customers always have a valid route_id >= 1.
+        Route IDs are head-node indices (sparse in 1..N). Sized statically to
+        N+1 to avoid a host sync on max(route_id); unused indices stay at 0.
+        All customers always have a valid route_id >= 1.
         """
         route_ids = self._route_id[..., 1:]  # (..., N), all >= 1
         demands = self._instance.demand[..., 1:]  # (..., N)
-        max_id = int(route_ids.max().item()) + 1
-        out = torch.zeros(*route_ids.shape[:-1], max_id, dtype=demands.dtype, device=demands.device)
+        N = self._instance.num_customers
+        out = torch.zeros(*route_ids.shape[:-1], N + 1, dtype=demands.dtype, device=demands.device)
         out.scatter_add_(-1, route_ids, demands)
         return out
 
@@ -310,35 +311,41 @@ class CVRPGraphSolution(BaseSolution):
             u: Tail node indices, shape (...,). 0 = depot, else must satisfy next[u] == -1.
             v: Head node indices, shape (...,). 0 = depot, else must satisfy prev[v] <= 0.
             mask: Optional (...,) bool. If provided, only batches where the mask is True
-                are updated; others keep their previous state. Used by repair to gate
-                writes for batches that already have no remaining work.
+                are updated; others keep their previous state.
         """
-        u_idx = u.unsqueeze(-1)
-        v_idx = v.unsqueeze(-1)
+        u_idx = u.unsqueeze(-1)  # (..., 1)
+        v_idx = v.unsqueeze(-1)  # (..., 1)
+        active = mask.unsqueeze(-1) if mask is not None else None  # (..., 1) or None
 
-        if mask is None:
-            self._next.scatter_(-1, u_idx, v_idx)
-            self._prev.scatter_(-1, v_idx, u_idx)
-        else:
-            m = mask.unsqueeze(-1)
-            old_next_u = self._next.gather(-1, u_idx)
-            old_prev_v = self._prev.gather(-1, v_idx)
-            self._next.scatter_(-1, u_idx, torch.where(m, v_idx, old_next_u))
-            self._prev.scatter_(-1, v_idx, torch.where(m, u_idx, old_prev_v))
+        # 1. Write the directed edge on both pointer tensors.
+        next_at_u = (
+            v_idx if active is None else torch.where(active, v_idx, self._next.gather(-1, u_idx))
+        )
+        prev_at_v = (
+            u_idx if active is None else torch.where(active, u_idx, self._prev.gather(-1, v_idx))
+        )
+        self._next.scatter_(-1, u_idx, next_at_u)
+        self._prev.scatter_(-1, v_idx, prev_at_v)
+
+        # 2. Depot is not on any route; restore its pointers in case u or v was the depot.
         self._next[..., 0] = self.UNASSIGNED
         self._prev[..., 0] = self.UNASSIGNED
 
-        # Route ID merge only applies to customer-to-customer edges; depot has no route_id.
-        both_customers = (u_idx > 0) & (v_idx > 0)  # (..., 1)
-        if mask is not None:
-            both_customers = both_customers & mask.unsqueeze(-1)
-        if both_customers.any():
-            u_route_id = self._route_id.gather(-1, u_idx)  # (..., 1)
-            v_route_id = self._route_id.gather(-1, v_idx)  # (..., 1)
-            merged = torch.minimum(u_route_id, v_route_id)
-            absorbed = torch.maximum(u_route_id, v_route_id)
-            new_route_id = torch.where(self._route_id == absorbed, merged, self._route_id)
-            self._route_id = torch.where(both_customers, new_route_id, self._route_id)
+        # 3. Customer-to-customer edges merge two routes: smaller head index wins.
+        #    The single `where` below already gates per batch element, so the body
+        #    is safe to run on every call -- no host sync needed.
+        is_merge = (u_idx > 0) & (v_idx > 0)
+        if active is not None:
+            is_merge = is_merge & active
+        u_route = self._route_id.gather(-1, u_idx)
+        v_route = self._route_id.gather(-1, v_idx)
+        winner = torch.minimum(u_route, v_route)
+        loser = torch.maximum(u_route, v_route)
+        self._route_id = torch.where(
+            is_merge & (self._route_id == loser),
+            winner,
+            self._route_id,
+        )
 
     def add_edge(self, u: torch.Tensor, v: torch.Tensor) -> CVRPGraphSolution:
         solution = self.clone()

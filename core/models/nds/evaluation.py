@@ -95,6 +95,8 @@ def configure_validation_step(
     criterion: AcceptanceCriterion,
     num_improvement_steps: int,
     capture_snapshots_every_n_improvement_steps: int | None = 1,
+    amp_enabled: bool = False,
+    amp_dtype: torch.dtype = torch.float16,
     step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
     snapshot_step_set = {0}
@@ -117,10 +119,14 @@ def configure_validation_step(
     ) -> BatchValidationSummary:
         model.eval()
 
-        instance = instance.to(next(model.parameters()).device)
+        device = next(model.parameters()).device
+        instance = instance.to(device)
         batch_size = instance.batch_size[0]
 
-        with torch.no_grad():
+        with (
+            torch.no_grad(),
+            torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled),
+        ):
             solution = generate_start_solution(instance)
             objective_initial = solution.objective().mean().item()
 

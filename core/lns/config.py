@@ -18,9 +18,9 @@ class SearchParams(BaseModel):
     num_improvement_steps: int = Field(default=10, description="Number of search iterations.")
     num_rollouts: int = Field(default=128, description="Rollouts per step.")
     deconstruction_size: int = Field(default=15, description="Number of nodes removed per rollout.")
-    n_repairs: int = Field(default=1, description="Repair attempts per rollout; best is kept.")
+    n_repairs: int = Field(default=5, description="Repair attempts per rollout; best is kept.")
     improvement_step_type: Literal["sequential", "parallel"] = Field(
-        default="sequential",
+        default="parallel",
         description="Improvement step variant.",
     )
     acceptance: AcceptanceCriterionConfig = Field(

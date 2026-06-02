@@ -58,12 +58,7 @@ class ModelSequentialImprovementStep(ImprovementStep):
         )
         current = solution
         for r in range(self._num_rollouts):
-            single_rollout = Rollout.create(
-                actions=rollout.actions[:, r, :],
-                log_prob=rollout.log_p[:, r],
-                entropy=rollout.entropy[:, r],
-                entropy_norm=rollout.entropy_norm[:, r],
-            )
+            single_rollout = rollout[:, r]
             deconstructed = self._apply_rollout_fn(current, single_rollout)
             candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)

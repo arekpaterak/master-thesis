@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
 
+import torch
 import torch.nn as nn
 import torch.optim as optim
 
@@ -49,6 +50,16 @@ class NDSModule(Module):
     ) -> None:
         self.model = model
 
+        amp_dtype = torch.float16 if config.amp.dtype == "float16" else torch.bfloat16
+        amp_enabled = config.amp.enabled
+        model_device = next(model.parameters()).device
+        # GradScaler is only needed for float16. bfloat16 has fp32-equivalent range.
+        self._scaler: torch.amp.GradScaler | None = (
+            torch.amp.GradScaler(device=model_device.type)
+            if amp_enabled and model_device.type == "cuda" and amp_dtype == torch.float16
+            else None
+        )
+
         generate_start_solution = resolve_start_solution(config.problem.name)
         repair = resolve_repair(
             config.problem.name,
@@ -74,6 +85,9 @@ class NDSModule(Module):
             apply_rollout=apply_rollout_fn,
             repair=repair,
             n_repairs=config.search.n_repairs,
+            amp_enabled=amp_enabled,
+            amp_dtype=amp_dtype,
+            scaler=self._scaler,
             improvement_step_progress=improvement_step_progress,
         )
 
@@ -91,6 +105,8 @@ class NDSModule(Module):
             criterion=validation_criterion,
             num_improvement_steps=config.validation.search.num_improvement_steps,
             capture_snapshots_every_n_improvement_steps=config.validation.plot_every_n_improvement_steps,
+            amp_enabled=amp_enabled,
+            amp_dtype=amp_dtype,
             step_progress=validation_improvement_step_progress,
         )
 

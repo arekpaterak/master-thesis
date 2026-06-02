@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from typing import Literal
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
@@ -63,7 +64,7 @@ class TrainerParams(BaseModel):
 
     epochs: int = Field(default=1, description="Number of training epochs.")
     instances_per_epoch: int = Field(default=1500, description="Instances per epoch.")
-    batch_size: int = Field(default=128, description="Training batch size.")
+    batch_size: int = Field(default=64, description="Training batch size.")
 
     @computed_field
     @property
@@ -100,9 +101,17 @@ class ValidationConfig(BaseModel):
         default_factory=lambda: SearchParams(
             num_improvement_steps=50,
             num_rollouts=100,
-            n_repairs=1,
             acceptance=GreedyAcceptanceConfig(),
         ),
+    )
+
+
+class AmpConfig(BaseModel):
+    """Configuration for automatic mixed precision (torch.autocast)."""
+
+    enabled: bool = Field(default=False, description="Enable torch.autocast for model forwards.")
+    dtype: Literal["float16", "bfloat16"] = Field(
+        default="float16", description="Autocast dtype. Use float16 on Turing GPUs (no bf16)."
     )
 
 
@@ -116,13 +125,14 @@ class TrainConfig(BaseModel):
     search: SearchParams = Field(
         default_factory=SearchParams,
     )
+    amp: AmpConfig = Field(default_factory=AmpConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
 
     @computed_field
     @property
     def run_name(self) -> str:
-        config_dict = self.model_dump(exclude={"logging", "validation", "run_name"})
+        config_dict = self.model_dump(exclude={"logging", "validation", "amp", "run_name"})
 
         config_json = json.dumps(config_dict, sort_keys=True)
         h = hashlib.md5(config_json.encode()).hexdigest()[:7]

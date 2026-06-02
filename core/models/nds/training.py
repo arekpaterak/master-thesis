@@ -112,6 +112,9 @@ def configure_training_step(
     repair: RepairOperator,
     n_repairs: int = 1,
     rollouts_per_solution: int = 1,
+    amp_enabled: bool = False,
+    amp_dtype: torch.dtype = torch.float16,
+    scaler: torch.amp.GradScaler | None = None,
     improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> Callable[[NDSModel, optim.Optimizer, BaseProblemInstance], BatchTrainSummary]:
     _apply_rollout = default_apply_rollout if apply_rollout is None else apply_rollout
@@ -128,7 +131,10 @@ def configure_training_step(
         solution = generate_start_solution(instance)
 
         model.eval()
-        with torch.no_grad():
+        with (
+            torch.no_grad(),
+            torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled),
+        ):
             for _ in range(num_initial_improvement_steps):
                 solution = improvement_step(solution, GreedyAcceptance())
 
@@ -144,30 +150,35 @@ def configure_training_step(
         total_log_p = 0.0
 
         for _step in improvement_step_progress(range(num_main_improvement_steps)):
-            rollout = model.rollout(
-                solution,
-                rollouts_per_solution=rollouts_per_solution,
-                deconstruction_size=deconstruction_size,
-                greedy=False,
-            )
+            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
+                rollout = model.rollout(
+                    solution,
+                    rollouts_per_solution=rollouts_per_solution,
+                    deconstruction_size=deconstruction_size,
+                    greedy=False,
+                )
 
-            solution_deconstructed = _apply_rollout(solution, rollout)
-            assert solution_deconstructed.batch_dims == 2
-            solution_prime = best_repair(repair, solution_deconstructed, n_repairs)
+                solution_deconstructed = _apply_rollout(solution, rollout)
+                assert solution_deconstructed.batch_dims == 2
+                solution_prime = best_repair(repair, solution_deconstructed, n_repairs)
 
-            step_objective_before = solution.objective()
-            objective_after = solution_prime.objective()
-            reward = torch.clamp(
-                step_objective_before.unsqueeze(-1) - objective_after,
-                min=0.0,
-            )
-            reward_baseline = reward.mean(dim=1, keepdim=True)
-            best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
+                step_objective_before = solution.objective()
+                objective_after = solution_prime.objective()
+                reward = torch.clamp(
+                    step_objective_before.unsqueeze(-1) - objective_after,
+                    min=0.0,
+                )
+                reward_baseline = reward.mean(dim=1, keepdim=True)
+                best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
 
-            best_reward = reward.gather(1, best_rollout_idx)
-            best_log_p = rollout.log_p.gather(1, best_rollout_idx)
-            loss = -((best_reward - reward_baseline) * best_log_p).mean()
-            loss.backward()
+                best_reward = reward.gather(1, best_rollout_idx)
+                best_log_p = rollout.log_p.gather(1, best_rollout_idx)
+                loss = -((best_reward - reward_baseline) * best_log_p).mean()
+
+            if scaler is not None:
+                scaler.scale(loss).backward()
+            else:
+                loss.backward()
 
             solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
@@ -178,8 +189,14 @@ def configure_training_step(
             total_entropy_norm += rollout.mean_entropy_norm
             total_log_p += best_log_p.mean().item()
 
+        if scaler is not None:
+            scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+        if scaler is not None:
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            optimizer.step()
 
         objective_after = solution.objective().mean().item()
 

@@ -23,6 +23,7 @@ with app.setup(hide_code=True):
     from core.lns.acceptance_criterion import GreedyAcceptanceConfig
     from core.lns.config import SearchParams
     from core.models.nds.config import (
+        AmpConfig,
         LoggingConfig,
         ModelParams,
         OptimizerParams,
@@ -52,6 +53,8 @@ with app.setup(hide_code=True):
     from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
 
     load_dotenv(".env")
+
+    TRAIN_CONFIGS_DIR = Path(__file__).parent / "configs" / "train"
 
     nds_model_holder: list = []
 
@@ -156,7 +159,31 @@ def _():
 
 @app.cell(hide_code=True)
 def _():
-    defaults = TrainConfig()
+    presets = (
+        ["(defaults)"] + sorted(p.name for p in TRAIN_CONFIGS_DIR.glob("*.y*ml"))
+        if TRAIN_CONFIGS_DIR.exists()
+        else ["(defaults)"]
+    )
+    return (presets,)
+
+
+@app.cell(hide_code=True)
+def _(is_script_mode, presets):
+    if is_script_mode:
+        preset_dropdown = None
+    else:
+        preset_dropdown = mo.ui.dropdown(presets, value=presets[0], label="Training preset")
+    preset_dropdown
+    return (preset_dropdown,)
+
+
+@app.cell(hide_code=True)
+def _(is_script_mode, preset_dropdown):
+    if is_script_mode or preset_dropdown.value == "(defaults)":
+        defaults = TrainConfig()
+    else:
+        with open(TRAIN_CONFIGS_DIR / preset_dropdown.value) as _f:
+            defaults = TrainConfig.model_validate(yaml.safe_load(_f) or {})
     return (defaults,)
 
 
@@ -257,8 +284,8 @@ def _(defaults):
     _pretrained_dir = Path("experiments/pretrained/nds")
     _pretrained_options = {"(none)": ""}
     for _pt in sorted(_pretrained_dir.glob("**/*.pt")):
-        _pretrained_options[f"{_pt.parent.name}/{_pt.name}"] = str(_pt)
-    _pretrained_default_path = _pretrained.path if _pretrained else ""
+        _pretrained_options[f"{_pt.parent.name}/{_pt.name}"] = _pt.as_posix()
+    _pretrained_default_path = Path(_pretrained.path).as_posix() if _pretrained else ""
     _pretrained_default_key = next(
         (k for k, v in _pretrained_options.items() if v == _pretrained_default_path),
         "(none)",
@@ -386,6 +413,14 @@ def _(defaults):
 
 @app.cell(hide_code=True)
 def _(defaults):
+    amp_enabled = mo.ui.checkbox(value=defaults.amp.enabled, label="AMP enabled")
+    amp_dtype = mo.ui.dropdown(["float16", "bfloat16"], value=defaults.amp.dtype, label="AMP dtype")
+    mo.vstack([mo.md("### Mixed precision (AMP)"), amp_enabled, amp_dtype])
+    return amp_dtype, amp_enabled
+
+
+@app.cell(hide_code=True)
+def _(defaults):
     logging_wandb_project = mo.ui.text(
         value=defaults.logging.wandb_project, label="W&B project (empty to skip)"
     )
@@ -461,7 +496,7 @@ def _(defaults):
     )
     mo.vstack(
         [
-            mo.md("### Search (validation)"),
+            mo.md("### Validation: Search"),
             validation_search_improvement_step_type,
             validation_search_num_improvement_steps,
             validation_search_num_rollouts,
@@ -488,6 +523,8 @@ def _(is_script_mode):
 
 @app.cell(hide_code=True)
 def _(
+    amp_dtype,
+    amp_enabled,
     decoder_sigma_widget,
     decoder_type_widget,
     decoder_use_hidden_widget,
@@ -580,6 +617,10 @@ def _(
             ),
             optimizer=OptimizerParams(
                 learning_rate=optimizer_learning_rate.value,
+            ),
+            amp=AmpConfig(
+                enabled=amp_enabled.value,
+                dtype=amp_dtype.value,
             ),
             trainer=TrainerParams(
                 epochs=trainer_epochs.value,
