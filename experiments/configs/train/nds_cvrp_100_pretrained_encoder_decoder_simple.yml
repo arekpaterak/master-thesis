@@ -26,10 +26,10 @@ trainer:
   num_main_improvement_steps: 100
 
 search:
-  num_improvement_steps: 10
+  num_improvement_steps: 3
   num_rollouts: 128
   deconstruction_size: 15
-  improvement_step_type: parallel
+  improvement_step_type: sequential
 
 amp:
   enabled: true
@@ -39,17 +39,18 @@ logging:
   wandb_project: nds
 
 validation:
-  num_instances: 1000
-  batch_size: 20
+  num_instances: 100
+  batch_size: 50
   every_n_epochs: 1
   seed: 42
   plot_enabled: true
   plot_every_n_improvement_steps: 5
   plot_save_to_disk: true
   search:
-    num_improvement_steps: 50
+    num_improvement_steps: 5
     num_rollouts: 100
     deconstruction_size: 15
-    improvement_step_type: parallel
+    improvement_step_type: sequential
+    n_repairs: 5
     acceptance:
       type: greedy

@@ -27,3 +27,12 @@ class SearchParams(BaseModel):
         default_factory=SimulatedAnnealingAcceptanceConfig,
         description="Acceptance criterion (greedy or simulated annealing).",
     )
+    n_augmentations: int = Field(
+        default=1,
+        ge=1,
+        le=8,
+        description="Number of D4 augmentations per instance (1 = no augmentation).",
+    )
+    augmented_threshold_factor: float = Field(
+        default=15.0,
+    )

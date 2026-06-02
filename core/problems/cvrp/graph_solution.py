@@ -317,7 +317,7 @@ class CVRPGraphSolution(BaseSolution):
         v_idx = v.unsqueeze(-1)  # (..., 1)
         active = mask.unsqueeze(-1) if mask is not None else None  # (..., 1) or None
 
-        # 1. Write the directed edge on both pointer tensors.
+        # 1. Write the directed edge on both pointer tensors
         next_at_u = (
             v_idx if active is None else torch.where(active, v_idx, self._next.gather(-1, u_idx))
         )
@@ -327,13 +327,11 @@ class CVRPGraphSolution(BaseSolution):
         self._next.scatter_(-1, u_idx, next_at_u)
         self._prev.scatter_(-1, v_idx, prev_at_v)
 
-        # 2. Depot is not on any route; restore its pointers in case u or v was the depot.
+        # 2. Depot is not on any route; restore its pointers in case u or v was the depot
         self._next[..., 0] = self.UNASSIGNED
         self._prev[..., 0] = self.UNASSIGNED
 
-        # 3. Customer-to-customer edges merge two routes: smaller head index wins.
-        #    The single `where` below already gates per batch element, so the body
-        #    is safe to run on every call -- no host sync needed.
+        # 3. Customer-to-customer edges merge two routes: smaller head index wins
         is_merge = (u_idx > 0) & (v_idx > 0)
         if active is not None:
             is_merge = is_merge & active

@@ -66,6 +66,10 @@ class SimulatedAnnealingAcceptance(AcceptanceCriterion):
         decay = (temperature_min / temperature_start) ** (1 / n_steps)
         return cls(temperature=temperature_start, decay=decay)
 
+    @property
+    def temperature(self) -> float:
+        return self._temperature
+
     def reset(self) -> None:
         self._temperature = self._temperature_start
 

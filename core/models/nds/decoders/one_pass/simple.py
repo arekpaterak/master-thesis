@@ -12,7 +12,13 @@ from .utils import log_prob_of_sequence_without_replacement
 
 class SimpleOnePassDecoder(OnePassDestroyDecoder):
     def __init__(
-        self, *, hidden_dim: int, seed_dim: int, poly_dim: int, num_heads: int, C: float = 10.0
+        self,
+        *,
+        hidden_dim: int,
+        seed_dim: int,
+        poly_dim: int,
+        num_heads: int,
+        C: float = 10.0,
     ):
         super().__init__()
         self._seed_dim = seed_dim

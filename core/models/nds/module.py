@@ -104,6 +104,8 @@ class NDSModule(Module):
             improvement_step=validation_improvement_step,
             criterion=validation_criterion,
             num_improvement_steps=config.validation.search.num_improvement_steps,
+            n_augmentations=config.validation.search.n_augmentations,
+            augmented_threshold_factor=config.validation.search.augmented_threshold_factor,
             capture_snapshots_every_n_improvement_steps=config.validation.plot_every_n_improvement_steps,
             amp_enabled=amp_enabled,
             amp_dtype=amp_dtype,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 from matplotlib.axes import Axes
 
+from core.problems.augmentations import apply_d4_transforms
 from core.problems.instance import BaseProblemInstance
 
 
@@ -32,6 +33,14 @@ class TSPInstance(BaseProblemInstance):
 
     def distances(self) -> torch.Tensor:
         return torch.cdist(self.locations, self.locations)
+
+    def augment(self, n_augmentations: int) -> TSPInstance:
+        augmented_locations = apply_d4_transforms(self.locations, n_augmentations)
+        return TSPInstance(
+            locations=augmented_locations,
+            batch_size=(*self.batch_size, n_augmentations),
+            device=augmented_locations.device,
+        )
 
     def visualize(
         self,

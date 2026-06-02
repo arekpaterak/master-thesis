@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 from matplotlib.axes import Axes
 
+from core.problems.augmentations import apply_d4_transforms
 from core.problems.instance import BaseProblemInstance
 
 
@@ -71,6 +72,22 @@ class CVRPInstance(BaseProblemInstance):
     def distances(self) -> torch.Tensor:
         """(..., N+1, N+1) pairwise Euclidean distances between all nodes (depot + customers)."""
         return torch.cdist(self.locations, self.locations)
+
+    def augment(self, n_augmentations: int) -> CVRPInstance:
+        augmented_locations = apply_d4_transforms(self.locations, n_augmentations)
+        expanded_demand = self.demand.unsqueeze(-2).expand(
+            *self.batch_size, n_augmentations, self.demand.shape[-1]
+        )
+        expanded_capacity = self.capacity.unsqueeze(-2).expand(
+            *self.batch_size, n_augmentations, self.capacity.shape[-1]
+        )
+        return CVRPInstance(
+            locations=augmented_locations,
+            demand=expanded_demand.clone(),
+            capacity=expanded_capacity.clone(),
+            batch_size=(*self.batch_size, n_augmentations),
+            device=augmented_locations.device,
+        )
 
     @property
     def customer_features(self) -> torch.Tensor:

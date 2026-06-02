@@ -366,7 +366,7 @@ def _(defaults):
         0,
         100,
         value=defaults.search.num_improvement_steps,
-        step=5,
+        step=1,
         label="Initial steps",
     )
     search_num_rollouts = mo.ui.dropdown(
@@ -833,13 +833,6 @@ def _(
             )
 
     def on_epoch_validation_end(val_summary: EpochValidationSummary):
-        mo.output.append(
-            mo.md(
-                f"&nbsp;&nbsp;Val - Obj: {val_summary.objective_initial:.4f} -> "
-                f"{val_summary.objective_final:.4f} - "
-                f"Improvement: {val_summary.relative_improvement:.1%}"
-            )
-        )
         if config.logging.wandb_project:
             wandb.log(
                 {
