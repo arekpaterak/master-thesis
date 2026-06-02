@@ -201,7 +201,10 @@ class RouteEncodingLayer(nn.Module):
         route_index = route_index.reshape(B, N)
         customer_embeddings = node_embeddings[:, offset:]
 
-        max_routes = int(route_index.max().item()) + 1
+        # Static upper bound on route count: at most one route per customer.
+        # Sized to N+1 to cover both 0-indexed and 1-indexed (head-node) schemes
+        # without a host sync on max(route_index).
+        max_routes = N + 1
         idx = route_index.unsqueeze(-1).expand(B, N, hidden_dim)
         route_embeddings = torch.zeros(
             B, max_routes, hidden_dim, device=node_embeddings.device, dtype=node_embeddings.dtype

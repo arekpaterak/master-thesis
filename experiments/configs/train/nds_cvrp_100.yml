@@ -8,6 +8,12 @@ model:
   ff_dim: 512
   poly_dim: 256
   seed_dim: 10
+  decoder:
+    type: ar
+  original_pretrained_weights:
+    path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
+    load_decoder: true
+  freeze_encoder: true
 
 optimizer:
   learning_rate: 1.0e-4
@@ -15,15 +21,36 @@ optimizer:
 
 trainer:
   epochs: 10
-  batches_per_epoch: 500
+  instances_per_epoch: 1500
   batch_size: 64
-  num_main_improvement_steps: 2
+  num_main_improvement_steps: 100
 
 search:
-  num_improvement_steps: 0
+  num_improvement_steps: 10
   num_rollouts: 128
   deconstruction_size: 15
   improvement_step_type: sequential
 
+amp:
+  enabled: true
+  dtype: float16
+
 logging:
   wandb_project: nds
+
+validation:
+  num_instances: 100
+  batch_size: 50
+  every_n_epochs: 1
+  seed: 42
+  plot_enabled: true
+  plot_every_n_improvement_steps: 5
+  plot_save_to_disk: true
+  search:
+    num_improvement_steps: 5
+    num_rollouts: 100
+    deconstruction_size: 15
+    improvement_step_type: sequential
+    n_repairs: 5
+    acceptance:
+      type: greedy

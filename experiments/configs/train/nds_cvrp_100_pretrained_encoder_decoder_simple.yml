@@ -26,7 +26,7 @@ trainer:
   num_main_improvement_steps: 100
 
 search:
-  num_improvement_steps: 3
+  num_improvement_steps: 10
   num_rollouts: 128
   deconstruction_size: 15
   improvement_step_type: sequential

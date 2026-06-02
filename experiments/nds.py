@@ -24,6 +24,7 @@ with app.setup(hide_code=True):
     from core.lns.config import SearchParams
     from core.models.nds.config import (
         AmpConfig,
+        CompileConfig,
         LoggingConfig,
         ModelParams,
         OptimizerParams,
@@ -98,7 +99,7 @@ def _():
     if is_script_mode:
         _cli_args = mo.cli_args()
 
-        if not _cli_args:
+        if not _cli_args or "help" in _cli_args or "h" in _cli_args:
             _usage = Table(title="NDS Training — CLI Usage")
             _usage.add_column("Flag", style="cyan")
             _usage.add_column("Description")
@@ -421,6 +422,18 @@ def _(defaults):
 
 @app.cell(hide_code=True)
 def _(defaults):
+    compile_enabled = mo.ui.checkbox(value=defaults.compile.enabled, label="Compile enabled")
+    compile_mode = mo.ui.dropdown(
+        ["default", "reduce-overhead", "max-autotune"],
+        value=defaults.compile.mode,
+        label="Compile mode",
+    )
+    mo.vstack([mo.md("### torch.compile"), compile_enabled, compile_mode])
+    return compile_enabled, compile_mode
+
+
+@app.cell(hide_code=True)
+def _(defaults):
     logging_wandb_project = mo.ui.text(
         value=defaults.logging.wandb_project, label="W&B project (empty to skip)"
     )
@@ -525,6 +538,8 @@ def _(is_script_mode):
 def _(
     amp_dtype,
     amp_enabled,
+    compile_enabled,
+    compile_mode,
     decoder_sigma_widget,
     decoder_type_widget,
     decoder_use_hidden_widget,
@@ -621,6 +636,10 @@ def _(
             amp=AmpConfig(
                 enabled=amp_enabled.value,
                 dtype=amp_dtype.value,
+            ),
+            compile=CompileConfig(
+                enabled=compile_enabled.value,
+                mode=compile_mode.value,
             ),
             trainer=TrainerParams(
                 epochs=trainer_epochs.value,
@@ -883,6 +902,7 @@ def _(
             epoch_progress=epoch_progress,
             batch_progress=batch_progress,
             validation_batch_progress=val_batch_progress,
+            strict_number_of_instances=config.trainer.strict_number_of_instances,
         ).fit(
             module=nds_module,
             optimizer=optimizer,

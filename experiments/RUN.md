@@ -1,3 +1,3 @@
 ```bash
-marimo run experiments/nds.py --config experiments/configs/nds_cvrp_100.yml
+python experiments/nds.py --config experiments/configs/train/nds_cvrp_100.yml
 ```

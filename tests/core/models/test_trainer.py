@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from core.models.module import Module
-from core.models.trainer import Trainer
+from core.models.trainer import Trainer, _split_into_batches
 
 
 def test_trainer_runs_epochs_and_callbacks_in_order():
@@ -52,3 +54,48 @@ def test_trainer_runs_epochs_and_callbacks_in_order():
         "batch:instance-4",
         "batch:instance-4",
     ]
+
+
+@pytest.mark.parametrize(
+    "total, batch_size, expected",
+    [
+        (100, 10, [10] * 10),  # divides evenly
+        (100, 32, [32, 32, 32, 32]),  # rounds up: 128 total instances
+        (1500, 64, [64] * 24),  # ceil(1500/64) = 24 batches of 64 (1536 instances)
+        (5, 10, [10]),  # smaller than batch size still gets a full batch
+    ],
+)
+def test_split_into_batches_non_strict_rounds_up(total, batch_size, expected):
+    assert _split_into_batches(total=total, batch_size=batch_size, strict=False) == expected
+
+
+@pytest.mark.parametrize(
+    "total, batch_size, expected",
+    [
+        (100, 10, [10] * 10),  # divides evenly: no remainder
+        (100, 32, [32, 32, 32, 4]),  # 3 full + remainder
+        (1500, 64, [64] * 23 + [28]),  # 23 full + remainder
+        (5, 10, [5]),  # only a partial batch
+    ],
+)
+def test_split_into_batches_strict_keeps_exact_count(total, batch_size, expected):
+    assert _split_into_batches(total=total, batch_size=batch_size, strict=True) == expected
+
+
+def test_trainer_default_uses_stable_batch_sizes():
+    trainer = Trainer(
+        max_epochs=1,
+        training_instances=1500,
+        batch_size=64,
+    )
+    assert trainer._epoch_batch_sizes() == [64] * 24
+
+
+def test_trainer_strict_keeps_exact_instance_count():
+    trainer = Trainer(
+        max_epochs=1,
+        training_instances=1500,
+        batch_size=64,
+        strict_number_of_instances=True,
+    )
+    assert trainer._epoch_batch_sizes() == [64] * 23 + [28]

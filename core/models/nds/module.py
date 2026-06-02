@@ -24,6 +24,7 @@ from core.models.nds.functions import (
     only_expanding_apply_rollout,
 )
 from core.models.nds.improvement_step import resolve_improvement_step
+from core.models.nds.models.one_pass import OnePassNDSModel
 from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,
@@ -49,6 +50,12 @@ class NDSModule(Module):
         ] = lambda it: it,
     ) -> None:
         self.model = model
+
+        if config.compile.enabled:
+            compile_kwargs = dict(mode=config.compile.mode, fullgraph=config.compile.fullgraph)
+            self.model.encoder = torch.compile(self.model.encoder, **compile_kwargs)
+            if isinstance(self.model, OnePassNDSModel):
+                self.model.decoder = torch.compile(self.model.decoder, **compile_kwargs)
 
         amp_dtype = torch.float16 if config.amp.dtype == "float16" else torch.bfloat16
         amp_enabled = config.amp.enabled

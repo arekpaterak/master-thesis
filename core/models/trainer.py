@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
@@ -30,7 +31,20 @@ class Trainer[BatchSummaryT]:
         epoch_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
         batch_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
         validation_batch_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
+        strict_number_of_instances: bool = False,
     ) -> None:
+        """Initialise the trainer.
+
+        Args:
+            strict_number_of_instances: If True, training and validation process
+                exactly ``training_instances`` / ``validation_instances`` per
+                epoch (the final batch may be smaller than ``batch_size``). If
+                False (default), the trainer rounds the batch count up so every
+                batch is the same size, which means up to ``batch_size - 1``
+                extra instances may be processed each epoch. Stable batch sizes
+                are required for ``torch.compile(mode="reduce-overhead")`` and
+                avoid noisy final-batch metrics.
+        """
         if (training_instances is None) == (training_batches_per_epoch is None):
             raise ValueError(
                 "Exactly one of training_instances or training_batches_per_epoch must be provided."
@@ -52,11 +66,15 @@ class Trainer[BatchSummaryT]:
         self.epoch_progress = epoch_progress
         self.batch_progress = batch_progress
         self.validation_batch_progress = validation_batch_progress
+        self.strict_number_of_instances = strict_number_of_instances
 
     def _epoch_batch_sizes(self) -> list[int]:
         if self.instances_per_epoch is not None:
-            full, remainder = divmod(self.instances_per_epoch, self.batch_size)
-            return [self.batch_size] * full + ([remainder] if remainder else [])
+            return _split_into_batches(
+                total=self.instances_per_epoch,
+                batch_size=self.batch_size,
+                strict=self.strict_number_of_instances,
+            )
         if self.batches_per_epoch is not None:
             return [self.batch_size] * self.batches_per_epoch
         return []
@@ -66,8 +84,11 @@ class Trainer[BatchSummaryT]:
             raise ValueError("Expected validation_instances to be provided.")
         if self.validation_batch_size is None:
             raise ValueError("Expected validation_batch_size to be provided.")
-        full, remainder = divmod(self.validation_instances, self.validation_batch_size)
-        return [self.validation_batch_size] * full + ([remainder] if remainder else [])
+        return _split_into_batches(
+            total=self.validation_instances,
+            batch_size=self.validation_batch_size,
+            strict=self.strict_number_of_instances,
+        )
 
     def fit(
         self,
@@ -125,3 +146,18 @@ class Trainer[BatchSummaryT]:
                 module.on_epoch_validation_end(epoch_validation_summary)
                 for callback in self.on_epoch_validation_end:
                     callback(epoch_validation_summary)
+
+
+def _split_into_batches(*, total: int, batch_size: int, strict: bool) -> list[int]:
+    """Split ``total`` instances into batches of size ``batch_size``.
+
+    With ``strict=True``, processes exactly ``total`` instances; the final batch
+    may be smaller. With ``strict=False`` (default), rounds up so every batch
+    has size ``batch_size`` and up to ``batch_size - 1`` extra instances are
+    processed.
+    """
+    if strict:
+        full, remainder = divmod(total, batch_size)
+        return [batch_size] * full + ([remainder] if remainder else [])
+    n_batches = math.ceil(total / batch_size)
+    return [batch_size] * n_batches

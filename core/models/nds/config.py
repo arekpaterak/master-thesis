@@ -77,6 +77,15 @@ class TrainerParams(BaseModel):
     checkpoint_every_n_epochs: int = Field(
         default=10, description="Save a checkpoint every N epochs (always saves the last epoch)."
     )
+    strict_number_of_instances: bool = Field(
+        default=False,
+        description=(
+            "If True, training/validation process exactly the configured "
+            "instance count (final batch may be smaller). If False (default), "
+            "the trainer rounds the batch count up so every batch has the same "
+            "size"
+        ),
+    )
 
 
 class LoggingConfig(BaseModel):
@@ -115,6 +124,27 @@ class AmpConfig(BaseModel):
     )
 
 
+class CompileConfig(BaseModel):
+    """Configuration for ``torch.compile`` wrapping of the model."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Wrap the encoder (and one-pass decoder, if applicable) with torch.compile.",
+    )
+    mode: Literal["default", "reduce-overhead", "max-autotune"] = Field(
+        default="default",
+        description=(
+            "torch.compile mode. 'default' fuses kernels (safe, modest gain). "
+            "'reduce-overhead' adds CUDA Graphs (bigger gain, requires fully "
+            "static shapes -- requires strict_number_of_instances=False)."
+        ),
+    )
+    fullgraph: bool = Field(
+        default=False,
+        description="If True, fail loudly on graph breaks instead of falling back to eager.",
+    )
+
+
 class TrainConfig(BaseModel):
     """Complete configuration for NDS model training."""
 
@@ -126,13 +156,16 @@ class TrainConfig(BaseModel):
         default_factory=SearchParams,
     )
     amp: AmpConfig = Field(default_factory=AmpConfig)
+    compile: CompileConfig = Field(default_factory=CompileConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
 
     @computed_field
     @property
     def run_name(self) -> str:
-        config_dict = self.model_dump(exclude={"logging", "validation", "amp", "run_name"})
+        config_dict = self.model_dump(
+            exclude={"logging", "validation", "amp", "compile", "run_name"}
+        )
 
         config_json = json.dumps(config_dict, sort_keys=True)
         h = hashlib.md5(config_json.encode()).hexdigest()[:7]
