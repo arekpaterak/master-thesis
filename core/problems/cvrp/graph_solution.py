@@ -297,23 +297,41 @@ class CVRPGraphSolution(BaseSolution):
         """
         return self.remove_customers(nodes)
 
-    def add_edge_(self, u: torch.Tensor, v: torch.Tensor) -> None:
+    def add_edge_(
+        self,
+        u: torch.Tensor,
+        v: torch.Tensor,
+        *,
+        mask: torch.Tensor | None = None,
+    ) -> None:
         """Adds directed edge u -> v and merges route IDs. In-place.
 
         Args:
             u: Tail node indices, shape (...,). 0 = depot, else must satisfy next[u] == -1.
             v: Head node indices, shape (...,). 0 = depot, else must satisfy prev[v] <= 0.
+            mask: Optional (...,) bool. If provided, only batches where the mask is True
+                are updated; others keep their previous state. Used by repair to gate
+                writes for batches that already have no remaining work.
         """
         u_idx = u.unsqueeze(-1)
         v_idx = v.unsqueeze(-1)
 
-        self._next.scatter_(-1, u_idx, v_idx)
-        self._prev.scatter_(-1, v_idx, u_idx)
+        if mask is None:
+            self._next.scatter_(-1, u_idx, v_idx)
+            self._prev.scatter_(-1, v_idx, u_idx)
+        else:
+            m = mask.unsqueeze(-1)
+            old_next_u = self._next.gather(-1, u_idx)
+            old_prev_v = self._prev.gather(-1, v_idx)
+            self._next.scatter_(-1, u_idx, torch.where(m, v_idx, old_next_u))
+            self._prev.scatter_(-1, v_idx, torch.where(m, u_idx, old_prev_v))
         self._next[..., 0] = self.UNASSIGNED
         self._prev[..., 0] = self.UNASSIGNED
 
         # Route ID merge only applies to customer-to-customer edges; depot has no route_id.
         both_customers = (u_idx > 0) & (v_idx > 0)  # (..., 1)
+        if mask is not None:
+            both_customers = both_customers & mask.unsqueeze(-1)
         if both_customers.any():
             u_route_id = self._route_id.gather(-1, u_idx)  # (..., 1)
             v_route_id = self._route_id.gather(-1, v_idx)  # (..., 1)

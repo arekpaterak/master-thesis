@@ -12,14 +12,16 @@ from core.problems.tsp.graph_solution import TSPGraphSolution
 class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
     """Greedy reconnection repair for CVRPGraphSolution.
 
-    In each step, it connects one chain tail (next == UNASSIGNED) to the nearest valid free head (prev == UNASSIGNED), respecting capacity.
-    If no feasible head exists, the tail is closed to the depot.
-    After the loop, any remaining free heads are connected to the depot, completing all routes.
+    Each iteration picks one route tail (a customer with ``next == UNASSIGNED``)
+    at random, then connects it to the nearest free head (``prev == UNASSIGNED``)
+    that lives in a different route and would not push the merged route over
+    capacity. If no such head exists, the tail is closed to the depot. After the
+    loop, any still-unassigned ``_prev`` entries are clamped to the depot.
 
     Pass ``deconstruction_size`` to use a static upper bound on the inner loop
-    and skip the host-device sync that would otherwise be needed to size it.
-    Removing M customers creates at most 2M tails (M removed nodes plus up to
-    M of their non-removed predecessors), so the bound is ``2 * M``.
+    and skip the host-device sync that would otherwise size it. Removing M
+    customers creates at most 2M tails (M removed nodes plus up to M of their
+    non-removed predecessors), so the bound is ``2 * M``.
     """
 
     def __init__(
@@ -28,81 +30,88 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
         seed: int | None = None,
         deconstruction_size: int | None = None,
     ) -> None:
-        self._generator = torch.Generator()
-        if seed is not None:
-            self._generator.manual_seed(seed)
+        self._seed = seed
         self._deconstruction_size = deconstruction_size
+        self._generator: torch.Generator | None = None
 
     def __call__(self, deconstructed_solution: CVRPGraphSolution) -> CVRPGraphSolution:
         solution = deconstructed_solution.clone()
         N = solution.instance.num_customers
-        if self._deconstruction_size is None:
-            num_tails = (solution._next[..., 1:] == solution.UNASSIGNED).sum(dim=-1)
-            E = int(num_tails.max().item())
-        else:
-            # Iterations past the true max are no-ops gated by `is_active`.
-            E = min(2 * self._deconstruction_size, N)
-
         device = solution.instance.locations.device
-        for _ in range(E):
-            is_active = (solution._next[..., 1:] == solution.UNASSIGNED).any(dim=-1)  # (...,)
+        generator = self._device_generator(device)
+        customer_distances = solution.instance.distances()[..., 1:, 1:]  # (..., N, N)
 
-            is_tail = solution._next[..., 1:] == solution.UNASSIGNED  # (..., N)
+        for _ in range(self._loop_bound(solution, N)):
+            is_tail_unassigned = solution._next[..., 1:] == solution.UNASSIGNED  # (..., N)
             is_free_head = solution._prev[..., 1:] == solution.UNASSIGNED  # (..., N)
+            is_active = is_tail_unassigned.any(dim=-1)  # (...,)
 
-            # Pick one tail per batch element.
-            # When inactive, argmax returns 0 giving tail_node = 1 - the dummy node used for the no-op below.
-            tail_node = self._select_tail(is_tail, is_active, device)  # (...,) in 1..N
+            tail_node = self._pick_tail(is_tail_unassigned, generator, device)
+            valid_head = self._valid_heads(solution, tail_node, is_free_head)
+            v_node = self._nearest_or_depot(tail_node, valid_head, customer_distances)
 
-            # Capacity feasibility per candidate head
-            route_demands = solution.demand_per_route()  # (..., max_id+1)
-            tail_route_ids = solution._route_id.gather(-1, tail_node.unsqueeze(-1)).squeeze(-1)
-            tail_route_demand = route_demands.gather(-1, tail_route_ids.unsqueeze(-1)).squeeze(-1)
-            head_route_ids = solution._route_id[..., 1:]  # (..., N)
-            head_route_demands = route_demands.gather(-1, head_route_ids)
-            capacity_ok = (
-                tail_route_demand.unsqueeze(-1) + head_route_demands
-            ) <= solution.instance.capacity
-
-            # Cycle prevention: cannot connect tail to a head in its own chain
-            same_chain = head_route_ids == tail_route_ids.unsqueeze(-1)  # (..., N)
-
-            valid_head = is_free_head & capacity_ok & ~same_chain  # (..., N)
-
-            # Greedy nearest valid head
-            locations = solution.instance.locations  # (..., N+1, 2)
-            tail_locs = locations.gather(
-                -2, tail_node.unsqueeze(-1).unsqueeze(-1).expand(*tail_node.shape, 1, 2)
-            ).squeeze(-2)  # (..., 2)
-            distances = (tail_locs.unsqueeze(-2) - locations[..., 1:, :]).pow(2).sum(-1).sqrt()
-            distances = distances.masked_fill(~valid_head, float("inf"))
-
-            has_valid_head = valid_head.any(-1)  # (...,)
-            best_head_node = distances.argmin(-1) + 1  # (...,) in 1..N
-
-            # For inactive batch elements: re-write node 1's existing successor (no-op).
-            existing_next_1 = solution._next[..., 1]
-            v_node = torch.where(
-                is_active & has_valid_head,
-                best_head_node,
-                torch.where(is_active, torch.zeros_like(tail_node), existing_next_1),
-            )
-
-            solution.add_edge_(tail_node, v_node)
+            solution.add_edge_(tail_node, v_node, mask=is_active)
 
         # Close any remaining free heads (prev == UNASSIGNED) to the depot.
         solution._prev[..., 1:] = solution._prev[..., 1:].clamp(min=0)
         return solution
 
-    def _select_tail(
-        self,
-        is_tail: torch.Tensor,
-        is_active: torch.Tensor,
+    def _device_generator(self, device: torch.device) -> torch.Generator:
+        if self._generator is None or self._generator.device != device:
+            gen = torch.Generator(device=device)
+            if self._seed is not None:
+                gen.manual_seed(self._seed)
+            self._generator = gen
+        return self._generator
+
+    def _loop_bound(self, solution: CVRPGraphSolution, N: int) -> int:
+        if self._deconstruction_size is None:
+            num_tails = (solution._next[..., 1:] == solution.UNASSIGNED).sum(dim=-1)
+            return int(num_tails.max().item())
+        # Iterations past the true max are no-ops gated by ``is_active`` on add_edge_.
+        return min(2 * self._deconstruction_size, N)
+
+    @staticmethod
+    def _pick_tail(
+        is_tail_unassigned: torch.Tensor,
+        generator: torch.Generator,
         device: torch.device,
     ) -> torch.Tensor:
-        rand_scores = torch.rand(is_tail.shape, generator=self._generator).to(device)
-        tail_node = rand_scores.masked_fill(~is_tail, -1.0).argmax(-1) + 1
-        return torch.where(is_active, tail_node, torch.ones_like(tail_node))
+        """Random tail per batch element. Returns (...,) in 1..N."""
+        scores = torch.rand(is_tail_unassigned.shape, generator=generator, device=device)
+        return scores.masked_fill(~is_tail_unassigned, -1.0).argmax(-1) + 1
+
+    @staticmethod
+    def _valid_heads(
+        solution: CVRPGraphSolution,
+        tail_node: torch.Tensor,
+        is_free_head: torch.Tensor,
+    ) -> torch.Tensor:
+        """Candidate heads that are free, in a different route, and capacity-feasible."""
+        route_demands = solution.demand_per_route()  # (..., max_route_id+1)
+        tail_route_id = solution._route_id.gather(-1, tail_node[..., None]).squeeze(-1)
+        tail_route_demand = route_demands.gather(-1, tail_route_id[..., None]).squeeze(-1)
+
+        head_route_ids = solution._route_id[..., 1:]  # (..., N)
+        head_route_demand = route_demands.gather(-1, head_route_ids)
+        capacity_ok = tail_route_demand[..., None] + head_route_demand <= solution.instance.capacity
+        different_route = head_route_ids != tail_route_id[..., None]
+        return is_free_head & capacity_ok & different_route
+
+    @staticmethod
+    def _nearest_or_depot(
+        tail_node: torch.Tensor,
+        valid_head: torch.Tensor,
+        customer_distances: torch.Tensor,
+    ) -> torch.Tensor:
+        """Pick nearest valid head; fall back to depot (0) if none exists."""
+        N = valid_head.shape[-1]
+        tail_idx = (tail_node - 1)[..., None, None].expand(*tail_node.shape, 1, N)
+        row = customer_distances.gather(-2, tail_idx).squeeze(-2)
+        row = row.masked_fill(~valid_head, float("inf"))
+        best_head_node = row.argmin(-1) + 1  # 1..N
+        has_valid_head = valid_head.any(-1)
+        return torch.where(has_valid_head, best_head_node, torch.zeros_like(best_head_node))
 
 
 class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):

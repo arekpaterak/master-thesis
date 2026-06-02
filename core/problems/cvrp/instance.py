@@ -68,6 +68,10 @@ class CVRPInstance(BaseProblemInstance):
     def customer_demands(self) -> torch.Tensor:
         return self.demand[..., 1:]
 
+    def distances(self) -> torch.Tensor:
+        """(..., N+1, N+1) pairwise Euclidean distances between all nodes (depot + customers)."""
+        return torch.cdist(self.locations, self.locations)
+
     @property
     def customer_features(self) -> torch.Tensor:
         """
