@@ -10,8 +10,8 @@ from core.problems.tsp.solution import TSPSolution
 
 
 class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
-    def __call__(self, partial_solution: S) -> S:
-        match partial_solution:
+    def __call__(self, deconstructed_solution: S) -> S:
+        match deconstructed_solution:
             case TSPSolution() as s:
                 if not (s.tour == s.UNASSIGNED).any():
                     return s
@@ -32,7 +32,9 @@ class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
                 return TSPSolution.create(instance=s.instance, tour=repaired)
 
             case _:
-                raise NotImplementedError(f"Operator not implemented for {type(partial_solution)}")
+                raise NotImplementedError(
+                    f"Operator not implemented for {type(deconstructed_solution)}"
+                )
 
     @staticmethod
     def _repair_single(tour: torch.Tensor, dists: torch.Tensor, unassigned: int) -> torch.Tensor:
@@ -103,18 +105,18 @@ class CVRPGreedyInsertRepair(RepairOperator[CVRPSolution]):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def __call__(self, partial_solution: CVRPSolution) -> CVRPSolution:
-        batch_size = partial_solution.batch_size
-        num_customers = partial_solution.instance.num_customers
+    def __call__(self, deconstructed_solution: CVRPSolution) -> CVRPSolution:
+        batch_size = deconstructed_solution.batch_size
+        num_customers = deconstructed_solution.instance.num_customers
         max_len = 2 * num_customers + 1
         flat_batch_size = math.prod(batch_size) if batch_size else 1
 
-        sequence = partial_solution.sequence.reshape(flat_batch_size, -1).cpu()
+        sequence = deconstructed_solution.sequence.reshape(flat_batch_size, -1).cpu()
         locations = (
-            partial_solution.instance.locations.reshape(flat_batch_size, -1, 2).float().cpu()
+            deconstructed_solution.instance.locations.reshape(flat_batch_size, -1, 2).float().cpu()
         )
-        demands = partial_solution.instance.demand.reshape(flat_batch_size, -1).float().cpu()
-        capacity = partial_solution.instance.capacity.reshape(flat_batch_size).float().cpu()
+        demands = deconstructed_solution.instance.demand.reshape(flat_batch_size, -1).float().cpu()
+        capacity = deconstructed_solution.instance.capacity.reshape(flat_batch_size).float().cpu()
 
         repaired = [
             self._repair_single(
@@ -129,10 +131,13 @@ class CVRPGreedyInsertRepair(RepairOperator[CVRPSolution]):
         ]
         new_sequence = (
             torch.stack(repaired)
-            .to(device=partial_solution.sequence.device, dtype=partial_solution.sequence.dtype)
+            .to(
+                device=deconstructed_solution.sequence.device,
+                dtype=deconstructed_solution.sequence.dtype,
+            )
             .reshape(*batch_size, max_len)
         )
-        return CVRPSolution.create(instance=partial_solution.instance, sequence=new_sequence)
+        return CVRPSolution.create(instance=deconstructed_solution.instance, sequence=new_sequence)
 
     def _repair_single(
         self,

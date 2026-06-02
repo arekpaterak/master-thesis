@@ -11,8 +11,8 @@ class RandomRepair[S: BaseSolution](RepairOperator[S]):
         if seed is not None:
             self._generator.manual_seed(seed)
 
-    def __call__(self, partial_solution: S) -> S:
-        match partial_solution:
+    def __call__(self, deconstructed_solution: S) -> S:
+        match deconstructed_solution:
             case TSPSolution() as s:
                 tour = s.tour.clone()
                 unassigned_mask = s.unassigned_mask
@@ -31,4 +31,6 @@ class RandomRepair[S: BaseSolution](RepairOperator[S]):
                 return TSPSolution.create(instance=s.instance, tour=tour)
 
             case _:
-                raise NotImplementedError(f"Operator not implemented for {type(partial_solution)}")
+                raise NotImplementedError(
+                    f"Operator not implemented for {type(deconstructed_solution)}"
+                )

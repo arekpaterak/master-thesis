@@ -10,17 +10,17 @@ class AttentionModelRepair(RepairOperator[TSPSolution]):
         self.model = model
         self.greedy = greedy
 
-    def __call__(self, partial_solution: TSPSolution) -> TSPSolution:
-        partial_tour = self._extract_valid_tour(partial_solution.tour)
+    def __call__(self, deconstructed_solution: TSPSolution) -> TSPSolution:
+        partial_tour = self._extract_valid_tour(deconstructed_solution.tour)
 
         rollout = self.model.rollout(
-            partial_solution.instance,
+            deconstructed_solution.instance,
             greedy=self.greedy,
             previous_actions=partial_tour,
         )
 
         return TSPSolution.create(
-            instance=partial_solution.instance,
+            instance=deconstructed_solution.instance,
             tour=rollout.actions,
         )
 

@@ -33,8 +33,8 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
             self._generator.manual_seed(seed)
         self._deconstruction_size = deconstruction_size
 
-    def __call__(self, partial_solution: CVRPGraphSolution) -> CVRPGraphSolution:
-        solution = partial_solution.clone()
+    def __call__(self, deconstructed_solution: CVRPGraphSolution) -> CVRPGraphSolution:
+        solution = deconstructed_solution.clone()
         N = solution.instance.num_customers
         if self._deconstruction_size is None:
             num_tails = (solution._next[..., 1:] == solution.UNASSIGNED).sum(dim=-1)
@@ -125,19 +125,19 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
             self._generator.manual_seed(seed)
         self._deconstruction_size = deconstruction_size
 
-    def __call__(self, partial_solution: TSPGraphSolution) -> TSPGraphSolution:
-        original_batch_size = partial_solution.batch_size
+    def __call__(self, deconstructed_solution: TSPGraphSolution) -> TSPGraphSolution:
+        original_batch_size = deconstructed_solution.batch_size
         flat_batch_size = math.prod(original_batch_size) if original_batch_size else 1
-        num_nodes = partial_solution.instance.num_nodes
-        device = partial_solution.instance.device
+        num_nodes = deconstructed_solution.instance.num_nodes
+        device = deconstructed_solution.instance.device
 
-        next_nodes = partial_solution.next_nodes.reshape(flat_batch_size, num_nodes).clone()
-        prev_nodes = partial_solution.prev_nodes.reshape(flat_batch_size, num_nodes).clone()
-        dist_matrix = partial_solution.instance.distances().reshape(
+        next_nodes = deconstructed_solution.next_nodes.reshape(flat_batch_size, num_nodes).clone()
+        prev_nodes = deconstructed_solution.prev_nodes.reshape(flat_batch_size, num_nodes).clone()
+        dist_matrix = deconstructed_solution.instance.distances().reshape(
             flat_batch_size, num_nodes, num_nodes
         )
 
-        UNASSIGNED = partial_solution.UNASSIGNED
+        UNASSIGNED = deconstructed_solution.UNASSIGNED
         num_unassigned = (next_nodes == UNASSIGNED).sum(dim=-1)
         if self._deconstruction_size is None:
             E = int(num_unassigned.max().item())
@@ -185,7 +185,7 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
             num_unassigned = (next_nodes == UNASSIGNED).sum(dim=-1)
 
         return TSPGraphSolution(
-            _instance=partial_solution.instance,
+            _instance=deconstructed_solution.instance,
             _next=next_nodes.reshape(*original_batch_size, num_nodes),
             _prev=prev_nodes.reshape(*original_batch_size, num_nodes),
             batch_size=torch.Size(original_batch_size),
