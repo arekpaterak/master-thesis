@@ -17,6 +17,7 @@ with app.setup(hide_code=True):
     from dotenv import load_dotenv
     from rich.console import Console
     from rich.table import Table
+    from tqdm import tqdm
     from wigglystuff import EnvConfig
 
     import wandb
@@ -121,8 +122,8 @@ def _():
 
             sys.exit(0)
 
-        _resume_path = str(_cli_args.get("resume"))
-        resume_run_dir = Path(_resume_path) if _resume_path else None
+        _resume_path = _cli_args.get("resume")
+        resume_run_dir = Path(str(_resume_path)) if _resume_path is not None else None
 
         _config_path = str(_cli_args.get("config")) or (
             str(resume_run_dir / "config.yml") if resume_run_dir else None
@@ -804,6 +805,7 @@ def _(
     config,
     find_latest_checkpoint,
     initial_epoch,
+    is_script_mode,
     model,
     repair_type,
     resume_run_dir,
@@ -811,19 +813,28 @@ def _(
     sampler,
     val_sampler,
 ):
-    epoch_progress = lambda it: mo.status.progress_bar(
-        it, title="Epochs", completion_title="Training done", total=config.trainer.epochs
-    )
-    batch_progress = lambda it: mo.status.progress_bar(it, title="Batches", remove_on_exit=True)
-    improvement_step_progress = lambda it: mo.status.progress_bar(
-        it, title="Improvement steps", remove_on_exit=True
-    )
-    val_batch_progress = lambda it: mo.status.progress_bar(
-        it, title="Validation batches", remove_on_exit=True
-    )
-    val_improvement_step_progress = lambda it: mo.status.progress_bar(
-        it, title="Validation improvement steps", remove_on_exit=True
-    )
+    if is_script_mode:
+        epoch_progress = lambda it: tqdm(it, desc="Epochs", total=config.trainer.epochs)
+        batch_progress = lambda it: tqdm(it, desc="Batches", leave=False)
+        improvement_step_progress = lambda it: tqdm(it, desc="Improvement steps", leave=False)
+        val_batch_progress = lambda it: tqdm(it, desc="Validation batches", leave=False)
+        val_improvement_step_progress = lambda it: tqdm(
+            it, desc="Validation improvement steps", leave=False
+        )
+    else:
+        epoch_progress = lambda it: mo.status.progress_bar(
+            it, title="Epochs", completion_title="Training done", total=config.trainer.epochs
+        )
+        batch_progress = lambda it: mo.status.progress_bar(it, title="Batches", remove_on_exit=True)
+        improvement_step_progress = lambda it: mo.status.progress_bar(
+            it, title="Improvement steps", remove_on_exit=True
+        )
+        val_batch_progress = lambda it: mo.status.progress_bar(
+            it, title="Validation batches", remove_on_exit=True
+        )
+        val_improvement_step_progress = lambda it: mo.status.progress_bar(
+            it, title="Validation improvement steps", remove_on_exit=True
+        )
 
     nds_module = NDSModule(
         config=config,
