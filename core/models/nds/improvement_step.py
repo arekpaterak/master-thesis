@@ -8,7 +8,7 @@ import torch
 from core.lns.acceptance_criterion import AcceptanceCriterion
 from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.repair import RepairOperator
-from core.lns.utils import select_solution
+from core.lns.utils import best_repair, select_solution
 from core.models.nds.functions import apply_rollout as default_apply_rollout
 from core.models.rollout import Rollout
 from core.problems.solution import BaseSolution
@@ -65,12 +65,7 @@ class ModelSequentialImprovementStep(ImprovementStep):
                 entropy_norm=rollout.entropy_norm[:, r],
             )
             deconstructed = self._apply_rollout_fn(current, single_rollout)
-            candidate = self._repair(deconstructed)
-            for _ in range(self._n_repairs - 1):
-                repaired = self._repair(deconstructed)
-                candidate = select_solution(
-                    repaired.objective() < candidate.objective(), repaired, candidate
-                )
+            candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)
             current = select_solution(mask, candidate, current)
         return current
@@ -103,12 +98,7 @@ class ModelParallelImprovementStep(ImprovementStep):
             greedy=False,
         )
         deconstructed = self._apply_rollout_fn(solution, rollout)
-        candidate = self._repair(deconstructed)
-        for _ in range(self._n_repairs - 1):
-            repaired = self._repair(deconstructed)
-            candidate = select_solution(
-                repaired.objective() < candidate.objective(), repaired, candidate
-            )
+        candidate = best_repair(self._repair, deconstructed, self._n_repairs)
 
         best_idx = candidate.objective().argmin(dim=-1, keepdim=True)
         best_from_candidate = candidate.gather(-1, best_idx).squeeze(-1)

@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import torch
 
+from core.lns.operators.repair import RepairOperator
 from core.problems.cvrp import CVRPSolution
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.solution import BaseSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solution import TSPSolution
+
+
+def best_repair(repair: RepairOperator, deconstructed: BaseSolution, n: int) -> BaseSolution:
+    """Repair `deconstructed` n times and return the per-element best by objective."""
+    best = repair(deconstructed)
+    for _ in range(n - 1):
+        candidate = repair(deconstructed)
+        best = select_solution(candidate.objective() < best.objective(), candidate, best)
+    return best
 
 
 def select_solution(mask: torch.Tensor, a: BaseSolution, b: BaseSolution) -> BaseSolution:

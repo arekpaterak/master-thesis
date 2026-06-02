@@ -10,6 +10,7 @@ from pydantic import BaseModel, computed_field
 from core.lns.acceptance_criterion import GreedyAcceptance
 from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.repair import RepairOperator
+from core.lns.utils import best_repair
 from core.models.module import EpochAccumulator
 from core.models.nds.factory import NDSModel
 from core.models.nds.functions import apply_rollout as default_apply_rollout
@@ -109,31 +110,30 @@ def configure_training_step(
     improvement_step: ImprovementStep,
     apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
     repair: RepairOperator,
+    n_repairs: int = 1,
     rollouts_per_solution: int = 1,
     on_improvement_step: Callable[[int, float], None] | None = None,
 ) -> Callable[[NDSModel, optim.Optimizer, BaseProblemInstance], BatchTrainSummary]:
     _apply_rollout = default_apply_rollout if apply_rollout is None else apply_rollout
 
     def training_step(
-        *,
         model: NDSModel,
         optimizer: optim.Optimizer,
         instance: BaseProblemInstance,
-        **_,
     ) -> BatchTrainSummary:
-        model.train()
-
         start = time.perf_counter()
         device = next(model.parameters()).device
         instance = instance.to(device)
 
-        optimizer.zero_grad()
         solution = generate_start_solution(instance)
 
+        model.eval()
         with torch.no_grad():
             for _ in range(num_initial_improvement_steps):
                 solution = improvement_step(solution, GreedyAcceptance())
 
+        model.train()
+        optimizer.zero_grad()
         objective_before = solution.objective().mean().item()
 
         total_loss = 0.0
@@ -151,9 +151,9 @@ def configure_training_step(
                 greedy=False,
             )
 
-            solution_partial = _apply_rollout(solution, rollout)
-            assert solution_partial.batch_dims == 2
-            solution_prime = repair(solution_partial)
+            solution_deconstructed = _apply_rollout(solution, rollout)
+            assert solution_deconstructed.batch_dims == 2
+            solution_prime = best_repair(repair, solution_deconstructed, n_repairs)
 
             step_objective_before = solution.objective()
             objective_after = solution_prime.objective()

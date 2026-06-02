@@ -71,6 +71,7 @@ class NDSModule(Module):
             improvement_step=training_improvement_step,
             apply_rollout=apply_rollout_fn,
             repair=repair,
+            n_repairs=config.search.n_repairs,
             on_improvement_step=on_improvement_step,
         )
 
@@ -101,7 +102,7 @@ class NDSModule(Module):
         instance: BaseProblemInstance,
         **_,
     ) -> BatchTrainSummary:
-        return self._training_step_fn(model=self.model, optimizer=optimizer, instance=instance)
+        return self._training_step_fn(self.model, optimizer, instance)
 
     def validation_step(
         self,

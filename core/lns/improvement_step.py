@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from lns.utils import best_repair
+
 from core.lns.acceptance_criterion import AcceptanceCriterion
 from core.lns.operators.destroy.base import DestroyOperator
 from core.lns.operators.repair.base import RepairOperator
@@ -37,12 +39,7 @@ class SequentialImprovementStep(ImprovementStep):
         current = solution
         for _ in range(self._num_rollouts):
             deconstructed = self._destroy(solution)
-            candidate = self._repair(deconstructed)
-            for _ in range(self._n_repairs - 1):
-                repaired = self._repair(deconstructed)
-                candidate = select_solution(
-                    repaired.objective() < candidate.objective(), repaired, candidate
-                )
+            candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)
             current = select_solution(mask, candidate, current)
         return current
@@ -67,12 +64,7 @@ class ParallelImprovementStep(ImprovementStep):
         expanded = solution.unsqueeze(-1).expand(*solution.batch_size, R)
 
         deconstructed = self._destroy(expanded)
-        candidate = self._repair(deconstructed)
-        for _ in range(self._n_repairs - 1):
-            repaired = self._repair(deconstructed)
-            candidate = select_solution(
-                repaired.objective() < candidate.objective(), repaired, candidate
-            )
+        candidate = best_repair(self._repair, deconstructed, self._n_repairs)
         best_idx = candidate.objective().argmin(dim=-1, keepdim=True)
         best_from_candidate = candidate.gather(-1, best_idx).squeeze(-1)
         mask = accept(solution, best_from_candidate)
