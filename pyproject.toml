@@ -33,7 +33,7 @@ dependencies = [
     "typer>=0.24.1",
     "wandb>=0.25.1",
     "wigglystuff>=0.3.1",
-    "triton-windows<3.3"
+    # "triton-windows<3.3"  # Not working properly on Windows with my code and newer PyTorch
 ]
 
 [dependency-groups]

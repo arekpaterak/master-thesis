@@ -1709,7 +1709,6 @@ dependencies = [
     { name = "torch-geometric" },
     { name = "torchinfo" },
     { name = "tqdm" },
-    { name = "triton-windows" },
     { name = "typer" },
     { name = "wandb" },
     { name = "wigglystuff" },
@@ -1747,7 +1746,6 @@ requires-dist = [
     { name = "torch-geometric", specifier = ">=2.7.0" },
     { name = "torchinfo", specifier = ">=1.8.0" },
     { name = "tqdm", specifier = ">=4.67.3" },
-    { name = "triton-windows", specifier = "<3.3" },
     { name = "typer", specifier = ">=0.24.1" },
     { name = "wandb", specifier = ">=0.25.1" },
     { name = "wigglystuff", specifier = ">=0.3.1" },
@@ -3842,15 +3840,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/af/9904ec6d3c93d9b24e5ec360445bbdf758b7f00bfbeedb89cb0eb64eb8bb/triton-3.7.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b9b85e72968a9d8bba5ddb24e9b64aaabaf48affb042f2755cb7cfa92b7531ce", size = 201460637, upload-time = "2026-05-07T18:46:34.749Z" },
     { url = "https://files.pythonhosted.org/packages/a1/f9/4835a8ea746b88727d8899f4e3ccce4f9cacb38abfc3bb0a638266c53111/triton-3.7.0-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:18a160de426fd99f92b0baf509045360afbd3bfaa0b4a5171dde800ec9f09684", size = 188608706, upload-time = "2026-05-07T19:05:39.218Z" },
     { url = "https://files.pythonhosted.org/packages/c1/68/fa86e5a39608000f645535b2c124920126327ab731f8c4fafd5b07ff8d4b/triton-3.7.0-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ce061073102714b725f3660ec6939d94a1da7984b3aa99c921417cae273672f5", size = 201546766, upload-time = "2026-05-07T18:46:42.088Z" },
-]
-
-[[package]]
-name = "triton-windows"
-version = "3.2.0.post21"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/96/7a9dd9d1e891b41e3469bff13ab7d4a2eb4ff4d891097a5a0e299fc7946b/triton_windows-3.2.0.post21-cp312-cp312-win_amd64.whl", hash = "sha256:f0294d4f85e98e735942d4db0771c4f05d7b13a481c99b520f1d9701f3e83966", size = 39710794, upload-time = "2025-10-15T08:45:27.45Z" },
-    { url = "https://files.pythonhosted.org/packages/76/59/dbddd9a7ed29638e283b2cffe79c9c67b288e03ee3447ff6b3b2d5c37a79/triton_windows-3.2.0.post21-cp313-cp313-win_amd64.whl", hash = "sha256:3a17037a583733ad476fa382143342c810f4c71b622734a3a714544303979146", size = 39711275, upload-time = "2025-10-15T08:46:06.047Z" },
 ]
 
 [[package]]
