@@ -14,6 +14,7 @@ from core.problems.cvrp.solve import one_customer_per_route_graph
 
 def _build_method(model, *, num_rollouts, deconstruction_size, n_repairs, num_steps) -> Method:
     search = SearchParams(
+        repair_type="greedy_reconnect",
         num_improvement_steps=num_steps,
         num_rollouts=num_rollouts,
         deconstruction_size=deconstruction_size,

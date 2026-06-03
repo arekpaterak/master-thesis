@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from ...constants import EPS
 from ..solution import BaseSolution
 from .instance import CVRPInstance
 
@@ -173,7 +174,7 @@ class CVRPGraphSolution(BaseSolution):
     def is_feasible(self) -> torch.Tensor:
         """(...) bool - complete AND every route is within capacity."""
         route_demands = self.demand_per_route()
-        return self.is_complete & (route_demands <= self._instance.capacity).all(dim=-1)
+        return self.is_complete & (route_demands <= self._instance.capacity + EPS).all(dim=-1)
 
     @property
     def num_unassigned(self) -> torch.Tensor:
@@ -205,6 +206,36 @@ class CVRPGraphSolution(BaseSolution):
     def neighbours_per_customer(self) -> torch.Tensor:
         """(..., N, 2) int - [prev, next] per customer. -1 if unassigned."""
         return torch.stack([self._prev[..., 1:], self._next[..., 1:]], dim=-1)
+
+    def insertion_positions(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """All directed edges in the solution, padded to 2N+1 slots.
+
+        Slot layout:
+            0:        synthetic new-route edge: (depot, depot); always valid.
+            1..N:     incoming edges of customers: (prev[v], v) for v=1..N; valid when prev[v] != -1.
+            N+1..2N:  outgoing-to-depot edges: (u, depot) for u=1..N; valid when next[u] == depot.
+
+        Returns:
+            u: (..., 2N+1) source nodes. Always >= 0; invalid slots use 0 (depot).
+            v: (..., 2N+1) target nodes. Always >= 0.
+            valid: (..., 2N+1) bool - True for slots that represent real or synthetic edges.
+        """
+        N = self.instance.num_customers
+        batch_shape = self.batch_size
+        device = self._next.device
+
+        customers = torch.arange(1, N + 1, device=device).expand(*batch_shape, N)
+        depot_single = torch.zeros(*batch_shape, 1, dtype=customers.dtype, device=device)
+
+        u_in = self._prev.gather(-1, customers)  # (..., N); may be -1
+        valid_in = u_in != self.UNASSIGNED
+        out_valid = self._next.gather(-1, customers) == self.DEPOT
+        new_valid = torch.ones(*batch_shape, 1, dtype=torch.bool, device=device)
+
+        u = torch.cat([depot_single, u_in.clamp(min=0), customers], dim=-1)
+        v = torch.cat([depot_single, customers, torch.zeros_like(customers)], dim=-1)
+        valid = torch.cat([new_valid, valid_in, out_valid], dim=-1)
+        return u, v, valid
 
     def route_per_customer(self) -> torch.Tensor:
         """(..., N) int - route ID for each customer. Always >= 1."""
@@ -246,11 +277,18 @@ class CVRPGraphSolution(BaseSolution):
 
         return (edge_dists + depot_dists).sum(-1)
 
-    def remove_customers(self, customers: torch.Tensor) -> CVRPGraphSolution:
+    def remove_customers(
+        self, customers: torch.Tensor, *, stitch: bool = False
+    ) -> CVRPGraphSolution:
         """Removes customers out of their routes and recomputes route IDs.
 
         Args:
             customers: Indices of customers to remove, shape (..., M). Values in 1..N.
+            stitch: If True, stitch each affected route's survivors together
+                so the route remains a continuous depot->...->depot (no splitting).
+                If False (default), the pointers surrounding each
+                removed customer are left UNASSIGNED, producing fragments that a
+                reconnect-style repair can join.
 
         Returns:
             New CVRPGraphSolution with the customers detached and route_id updated.
@@ -258,45 +296,103 @@ class CVRPGraphSolution(BaseSolution):
         assert (customers >= 1).all(), "Expected only customers (>= 1)"
 
         target_batch_shape = customers.shape[:-1]
-
         shape_diff = len(target_batch_shape) - len(self.batch_size)
         expanded = (
             self.reshape(*self.batch_size, *[1] * shape_diff).expand(target_batch_shape).clone()
         )
 
+        if stitch:
+            return self._remove_customers_stitched(expanded, customers)
+        return self._remove_customers_fragmented(expanded, customers)
+
+    @staticmethod
+    def _remove_customers_fragmented(
+        expanded: CVRPGraphSolution, customers: torch.Tensor
+    ) -> CVRPGraphSolution:
         predecessors = expanded._prev.gather(-1, customers)
         successors = expanded._next.gather(-1, customers)
-
         safe_p = predecessors.clamp(min=0)
         safe_n = successors.clamp(min=0)
 
+        unassigned = torch.full_like(customers, CVRPGraphSolution.UNASSIGNED)
         expanded._next.scatter_(
             -1,
             safe_p,
-            torch.where(predecessors > 0, self.UNASSIGNED, expanded._next.gather(-1, safe_p)),
+            torch.where(predecessors > 0, unassigned, expanded._next.gather(-1, safe_p)),
         )
-        expanded._prev.scatter_(-1, customers, self.UNASSIGNED)
-        expanded._next.scatter_(-1, customers, self.UNASSIGNED)
         expanded._prev.scatter_(
             -1,
             safe_n,
-            torch.where(successors > 0, self.UNASSIGNED, expanded._prev.gather(-1, safe_n)),
+            torch.where(successors > 0, unassigned, expanded._prev.gather(-1, safe_n)),
         )
+        expanded._prev.scatter_(-1, customers, CVRPGraphSolution.UNASSIGNED)
+        expanded._next.scatter_(-1, customers, CVRPGraphSolution.UNASSIGNED)
 
-        route_id = self._compute_route_ids(expanded.prev_nodes, expanded.instance.num_customers)
+        route_id = CVRPGraphSolution._compute_route_ids(
+            expanded._prev, expanded.instance.num_customers
+        )
         return CVRPGraphSolution(
             _instance=expanded._instance,
-            _next=expanded.next_nodes,
-            _prev=expanded.prev_nodes,
+            _next=expanded._next,
+            _prev=expanded._prev,
             _route_id=route_id,
             batch_size=expanded.batch_size,
         )
 
-    def remove_nodes(self, nodes: torch.Tensor) -> CVRPGraphSolution:
+    def _remove_customer_(self, c: torch.Tensor, *, stitch: bool) -> None:
+        """Removes one customer per batch element, optionally stitching neighbours. In-place.
+
+        Args:
+            c: Customer indices, shape (...,). Values in 1..N.
+            stitch: Must be True; raises NotImplementedError otherwise.
+        """
+        if not stitch:
+            raise NotImplementedError("_remove_customer_ only supports stitch=True")
+
+        c_idx = c.unsqueeze(-1)
+        u = self._prev.gather(-1, c_idx)
+        v = self._next.gather(-1, c_idx)
+        safe_u = u.clamp(min=0)
+        safe_v = v.clamp(min=0)
+
+        # Stitch: next[u] = v when u is a customer; prev[v] = u when v is a customer
+        self._next.scatter_(-1, safe_u, torch.where(u > 0, v, self._next.gather(-1, safe_u)))
+        self._prev.scatter_(-1, safe_v, torch.where(v > 0, u, self._prev.gather(-1, safe_v)))
+
+        # Clear removed customer's pointers
+        self._prev.scatter_(-1, c_idx, c_idx.new_full(c_idx.shape, self.UNASSIGNED))
+        self._next.scatter_(-1, c_idx, c_idx.new_full(c_idx.shape, self.UNASSIGNED))
+
+        # Restore depot invariant
+        self._next[..., 0] = self.UNASSIGNED
+        self._prev[..., 0] = self.UNASSIGNED
+
+        # Route-id: only for the removed node; survivors keep their route_id.
+        self._route_id.scatter_(-1, c_idx, c_idx)
+
+    @staticmethod
+    def _remove_customers_stitched(
+        expanded: CVRPGraphSolution, customers: torch.Tensor
+    ) -> CVRPGraphSolution:
+        for m in range(customers.shape[-1]):
+            expanded._remove_customer_(customers[..., m], stitch=True)
+        # TODO: Think if we can not recompute route ids. Now we have to because we might have removed route heads.
+        route_id = CVRPGraphSolution._compute_route_ids(
+            expanded._prev, expanded.instance.num_customers
+        )
+        return CVRPGraphSolution(
+            _instance=expanded._instance,
+            _next=expanded._next,
+            _prev=expanded._prev,
+            _route_id=route_id,
+            batch_size=expanded.batch_size,
+        )
+
+    def remove_nodes(self, nodes: torch.Tensor, *, stitch: bool = False) -> CVRPGraphSolution:
         """
         Alias for remove_customers, since in CVRP we only remove customers (not depots).
         """
-        return self.remove_customers(nodes)
+        return self.remove_customers(nodes, stitch=stitch)
 
     def add_edge_(
         self,
@@ -349,6 +445,60 @@ class CVRPGraphSolution(BaseSolution):
         solution = self.clone()
         solution.add_edge_(u, v)
         return solution
+
+    def insert_(
+        self,
+        c: torch.Tensor,
+        u: torch.Tensor,
+        v: torch.Tensor,
+        *,
+        mask: torch.Tensor | None = None,
+    ) -> None:
+        """Inserts customer c between predecessor u and successor v. In-place.
+
+        Either of u, v may be the depot (0). The new route_id of c is inherited
+        from whichever of v, u is a customer; if both are the depot, c becomes a
+        new singleton route headed by itself.
+
+        Args:
+            c: Customer indices to insert, shape (...,). Values in 1..N.
+            u: Predecessor indices, shape (...,). 0 = depot.
+            v: Successor indices, shape (...,). 0 = depot.
+            mask: Optional (...,) bool. If provided, only batches where the mask
+                is True are updated; others keep their previous state.
+        """
+        c_idx = c.unsqueeze(-1)
+        u_idx = u.unsqueeze(-1)
+        v_idx = v.unsqueeze(-1)
+        active = (
+            mask.unsqueeze(-1) if mask is not None else torch.ones_like(c_idx, dtype=torch.bool)
+        )
+
+        # 1. Set c's own pointers.
+        self._prev.scatter_(-1, c_idx, torch.where(active, u_idx, self._prev.gather(-1, c_idx)))
+        self._next.scatter_(-1, c_idx, torch.where(active, v_idx, self._next.gather(-1, c_idx)))
+
+        # 2. Overwrite next[u] with c when u is a customer (depot keeps UNASSIGNED).
+        self._next.scatter_(
+            -1, u_idx, torch.where((u_idx > 0) & active, c_idx, self._next.gather(-1, u_idx))
+        )
+
+        # 3. Overwrite prev[v] with c when v is a customer.
+        self._prev.scatter_(
+            -1, v_idx, torch.where((v_idx > 0) & active, c_idx, self._prev.gather(-1, v_idx))
+        )
+
+        # 4. Depot is not on any route; restore its pointers.
+        self._next[..., 0] = self.UNASSIGNED
+        self._prev[..., 0] = self.UNASSIGNED
+
+        # 5. Inherit route id from v if customer, else from u if customer, else self.
+        v_route = self._route_id.gather(-1, v_idx)
+        u_route = self._route_id.gather(-1, u_idx)
+        route_id_inherited = torch.where(v_idx > 0, v_route, torch.where(u_idx > 0, u_route, c_idx))
+        self._route_id.scatter_(
+            -1, c_idx, torch.where(active, route_id_inherited, self._route_id.gather(-1, c_idx))
+        )
 
     def add_edges(self, edges: torch.Tensor) -> CVRPGraphSolution:
         """Adds multiple directed edges sequentially.

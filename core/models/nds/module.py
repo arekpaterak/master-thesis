@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Iterable, Iterator
 
 import torch
@@ -10,6 +11,10 @@ from core.lns.acceptance_criterion import build_criterion
 from core.lns.config import SearchParams
 from core.lns.operators.repair import RepairOperator
 from core.models.module import Module
+from core.models.nds.apply_rollout import (
+    apply_rollout,
+    only_expanding_apply_rollout,
+)
 from core.models.nds.config import TrainConfig
 from core.models.nds.evaluation import (
     BatchValidationSummary,
@@ -17,12 +22,6 @@ from core.models.nds.evaluation import (
     configure_validation_step,
 )
 from core.models.nds.factory import NDSModel
-from core.models.nds.functions import (
-    apply_rollout as default_apply_rollout,
-)
-from core.models.nds.functions import (
-    only_expanding_apply_rollout,
-)
 from core.models.nds.improvement_step import resolve_improvement_step
 from core.models.nds.models.one_pass import OnePassNDSModel
 from core.models.nds.training import (
@@ -31,7 +30,10 @@ from core.models.nds.training import (
     configure_training_step,
 )
 from core.problems.instance import BaseProblemInstance
-from core.problems.setup import RepairType, resolve_repair, resolve_start_solution
+from core.problems.setup import (
+    resolve_repair,
+    resolve_start_solution,
+)
 
 
 class NDSModule(Module):
@@ -43,7 +45,6 @@ class NDSModule(Module):
         *,
         config: TrainConfig,
         model: NDSModel,
-        repair_type: RepairType = "greedy_reconnect",
         improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
         validation_improvement_step_progress: Callable[
             [Iterable[int]], Iterable[int]
@@ -70,15 +71,18 @@ class NDSModule(Module):
         generate_start_solution = resolve_start_solution(config.problem.name)
         repair = resolve_repair(
             config.problem.name,
-            repair_type,
+            config.search.repair_type,
             deconstruction_size=max(
                 config.search.deconstruction_size,
                 config.validation.search.deconstruction_size,
             ),
         )
-        apply_rollout_fn = (
-            only_expanding_apply_rollout if repair_type == "noop" else default_apply_rollout
-        )
+        if config.search.repair_type == "noop":
+            apply_rollout_fn = only_expanding_apply_rollout
+        elif repair.requires_stitch:
+            apply_rollout_fn = functools.partial(apply_rollout, stitch=True)
+        else:
+            apply_rollout_fn = apply_rollout
 
         training_improvement_step = self._build_improvement_step(model, repair, config.search)
 
@@ -139,7 +143,11 @@ class NDSModule(Module):
         return self._validation_step_fn(self.model, instance, epoch)
 
     @staticmethod
-    def _build_improvement_step(model: NDSModel, repair: RepairOperator, search: SearchParams):
+    def _build_improvement_step(
+        model: NDSModel,
+        repair: RepairOperator,
+        search: SearchParams,
+    ):
         step_cls = resolve_improvement_step(search.improvement_step_type)
         return step_cls(
             model=model,

@@ -9,10 +9,10 @@ model:
   poly_dim: 256
   seed_dim: 10
   decoder:
-    type: simple
+    type: ar
   original_pretrained_weights:
     path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
-    load_decoder: false
+    load_decoder: true
   freeze_encoder: true
 
 optimizer:
@@ -22,10 +22,11 @@ optimizer:
 trainer:
   epochs: 10
   instances_per_epoch: 1500
-  batch_size: 64
+  batch_size: 8
   num_main_improvement_steps: 100
 
 search:
+  repair_type: greedy_insert
   num_improvement_steps: 10
   num_rollouts: 128
   deconstruction_size: 15

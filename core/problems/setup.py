@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal
 
+from core.lns.config import RepairType
 from core.lns.operators.repair import NoopRepair, RepairOperator
+from core.lns.operators.repair.greedy_insert import CVRPGreedyInsertRepair
 from core.lns.operators.repair.greedy_reconnect import (
     CVRPGreedyReconnectRepair,
     TSPGreedyReconnectRepair,
@@ -28,7 +29,6 @@ def make_sampler(problem_name: str, size: int, *, seed: int | None = None) -> Sa
 
 
 GenerateInitialSolutionFn = Callable[[BaseProblemInstance], BaseSolution]
-RepairType = Literal["greedy_reconnect", "noop"]
 
 
 def resolve_start_solution(problem_name: str) -> GenerateInitialSolutionFn:
@@ -41,6 +41,7 @@ def resolve_start_solution(problem_name: str) -> GenerateInitialSolutionFn:
             raise ValueError(f"Unsupported problem name: {problem_name}")
 
 
+# TODO: Move under lns/operators/repair/common.py
 def resolve_repair(
     problem_name: str,
     repair_type: RepairType,
@@ -49,6 +50,10 @@ def resolve_repair(
 ) -> RepairOperator:
     if repair_type == "noop":
         return NoopRepair()
+    if repair_type == "greedy_insert":
+        if problem_name != "cvrp":
+            raise ValueError(f"greedy_insert is only implemented for CVRP, got {problem_name!r}")
+        return CVRPGreedyInsertRepair(deconstruction_size=deconstruction_size)
     match problem_name:
         case "cvrp":
             return CVRPGreedyReconnectRepair(deconstruction_size=deconstruction_size)

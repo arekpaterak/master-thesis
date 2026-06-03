@@ -12,8 +12,8 @@ from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.repair import RepairOperator
 from core.lns.utils import best_repair
 from core.models.module import EpochAccumulator
+from core.models.nds.apply_rollout import apply_rollout as default_apply_rollout
 from core.models.nds.factory import NDSModel
-from core.models.nds.functions import apply_rollout as default_apply_rollout
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution

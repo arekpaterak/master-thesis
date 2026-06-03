@@ -14,7 +14,7 @@ class RandomDestroyMethodConfig(BaseModel):
     """Config for a random-node-destroy baseline (no model)."""
 
     search: SearchParams = Field(
-        default_factory=lambda: SearchParams(num_rollouts=1),
+        default_factory=lambda: SearchParams(repair_type="greedy_reconnect", num_rollouts=1),
         description="Per-method search knobs.",
     )
     seed: int | None = Field(default=None, description="Optional seed for the random destroyer.")
@@ -33,7 +33,9 @@ class RandomDestroyMethod:
         generate_start_solution,
     ) -> Method:
         destroy = RandomNodeDestroy(
-            destruction_size=config.search.deconstruction_size, seed=config.seed
+            destruction_size=config.search.deconstruction_size,
+            seed=config.seed,
+            stitch=repair.requires_stitch,
         )
         step_cls = (
             SequentialImprovementStep
@@ -66,11 +68,16 @@ class RandomDestroyMethod:
 RANDOM_DESTROY_PRESETS: dict[str, RandomDestroyMethodConfig] = {
     "source": RandomDestroyMethodConfig(
         search=SearchParams(
-            num_rollouts=1, deconstruction_size=15, n_repairs=5, improvement_step_type="sequential"
+            repair_type="greedy_reconnect",
+            num_rollouts=1,
+            deconstruction_size=15,
+            n_repairs=5,
+            improvement_step_type="sequential",
         )
     ),
     "parallel": RandomDestroyMethodConfig(
         search=SearchParams(
+            repair_type="greedy_reconnect",
             num_rollouts=100,
             deconstruction_size=15,
             n_repairs=1,

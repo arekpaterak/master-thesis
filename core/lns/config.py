@@ -9,12 +9,16 @@ from core.lns.acceptance_criterion import (
     SimulatedAnnealingAcceptanceConfig,
 )
 
+RepairType = Literal["greedy_reconnect", "greedy_insert", "noop"]
 
+
+# TODO: Add field titles, and use them for widgets
 class SearchParams(BaseModel):
     """
     Configuration for an LNS-style search (destroy / repair / accept loop).
     """
 
+    repair_type: RepairType = Field(default="greedy_reconnect", description="Repair type.")
     num_improvement_steps: int = Field(default=10, description="Number of search iterations.")
     num_rollouts: int = Field(default=128, description="Rollouts per step.")
     deconstruction_size: int = Field(default=15, description="Number of nodes removed per rollout.")

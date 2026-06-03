@@ -25,6 +25,7 @@ _MINIMAL_CONFIG = TrainConfig(
         num_main_improvement_steps=1,
     ),
     search=SearchParams(
+        repair_type="greedy_reconnect",
         num_improvement_steps=1,
         num_rollouts=2,
         deconstruction_size=3,

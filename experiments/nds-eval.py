@@ -117,7 +117,13 @@ def _():
             if _key in ("method", "run", "eval-config", "eval_config", "help"):
                 continue
             cli_eval_yaml[_key] = _value
-    return cli_eval_yaml, cli_method_type, cli_run_name, env_config_widget, is_script_mode
+    return (
+        cli_eval_yaml,
+        cli_method_type,
+        cli_run_name,
+        env_config_widget,
+        is_script_mode,
+    )
 
 
 @app.cell(hide_code=True)
@@ -135,7 +141,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(cli_method_type, is_script_mode):
+def _(cli_method_type: str | None, is_script_mode):
     if is_script_mode:
         method_type_dropdown = None
         method_type = cli_method_type or "nds-trained"
@@ -145,7 +151,7 @@ def _(cli_method_type, is_script_mode):
         )
         method_type = method_type_dropdown.value
     method_type_dropdown
-    return method_type, method_type_dropdown
+    return (method_type,)
 
 
 @app.cell(hide_code=True)
@@ -169,7 +175,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(cli_run_name, completed_runs, is_script_mode, method_type):
+def _(cli_run_name: str | None, completed_runs, is_script_mode, method_type):
     needs_run = method_type == "nds-trained"
     if is_script_mode:
         run_dropdown = None
@@ -186,7 +192,7 @@ def _(cli_run_name, completed_runs, is_script_mode, method_type):
         run_dropdown = None
         chosen_run_name = None
     run_dropdown
-    return chosen_run_name, run_dropdown
+    return (chosen_run_name,)
 
 
 @app.cell(hide_code=True)
@@ -370,7 +376,12 @@ def _(is_script_mode, preset_dropdown):
 
 
 @app.cell(hide_code=True)
-def _(cli_eval_yaml: dict, is_script_mode, preset_dropdown_value, train_config):
+def _(
+    cli_eval_yaml: dict,
+    is_script_mode,
+    preset_dropdown_value,
+    train_config,
+):
     if is_script_mode:
         preset_yaml = dict(cli_eval_yaml)
     elif preset_dropdown_value == "(defaults)":
@@ -554,7 +565,7 @@ def _(eval_config, eval_step, test_sampler):
 def _(
     chosen_run_name,
     eval_config,
-    method,
+    method: Method,
     method_config,
     method_type,
     result,

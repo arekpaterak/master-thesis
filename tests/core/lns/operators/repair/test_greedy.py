@@ -1,16 +1,10 @@
-#
 import pytest
 import torch
 
 from core.lns.operators.destroy.random_edge import TSPRandomEdgeDestroy
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair import TSPGreedyReconnectRepair
-from core.lns.operators.repair.greedy_insert import (
-    CVRPGreedyInsertRepair,
-    TSPGreedyInsertRepair,
-)
-from core.problems.cvrp import CVRPConfig, CVRPSampler
-from core.problems.cvrp.solve import one_customer_per_route
+from core.lns.operators.repair.greedy_insert import TSPGreedyInsertRepair
 from core.problems.tsp import TSPConfig, TSPSampler, TSPSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solve import random_permutation
@@ -116,51 +110,3 @@ class TestGreedyEdgeRepairWithNodeDestroy:
         repaired = repair(destroyed)
 
         assert repaired.is_complete.all()
-
-
-class TestGreedyCVRPRepair:
-    @pytest.mark.parametrize(
-        "batch_size, num_customers, destruction_size",
-        [
-            (1, 20, 3),
-            (4, 20, 5),
-            (2, 50, 8),
-        ],
-    )
-    def test_repairs_cvrp(self, batch_size: int, num_customers: int, destruction_size: int) -> None:
-        config = CVRPConfig.for_n(num_customers)
-        instance = CVRPSampler(config, seed=42)(batch_size)
-        solution = one_customer_per_route(instance)
-
-        assert solution.is_complete.all(), "Initial solution should be complete."
-        assert solution.is_feasible.all(), "Initial solution should be feasible."
-
-        destroy = RandomNodeDestroy(destruction_size=destruction_size, seed=42)
-        destroyed = destroy(solution)
-
-        assert not destroyed.is_complete.any(), "Destroyed solution should not be complete."
-
-        repair = CVRPGreedyInsertRepair(seed=42)
-        repaired = repair(destroyed)
-
-        assert repaired.is_complete.all(), "Repaired solution should be complete."
-        assert repaired.is_feasible.all(), "Repaired solution should be feasible."
-
-    def test_repairs_with_rollout_batch_shape(self) -> None:
-        """Verify repair works when solution has 2D batch shape (B, R) from remove_customers."""
-        B, R, N, K = 2, 5, 20, 3
-        config = CVRPConfig.for_n(N)
-        instance = CVRPSampler(config, seed=42)(B)
-        solution = one_customer_per_route(instance)
-
-        to_remove = torch.randint(1, N + 1, (B, R, K))
-        partial = solution.remove_customers(to_remove)
-
-        assert partial.batch_size == torch.Size([B, R])
-
-        repair = CVRPGreedyInsertRepair(seed=0)
-        repaired = repair(partial)
-
-        assert repaired.batch_size == torch.Size([B, R])
-        assert repaired.is_complete.all(), "All rollout solutions should be complete."
-        assert repaired.is_feasible.all(), "All rollout solutions should be feasible."

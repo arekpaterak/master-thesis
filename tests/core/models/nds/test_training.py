@@ -19,13 +19,13 @@ def test_train():
                 num_main_improvement_steps=3,
             ),
             search=SearchParams(
+                repair_type="noop",
                 num_improvement_steps=0,
                 num_rollouts=R,
                 deconstruction_size=15,
             ),
         ),
         model=model,
-        repair_type="noop",
     )
     optimizer = torch.optim.AdamW(nds_module.parameters())
 
@@ -51,6 +51,7 @@ def test_train_with_amp_enabled():
                 num_main_improvement_steps=2,
             ),
             search=SearchParams(
+                repair_type="noop",
                 num_improvement_steps=0,
                 num_rollouts=R,
                 deconstruction_size=15,
@@ -58,7 +59,6 @@ def test_train_with_amp_enabled():
             amp=AmpConfig(enabled=True, dtype="bfloat16"),
         ),
         model=model,
-        repair_type="noop",
     )
     optimizer = torch.optim.AdamW(nds_module.parameters())
 

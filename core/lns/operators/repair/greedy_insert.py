@@ -1,14 +1,14 @@
-import math
+from __future__ import annotations
 
 import torch
 
-from core.constants import EPS
 from core.lns.operators.repair.base import RepairOperator
-from core.problems.cvrp.solution import CVRPSolution
+from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.solution import BaseSolution
 from core.problems.tsp.solution import TSPSolution
 
 
+# TODO: Rewrite as batched, similar to CVRP
 class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
     def __call__(self, deconstructed_solution: S) -> S:
         match deconstructed_solution:
@@ -93,114 +93,129 @@ class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
         return tour
 
 
-class CVRPGreedyInsertRepair(RepairOperator[CVRPSolution]):
+class CVRPGreedyInsertRepair(RepairOperator[CVRPGraphSolution]):
+    """Greedy cheapest-insertion repair for stitched CVRPGraphSolution.
+
+    Each iteration picks one removed customer (``prev`` and ``next`` both
+    UNASSIGNED) at random per batch element, then inserts it at the cheapest
+    valid position across all current edges in the solution. Positions are every
+    edge of every depot->...->depot route plus a new-route fallback
+    (depot->c->depot). Capacity is enforced per route.
+
+    Expects a stitched deconstructed solution (no fragmented routes). Pair
+    with ``RandomNodeDestroy(..., stitch=True)``.
+
+    Pass ``deconstruction_size`` to use a static upper bound on the inner loop
+    and skip the host-device sync that would otherwise size it. The bound is
+    M, since one customer is placed per iteration.
     """
-    Inherently sequential.
-    Repairs a single partial solution from a batch at a time.
-    Can insert inside the existing routes.
-    """
 
-    def __init__(self, *, seed: int | None = None):
-        self._generator = torch.Generator()
-        if seed is not None:
-            self._generator.manual_seed(seed)
+    requires_stitch = True
 
-    def __call__(self, deconstructed_solution: CVRPSolution) -> CVRPSolution:
-        batch_size = deconstructed_solution.batch_size
-        num_customers = deconstructed_solution.instance.num_customers
-        max_len = 2 * num_customers + 1
-        flat_batch_size = math.prod(batch_size) if batch_size else 1
-
-        sequence = deconstructed_solution.sequence.reshape(flat_batch_size, -1).cpu()
-        locations = (
-            deconstructed_solution.instance.locations.reshape(flat_batch_size, -1, 2).float().cpu()
-        )
-        demands = deconstructed_solution.instance.demand.reshape(flat_batch_size, -1).float().cpu()
-        capacity = deconstructed_solution.instance.capacity.reshape(flat_batch_size).float().cpu()
-
-        repaired = [
-            self._repair_single(
-                sequence=sequence[b],
-                locations=locations[b],
-                demands=demands[b],
-                capacity=float(capacity[b]),
-                num_customers=num_customers,
-                max_len=max_len,
-            )
-            for b in range(flat_batch_size)
-        ]
-        new_sequence = (
-            torch.stack(repaired)
-            .to(
-                device=deconstructed_solution.sequence.device,
-                dtype=deconstructed_solution.sequence.dtype,
-            )
-            .reshape(*batch_size, max_len)
-        )
-        return CVRPSolution.create(instance=deconstructed_solution.instance, sequence=new_sequence)
-
-    def _repair_single(
+    def __init__(
         self,
         *,
-        sequence: torch.Tensor,
-        locations: torch.Tensor,
-        demands: torch.Tensor,
-        capacity: float,
-        num_customers: int,
-        max_len: int,
+        seed: int | None = None,
+        deconstruction_size: int | None = None,
+    ) -> None:
+        self._seed = seed
+        self._deconstruction_size = deconstruction_size
+        self._generator: torch.Generator | None = None
+
+    def __call__(self, deconstructed_solution: CVRPGraphSolution) -> CVRPGraphSolution:
+        solution = deconstructed_solution.clone()
+        device = solution.instance.locations.device
+        generator = self._device_generator(device)
+
+        distances = solution.instance.distances()  # we cconstant across iterations
+        for _ in range(self._loop_bound(solution)):
+            is_unassigned = (solution._prev[..., 1:] == solution.UNASSIGNED) & (
+                solution._next[..., 1:] == solution.UNASSIGNED
+            )  # (..., N)
+
+            customer = self._pick_unassigned_customer(is_unassigned, generator, device)
+            u_positions, v_positions, costs = self._enumerate_insertion_positions(
+                solution,
+                customer,
+                distances,
+            )
+            best_position = costs.argmin(-1)
+            chosen_u = u_positions.gather(-1, best_position[..., None]).squeeze(-1)
+            chosen_v = v_positions.gather(-1, best_position[..., None]).squeeze(-1)
+
+            is_active = is_unassigned.any(dim=-1)  # (...,)
+            solution.insert_(customer, chosen_u, chosen_v, mask=is_active)
+
+        return solution
+
+    def _device_generator(self, device: torch.device) -> torch.Generator:
+        if self._generator is None or self._generator.device != device:
+            gen = torch.Generator(device=device)
+            if self._seed is not None:
+                gen.manual_seed(self._seed)
+            self._generator = gen
+        return self._generator
+
+    def _loop_bound(self, solution: CVRPGraphSolution) -> int:
+        if self._deconstruction_size is None:
+            is_free = (solution._prev[..., 1:] == solution.UNASSIGNED) & (
+                solution._next[..., 1:] == solution.UNASSIGNED
+            )
+            return int(is_free.sum(dim=-1).max().item())
+        return min(self._deconstruction_size, solution.instance.num_customers)
+
+    @staticmethod
+    def _pick_unassigned_customer(
+        is_free: torch.Tensor,
+        generator: torch.Generator,
+        device: torch.device,
     ) -> torch.Tensor:
-        routes: list[list[int]] = []
-        current: list[int] = []
-        for node in sequence.tolist():
-            if node == 0:
-                if current:
-                    routes.append(current)
-                current = []
-            elif node >= 1:
-                current.append(node)
-        if current:
-            routes.append(current)
+        """Random free customer per batch. Returns (...,) in 1..N."""
+        scores = torch.rand(is_free.shape, generator=generator, device=device)
+        return scores.masked_fill(~is_free, -1.0).argmax(-1) + 1
 
-        assigned = {c for route in routes for c in route}
-        missing_customers = [c for c in range(1, num_customers + 1) if c not in assigned]
+    @staticmethod
+    def _enumerate_insertion_positions(
+        solution: CVRPGraphSolution,
+        customer: torch.Tensor,
+        distances: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Materialise candidate insertion positions as (u, v, cost) tensors.
 
-        if not missing_customers:
-            tokens = [x for x in sequence.tolist() if x != -1]
-            while len(tokens) < max_len:
-                tokens.append(0)
-            return torch.tensor(tokens[:max_len], dtype=sequence.dtype)
+        Each position corresponds to a directed edge (u, v) in the current solution
+        (or the synthetic new-route edge). Inserting c splits the edge: u -> c -> v.
+        Invalid and capacity-infeasible positions get cost = +inf.
+        The synthetic new-route edge guarantees argmin is always well-defined.
+        """
+        N = solution.instance.num_customers
+        batch_shape = customer.shape
+        demand = solution.instance.demand  # (..., N+1)
+        capacity = solution.instance.capacity  # (...,)
 
-        perm = torch.randperm(len(missing_customers), generator=self._generator).tolist()
-        missing_customers = [missing_customers[i] for i in perm]
+        distance_from_customer = distances.gather(
+            -2, customer[..., None, None].expand(*batch_shape, 1, N + 1)
+        ).squeeze(-2)  # (..., N+1)
+        flat_dist = distances.flatten(-2, -1)  # (..., (N+1)^2)
 
-        dist_mat = torch.cdist(locations.unsqueeze(0), locations.unsqueeze(0)).squeeze(0).tolist()
-        route_demands = [sum(demands[c].item() for c in r) for r in routes]
+        demand_of_customer = demand.gather(-1, customer[..., None]).squeeze(-1)  # (...,)
+        route_demands = solution.demand_per_route()  # (..., N+1)
 
-        for customer in missing_customers:
-            customer_demand = demands[customer].item()
-            best_cost, best_r, best_pos = float("inf"), -1, -1
-            for r_idx, route in enumerate(routes):
-                if route_demands[r_idx] + customer_demand > capacity + EPS:
-                    continue
-                for pos in range(len(route) + 1):
-                    prev = route[pos - 1] if pos > 0 else 0
-                    next = route[pos] if pos < len(route) else 0
-                    cost = (
-                        dist_mat[prev][customer] + dist_mat[customer][next] - dist_mat[prev][next]
-                    )
-                    if cost < best_cost:
-                        best_cost, best_r, best_pos = cost, r_idx, pos
-            if best_r >= 0:
-                routes[best_r].insert(best_pos, customer)
-                route_demands[best_r] += customer_demand
-            else:
-                routes.append([customer])
-                route_demands.append(customer_demand)
+        u, v, position_valid = solution.insertion_positions()  # (..., 2N+1) each
 
-        tokens = [0]
-        for route in routes:
-            tokens.extend(route)
-            tokens.append(0)
-        while len(tokens) < max_len:
-            tokens.append(0)
-        return torch.tensor(tokens[:max_len], dtype=sequence.dtype)
+        # Insertion cost: d[u,c] + d[c,v] - d[u,v]
+        costs = (
+            distance_from_customer.gather(-1, u)
+            + distance_from_customer.gather(-1, v)
+            - flat_dist.gather(-1, u * (N + 1) + v)
+        )
+
+        # Capacity: customer endpoint of the edge is the route representative
+        # (v when v is a customer; u for tail->depot and new-route where v == depot)
+        route_owner = torch.where(v > 0, v, u)
+        route_ids_at_owner = solution._route_id.gather(-1, route_owner)
+        route_demand = route_demands.gather(-1, route_ids_at_owner.clamp(min=0))
+        valid = position_valid & (route_demand + demand_of_customer.unsqueeze(-1) <= capacity)
+
+        costs.masked_fill_(~valid, float("inf"))
+        return u, v, costs

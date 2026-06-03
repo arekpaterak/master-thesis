@@ -44,12 +44,12 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
         for _ in range(self._loop_bound(solution, N)):
             is_tail_unassigned = solution._next[..., 1:] == solution.UNASSIGNED  # (..., N)
             is_free_head = solution._prev[..., 1:] == solution.UNASSIGNED  # (..., N)
-            is_active = is_tail_unassigned.any(dim=-1)  # (...,)
 
             tail_node = self._pick_tail(is_tail_unassigned, generator, device)
             valid_head = self._valid_heads(solution, tail_node, is_free_head)
             v_node = self._nearest_or_depot(tail_node, valid_head, customer_distances)
 
+            is_active = is_tail_unassigned.any(dim=-1)  # (...,)
             solution.add_edge_(tail_node, v_node, mask=is_active)
 
         # Close any remaining free heads (prev == UNASSIGNED) to the depot.

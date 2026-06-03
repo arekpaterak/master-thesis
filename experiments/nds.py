@@ -135,7 +135,7 @@ def _():
         for _key, _value in _cli_args.items():
             if _key in ("config", "resume"):
                 continue
-            _parts = _key.split(".")
+            _parts = [_part.replace("-", "_") for _part in _key.split(".")]
             _node = yaml_data
             for _part in _parts[:-1]:
                 _node = _node.setdefault(_part, {})
@@ -364,6 +364,11 @@ def _(defaults):
 @app.cell(hide_code=True)
 def _(defaults):
     _rollout_sizes = [64, 128, 256]
+    repair_type_dropdown = mo.ui.dropdown(
+        options=["greedy_reconnect", "greedy_insert", "noop"],
+        value=defaults.search.repair_type,
+        label="Repair type",
+    )
     search_num_improvement_steps = mo.ui.slider(
         0,
         100,
@@ -387,7 +392,8 @@ def _(defaults):
     )
     mo.vstack(
         [
-            mo.md("### Search (training)"),
+            mo.md("### Search"),
+            repair_type_dropdown,
             search_improvement_step_type,
             search_num_improvement_steps,
             search_num_rollouts,
@@ -396,6 +402,7 @@ def _(defaults):
         ]
     )
     return (
+        repair_type_dropdown,
         search_deconstruction_size,
         search_improvement_step_type,
         search_n_repairs,
@@ -530,9 +537,8 @@ def _(defaults):
 @app.cell(hide_code=True)
 def _(is_script_mode):
     run_button = mo.ui.run_button(label="Start Training")
-    noop_apply_repair_checkbox = mo.ui.checkbox(value=False, label="Noop apply+repair")
-    mo.vstack([run_button, noop_apply_repair_checkbox]) if not is_script_mode else None
-    return noop_apply_repair_checkbox, run_button
+    run_button if not is_script_mode else None
+    return (run_button,)
 
 
 @app.cell(hide_code=True)
@@ -559,6 +565,7 @@ def _(
     optimizer_learning_rate,
     problem_name,
     problem_size,
+    repair_type_dropdown,
     run_button,
     search_deconstruction_size,
     search_improvement_step_type,
@@ -650,6 +657,7 @@ def _(
                 checkpoint_every_n_epochs=trainer_checkpoint_every_n_epochs.value,
             ),
             search=SearchParams(
+                repair_type=repair_type_dropdown.value,
                 num_improvement_steps=search_num_improvement_steps.value,
                 num_rollouts=search_num_rollouts.value,
                 deconstruction_size=search_deconstruction_size.value,
@@ -746,14 +754,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(
-    config,
-    is_script_mode,
-    model,
-    noop_apply_repair_checkbox,
-    resume_run_dir,
-    run_button,
-):
+def _(config, is_script_mode, model, resume_run_dir, run_button):
     if not is_script_mode:
         mo.stop(not run_button.value)
 
@@ -795,9 +796,7 @@ def _(
             )
             _wandb_id_path.write_text(wandb.run.id)
         wandb.define_metric("val/*", step_metric="epoch")
-
-    repair_type = "noop" if noop_apply_repair_checkbox.value else "greedy_reconnect"
-    return find_latest_checkpoint, initial_epoch, repair_type, run_dir
+    return find_latest_checkpoint, initial_epoch, run_dir
 
 
 @app.cell(hide_code=True)
@@ -807,7 +806,6 @@ def _(
     initial_epoch,
     is_script_mode,
     model,
-    repair_type,
     resume_run_dir,
     run_dir,
     sampler,
@@ -839,7 +837,6 @@ def _(
     nds_module = NDSModule(
         config=config,
         model=model,
-        repair_type=repair_type,
         improvement_step_progress=improvement_step_progress,
         validation_improvement_step_progress=val_improvement_step_progress,
     )

@@ -8,8 +8,10 @@ import torch
 from core.lns.acceptance_criterion import AcceptanceCriterion
 from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.repair import RepairOperator
+from core.lns.operators.repair.base import NoopRepair
 from core.lns.utils import best_repair, select_solution
-from core.models.nds.functions import apply_rollout as default_apply_rollout
+from core.models.nds.apply_rollout import apply_rollout as default_apply_rollout
+from core.models.nds.apply_rollout import only_expanding_apply_rollout
 from core.models.rollout import Rollout
 from core.problems.solution import BaseSolution
 
@@ -41,11 +43,16 @@ class ModelSequentialImprovementStep(ImprovementStep):
         n_repairs: int,
     ) -> None:
         self._model = model
-        self._apply_rollout_fn = default_apply_rollout
+        self._apply_rollout_fn = (
+            only_expanding_apply_rollout
+            if isinstance(repair, NoopRepair)
+            else default_apply_rollout
+        )
         self._repair = repair
         self._num_rollouts = num_rollouts
         self._deconstruction_size = deconstruction_size
         self._n_repairs = n_repairs
+        self._stitch = repair.requires_stitch
 
     @torch.no_grad()
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
@@ -59,7 +66,7 @@ class ModelSequentialImprovementStep(ImprovementStep):
         current = solution
         for r in range(self._num_rollouts):
             single_rollout = rollout[:, r]
-            deconstructed = self._apply_rollout_fn(current, single_rollout)
+            deconstructed = self._apply_rollout_fn(current, single_rollout, stitch=self._stitch)
             candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)
             current = select_solution(mask, candidate, current)
@@ -77,11 +84,16 @@ class ModelParallelImprovementStep(ImprovementStep):
         n_repairs: int,
     ) -> None:
         self._model = model
-        self._apply_rollout_fn = default_apply_rollout
+        self._apply_rollout_fn = (
+            only_expanding_apply_rollout
+            if isinstance(repair, NoopRepair)
+            else default_apply_rollout
+        )
         self._repair = repair
         self._num_rollouts = num_rollouts
         self._deconstruction_size = deconstruction_size
         self._n_repairs = n_repairs
+        self._stitch = repair.requires_stitch
 
     @torch.no_grad()
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
@@ -92,7 +104,7 @@ class ModelParallelImprovementStep(ImprovementStep):
             deconstruction_size=self._deconstruction_size,
             greedy=False,
         )
-        deconstructed = self._apply_rollout_fn(solution, rollout)
+        deconstructed = self._apply_rollout_fn(solution, rollout, stitch=self._stitch)
         candidate = best_repair(self._repair, deconstructed, self._n_repairs)
 
         best_idx = candidate.objective().argmin(dim=-1, keepdim=True)
