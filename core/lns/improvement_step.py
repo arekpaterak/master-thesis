@@ -36,7 +36,7 @@ class SequentialImprovementStep(ImprovementStep):
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
         current = solution
         for _ in range(self._num_rollouts):
-            deconstructed = self._destroy(solution)
+            deconstructed = self._destroy(current)
             candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)
             current = select_solution(mask, candidate, current)

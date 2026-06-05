@@ -265,7 +265,7 @@ def _(
 @app.cell(hide_code=True)
 def _():
     search_num_improvement_steps_widget = mo.ui.number(value=50, label="num_improvement_steps")
-    search_num_rollouts_widget = mo.ui.number(0, 128, value=128, step=1, label="num_rollouts")
+    search_num_rollouts_widget = mo.ui.number(0, 200, value=100, step=1, label="num_rollouts")
     search_deconstruction_size_widget = mo.ui.number(
         1, 50, value=15, step=1, label="deconstruction_size"
     )
