@@ -4,6 +4,7 @@ from core.lns.operators.destroy.base import DestroyOperator
 from core.problems.tsp.graph_solution import TSPGraphSolution
 
 
+# Deprecated
 class TSPRandomEdgeDestroy(DestroyOperator[TSPGraphSolution]):
     def __init__(self, destruction_size: int, *, seed: int | None = None) -> None:
         if not destruction_size >= 0:

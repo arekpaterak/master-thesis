@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import polars as pl
 
+# TODO: Extend with problem name, size
 EVAL_SCHEMA: dict[str, pl.DataType] = {
     "method": pl.Utf8,
     "instance_id": pl.Utf8,

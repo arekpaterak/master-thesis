@@ -41,7 +41,7 @@ with app.setup(hide_code=True):
         SimpleOnePassDecoderConfig,
         SlotDecoderConfig,
     )
-    from core.models.nds.evaluation import EpochValidationSummary, plot_lns_progress
+    from core.models.nds.evaluation import EpochValidationSummary
     from core.models.nds.factory import build_model
     from core.models.nds.module import NDSModule
     from core.models.nds.pretrained import (
@@ -52,6 +52,7 @@ with app.setup(hide_code=True):
     from core.models.trainer import Trainer
     from core.models.utils import load_checkpoint
     from core.problems.setup import make_sampler
+    from core.results.plots import plot_lns_progress
     from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
 
     load_dotenv(".env")

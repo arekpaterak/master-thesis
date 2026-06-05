@@ -6,23 +6,17 @@ import torch
 import yaml
 from pydantic import BaseModel, Field
 
-from core.lns.acceptance_criterion import build_criterion
 from core.lns.config import SearchParams
-from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
 from core.models.nds.config import TrainConfig
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import resolve_improvement_step
+from core.problems.setup import resolve_repair
 
 
 class NDSTrainedConfig(BaseModel):
     run_dir: Path = Field(description="Path to the training run directory.")
-    search: SearchParams = Field(
-        default_factory=SearchParams, description="Per-method search knobs."
-    )
-    name_override: str | None = Field(
-        default=None, description="Override the auto-derived method name."
-    )
+    search: SearchParams = Field(default_factory=SearchParams)
 
 
 def _find_latest_checkpoint(run_dir: Path) -> Path:
@@ -38,7 +32,6 @@ class NDSTrainedMethod:
         cls,
         config: NDSTrainedConfig,
         *,
-        repair: RepairOperator,
         generate_start_solution,
         device: torch.device,
     ) -> Method:
@@ -52,6 +45,11 @@ class NDSTrainedMethod:
         model.load_state_dict(ckpt["model"])
         model.eval()
 
+        repair = resolve_repair(
+            train_config.problem.name,
+            config.search.repair_type,
+            deconstruction_size=config.search.deconstruction_size,
+        )
         step_cls = resolve_improvement_step(config.search.improvement_step_type)
         improvement_step = step_cls(
             model=model,
@@ -60,16 +58,15 @@ class NDSTrainedMethod:
             deconstruction_size=config.search.deconstruction_size,
             n_repairs=config.search.n_repairs,
         )
-        criterion = build_criterion(
-            config.search.acceptance, n_steps=config.search.num_improvement_steps
+        name = (
+            f"nds-{train_config.model.decoder.type}"
+            f"-d{config.search.deconstruction_size}-r{config.search.n_repairs}"
+            f"-{config.search.improvement_step_type}"
         )
-
-        name = config.name_override or f"nds-{train_config.model.decoder.type}"
 
         return Method(
             name=name,
             search=config.search,
             generate_start_solution=generate_start_solution,
             improvement_step=improvement_step,
-            criterion=criterion,
         )

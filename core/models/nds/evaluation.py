@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-import math
-import time
 from collections.abc import Callable, Iterable
 
 import torch
-from matplotlib import pyplot as plt
-from matplotlib.figure import Figure
 from pydantic import BaseModel, computed_field
 
-from core.eval_config import EvaluationConfig
 from core.lns.acceptance_criterion import AcceptanceCriterion, SimulatedAnnealingAcceptance
 from core.lns.improvement_step import ImprovementStep
 from core.lns.search import augmented_search, search
-from core.methods.base import Method
 from core.models.module import EpochAccumulator
 from core.models.nds.models import NDSModel
 from core.problems.instance import BaseProblemInstance
@@ -205,106 +199,3 @@ def _best_per_instance(solution: BaseSolution) -> BaseSolution:
         return solution
     best_idx = solution.objective().argmin(dim=-1, keepdim=True)  # (B, 1)
     return solution.gather(-1, best_idx).squeeze(-1)
-
-
-class EvaluationResult(BaseModel):
-    """Per-instance per-LNS-step result of a single eval run."""
-
-    model_config = {"frozen": True, "arbitrary_types_allowed": True}
-
-    step_labels: list[int]
-    # Shape: (len(step_labels), num_test_instances)
-    per_instance_objective: list[list[float]]
-    # Cumulative wall-clock seconds at each captured step (length = len(step_labels))
-    cumulative_time_s: list[float]
-    # Snapshots for the first K instances; outer length = K, inner length = len(step_labels)
-    plot_snapshots: list[list[BaseSolution]]
-
-
-def configure_evaluation_step(
-    *,
-    method: Method,
-    eval_config: EvaluationConfig,
-    capture_every_n_improvement_steps: int = 1,
-) -> Callable[[BaseProblemInstance], EvaluationResult]:
-    num_improvement_steps = method.search.num_improvement_steps
-
-    assert capture_every_n_improvement_steps > 0, "Expected capture_every_n_improvement_steps > 0"
-    snapshot_step_set = {0} | set(
-        range(
-            capture_every_n_improvement_steps,
-            num_improvement_steps + 1,
-            capture_every_n_improvement_steps,
-        )
-    )
-
-    def evaluation_step(instance: BaseProblemInstance) -> EvaluationResult:
-        per_instance_objective: list[list[float]] = []
-        cumulative_time_s: list[float] = []
-        plot_snapshots: list[list[BaseSolution]] = []
-        k_plots = min(eval_config.num_plot_instances, instance.batch_size[0])
-
-        with torch.no_grad():
-            solution = method.generate_start_solution(instance)
-
-            t0 = time.perf_counter()
-            per_instance_objective.append(solution.objective().detach().cpu().tolist())
-            cumulative_time_s.append(0.0)
-            for plot_idx in range(k_plots):
-                plot_snapshots.append([_unbatch_at(solution, plot_idx)])
-
-            def on_step(step: int, solution: BaseSolution) -> None:
-                if step in snapshot_step_set:
-                    per_instance_objective.append(solution.objective().detach().cpu().tolist())
-                    cumulative_time_s.append(time.perf_counter() - t0)
-                    for plot_idx in range(k_plots):
-                        plot_snapshots[plot_idx].append(_unbatch_at(solution, plot_idx))
-
-            search(
-                solution,
-                improvement_step=method.improvement_step,
-                criterion=method.criterion,
-                n_iterations=num_improvement_steps,
-                on_step=on_step,
-            )
-
-        return EvaluationResult(
-            step_labels=sorted(snapshot_step_set),
-            per_instance_objective=per_instance_objective,
-            cumulative_time_s=cumulative_time_s,
-            plot_snapshots=plot_snapshots,
-        )
-
-    return evaluation_step
-
-
-def _unbatch_at(solution: BaseSolution, idx: int) -> BaseSolution:
-    return solution[idx] if solution.batch_size else solution  # type: ignore
-
-
-def plot_lns_progress(
-    snapshots: list[BaseSolution],
-    step_labels: list[int],
-    *,
-    epoch: int,
-) -> Figure:
-    n_snapshots = len(snapshots)
-    n_cols = min(n_snapshots, 5)
-    n_rows = math.ceil(n_snapshots / n_cols)
-
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows))
-    axes_flat = axes.flat if hasattr(axes, "flat") else [axes]
-
-    for i, (solution, step) in enumerate(zip(snapshots, step_labels)):
-        solution.visualize(ax=axes_flat[i])
-        axes_flat[i].set_title(
-            axes_flat[i].get_title() + f"\nStep {step}",
-            fontsize=9,
-        )
-
-    for i in range(n_snapshots, n_rows * n_cols):
-        axes_flat[i].set_visible(False)
-
-    fig.suptitle(f"Epoch {epoch}", fontsize=12)
-    fig.tight_layout()
-    return fig
