@@ -722,7 +722,7 @@ def _(config, device):
         gc.collect()
         torch.cuda.empty_cache()
 
-    model = build_model(config)
+    model = build_model(config.model, config.problem.name)
 
     if config.model.original_pretrained_weights:
         _pretrained = config.model.original_pretrained_weights

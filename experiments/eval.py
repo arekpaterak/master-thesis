@@ -80,6 +80,7 @@ def _():
 @app.cell
 def _(device_widget):
     device = torch.device(device_widget.value)
+    device
     return (device,)
 
 
@@ -234,9 +235,7 @@ def _():
         options=_pretrained_options, value="(none)", label="Pretrained checkpoint"
     )
     pretrained_load_decoder_widget = mo.ui.checkbox(value=False, label="Load decoder weights")
-    pretrained_use_hidden_widget = mo.ui.checkbox(
-        value=True, label="Use hidden decoding state (AR decoder)"
-    )
+    pretrained_use_hidden_widget = mo.ui.checkbox(value=True, label="Use hidden decoding state")
     return (
         pretrained_load_decoder_widget,
         pretrained_path_widget,
@@ -441,13 +440,6 @@ def _(
 
 
 @app.cell(hide_code=True)
-def _(is_script_mode):
-    run_eval_button = mo.ui.run_button(label="Run evaluation")
-    run_eval_button if not is_script_mode else None
-    return (run_eval_button,)
-
-
-@app.cell(hide_code=True)
 def _():
     mo.md(r"""
     ## Evaluate
@@ -492,6 +484,7 @@ def _(
 def _(
     device,
     eval_config,
+    is_script_mode,
     method_type,
     pretrained_load_decoder_widget,
     pretrained_path_widget,
@@ -542,7 +535,10 @@ def _(
         print(f"Using hidden state: {pretrained_use_hidden_widget.value}")
     else:
         raise ValueError(f"Unknown method type: {method_type}")
-    return method, method_config
+
+    run_eval_button = mo.ui.run_button(label="Run evaluation")
+    run_eval_button if not is_script_mode else None
+    return method, method_config, run_eval_button
 
 
 @app.cell
@@ -658,7 +654,9 @@ def _(result):
 
 
 @app.cell
-def _(result):
+def _(method: Method, result):
+    method.improvement_step._model.to("cpu")
+    torch.cuda.empty_cache()
     result
     return
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 CAPACITY_PER_SIZE: dict[int, int] = {
-    10: 30,
+    10: 20,
     20: 30,
     50: 40,
     100: 50,

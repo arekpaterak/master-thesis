@@ -7,6 +7,7 @@ from core.problems.augmentations import apply_d4_transforms
 from core.problems.instance import BaseProblemInstance
 
 
+# TODO: Enable viewing also unnormalized demand and capacity
 class CVRPInstance(BaseProblemInstance):
     """Canonical, generator-agnostic representation of a single or batched CVRP instance."""
 

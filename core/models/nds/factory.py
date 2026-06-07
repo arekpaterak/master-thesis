@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from core.models.nds.config import (
-    TrainConfig,
-)
+from core.models.nds.config import ModelParams
 
 from .decoders.config import (
     AutoregressiveDecoderConfig,
@@ -18,54 +16,54 @@ from .models.ar import AutoregressiveNDSModel
 from .models.one_pass import OnePassNDSModel
 
 
-def build_model(config: TrainConfig) -> NDSModel:
-    decoder_config = config.model.decoder
+def build_model(model: ModelParams, problem_name: str) -> NDSModel:
+    decoder_config = model.decoder
     shared_kwargs = dict(
-        problem_name=config.problem.name,
-        hidden_dim=config.model.hidden_dim,
-        num_heads=config.model.num_heads,
-        ff_dim=config.model.ff_dim,
-        with_neighbours_encoding=config.model.with_neighbours_encoding,
-        with_route_encoding=config.model.with_route_encoding,
+        problem_name=problem_name,
+        hidden_dim=model.hidden_dim,
+        num_heads=model.num_heads,
+        ff_dim=model.ff_dim,
+        with_neighbours_encoding=model.with_neighbours_encoding,
+        with_route_encoding=model.with_route_encoding,
     )
 
     match decoder_config:
         case AutoregressiveDecoderConfig():
             return AutoregressiveNDSModel(
                 **shared_kwargs,
-                poly_dim=config.model.poly_dim,
-                seed_dim=config.model.seed_dim,
+                poly_dim=model.poly_dim,
+                seed_dim=model.seed_dim,
                 use_hidden_decoding_state=decoder_config.use_hidden_decoding_state,
             )
         case SimpleOnePassDecoderConfig():
             return OnePassNDSModel(
                 **shared_kwargs,
                 decoder=SimpleOnePassDecoder(
-                    hidden_dim=config.model.hidden_dim,
-                    seed_dim=config.model.seed_dim,
-                    poly_dim=config.model.poly_dim,
-                    num_heads=config.model.num_heads,
+                    hidden_dim=model.hidden_dim,
+                    seed_dim=model.seed_dim,
+                    poly_dim=model.poly_dim,
+                    num_heads=model.num_heads,
                 ),
             )
         case SlotDecoderConfig():
             return OnePassNDSModel(
                 **shared_kwargs,
                 decoder=SlotDecoder(
-                    hidden_dim=config.model.hidden_dim,
-                    seed_dim=config.model.seed_dim,
-                    poly_dim=config.model.poly_dim,
-                    num_heads=config.model.num_heads,
-                    k=config.search.deconstruction_size,
+                    hidden_dim=model.hidden_dim,
+                    seed_dim=model.seed_dim,
+                    poly_dim=model.poly_dim,
+                    num_heads=model.num_heads,
+                    k=decoder_config.k,
                 ),
             )
         case ProximityDecoderConfig():
             return OnePassNDSModel(
                 **shared_kwargs,
                 decoder=ProximityDecoder(
-                    hidden_dim=config.model.hidden_dim,
-                    seed_dim=config.model.seed_dim,
-                    poly_dim=config.model.poly_dim,
-                    num_heads=config.model.num_heads,
+                    hidden_dim=model.hidden_dim,
+                    seed_dim=model.seed_dim,
+                    poly_dim=model.poly_dim,
+                    num_heads=model.num_heads,
                     sigma=decoder_config.sigma,
                 ),
             )

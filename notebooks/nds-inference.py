@@ -102,7 +102,7 @@ def _(
 ):
     mo.stop(not load_button.value)
     mo.stop(epoch_selector.value is None)
-    model = build_model(config)
+    model = build_model(config.model, config.problem.name)
     _ckpt = torch.load(
         checkpoint_paths[epoch_selector.value],
         map_location="cpu",

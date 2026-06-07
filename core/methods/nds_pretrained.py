@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from core.lns.config import SearchParams
 from core.methods.base import Method
-from core.models.nds.config import ModelParams, TrainConfig
+from core.models.nds.config import ModelParams
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import resolve_improvement_step
 from core.models.nds.models.ar import AutoregressiveNDSModel
@@ -42,13 +42,7 @@ class NDSPretrainedMethod:
             load_original_pretrained_encoder_weights,
         )
 
-        # TODO: Adjust build_model to take a more minimal config object instead of TrainConfig.
-        train_config = TrainConfig(
-            problem=problem,
-            model=config.model,
-            search=config.search,
-        )
-        model = build_model(train_config).to(device)
+        model = build_model(config.model, problem.name).to(device)
         if not isinstance(model, AutoregressiveNDSModel):
             raise ValueError(
                 "Expected the original NDS checkpoint to be used with an autoregressive model."

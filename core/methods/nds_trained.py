@@ -38,7 +38,7 @@ class NDSTrainedMethod:
         train_config = TrainConfig.model_validate(
             yaml.safe_load((config.run_dir / "config.yml").read_text())
         )
-        model = build_model(train_config).to(device)
+        model = build_model(train_config.model, train_config.problem.name).to(device)
         ckpt = torch.load(
             _find_latest_checkpoint(config.run_dir), map_location=device, weights_only=True
         )

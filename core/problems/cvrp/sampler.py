@@ -20,14 +20,14 @@ class CVRPSampler(Sampler[CVRPInstance]):
         cfg = self._config
         g = self._generator
 
-        # Customer coordinates (batch, num_nodes, 2), uniform in a unit square
+        # Customer coordinates (batch, num_nodes, 2), uniform in a defined square
         customer_locations = (
             torch.rand(batch_size, cfg.num_customers, 2, generator=g)
             * (cfg.max_coordinate - cfg.min_coordinate)
             + cfg.min_coordinate
         )
 
-        # Depot coordinates (batch, 1, 2), uniform in a unit square
+        # Depot coordinates (batch, 1, 2), uniform in a defined square
         depot_location = (
             torch.rand(batch_size, 1, 2, generator=g) * (cfg.max_coordinate - cfg.min_coordinate)
             + cfg.min_coordinate

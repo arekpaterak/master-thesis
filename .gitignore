@@ -28,7 +28,9 @@ __marimo__/
 notebooks/checkpoints/
 
 # W&B
-wandb/
+/wandb/
 
 # AI agents
 .claude
+
+/data/cvrp/
