@@ -1,9 +1,12 @@
+from collections.abc import Callable
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from core.models.embeddings.cvrp import CVRPInitialEmbedding
 from core.models.embeddings.tsp import TSPInitialEmbedding
+from core.models.nds.config import EncoderConfig
 
 
 class NDSEncoder(nn.Module):
@@ -14,6 +17,7 @@ class NDSEncoder(nn.Module):
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
+        encoder_config: EncoderConfig | None = None,
         with_neighbours_encoding: bool = True,
         with_route_encoding: bool = True,
         initial_embedding: nn.Module | None = None,
@@ -38,8 +42,14 @@ class NDSEncoder(nn.Module):
         else:
             raise ValueError(f"Unknown problem_name: {problem_name}")
 
+        encoder_config = encoder_config or EncoderConfig()
         attention_layer = lambda: AttentionLayer(
-            hidden_dim=hidden_dim, num_heads=num_heads, ff_dim=ff_dim
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            ff_dim=ff_dim,
+            norm_type=encoder_config.norm_type,
+            pre_norm=encoder_config.pre_norm,
+            ff_activation=encoder_config.ff_activation,
         )
         self.pre_attention = nn.Sequential(
             attention_layer(),
@@ -88,6 +98,52 @@ class InstanceNorm(nn.Module):
         return self.norm(x.transpose(-1, -2)).transpose(-1, -2)
 
 
+class SwiGLUFeedForward(nn.Module):
+    """Swish-Gated Linear Unit feed-forward block (Shazeer, 2020).
+
+    FF(x) = W_out (SiLU(W_gate x) * W_value x)
+
+    The SiLU(W_gate x) acts as a soft, per-feature multiplicative gate on the
+    linear W_value x: each scalar decides how much of its value to let through.
+    A ReLU MLP can only zero out or pass; this can modulate. Standard in modern
+    LLMs (LLaMA, Mistral).
+    Biases are omitted by convention -- with three
+    linears any constant offset is absorbed by the next layer.
+
+    Note: keeps the same ff_dim as the ReLU variant, so
+    parameter count is ~1.5x larger.
+    """
+
+    def __init__(self, hidden_dim: int, ff_dim: int) -> None:
+        super().__init__()
+        self.gate_proj = nn.Linear(hidden_dim, ff_dim, bias=False)
+        self.value_proj = nn.Linear(hidden_dim, ff_dim, bias=False)
+        self.out_proj = nn.Linear(ff_dim, hidden_dim, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.out_proj(F.silu(self.gate_proj(x)) * self.value_proj(x))
+
+
+def _build_norm(norm_type: str, hidden_dim: int) -> nn.Module:
+    if norm_type == "instance":
+        return InstanceNorm(hidden_dim)
+    if norm_type == "rms":
+        return nn.RMSNorm(hidden_dim)
+    raise ValueError(f"Unknown norm_type: {norm_type!r}")
+
+
+def _build_feedforward(ff_activation: str, hidden_dim: int, ff_dim: int) -> nn.Module:
+    if ff_activation == "relu":
+        return nn.Sequential(
+            nn.Linear(hidden_dim, ff_dim),
+            nn.ReLU(),
+            nn.Linear(ff_dim, hidden_dim),
+        )
+    if ff_activation == "swiglu":
+        return SwiGLUFeedForward(hidden_dim, ff_dim)
+    raise ValueError(f"Unknown ff_activation: {ff_activation!r}")
+
+
 class AttentionLayer(nn.Module):
     def __init__(
         self,
@@ -95,22 +151,35 @@ class AttentionLayer(nn.Module):
         hidden_dim: int,
         num_heads: int,
         ff_dim: int,
+        norm_type: str = "instance",
+        pre_norm: bool = False,
+        ff_activation: str = "relu",
     ) -> None:
         super().__init__()
+        self.pre_norm = pre_norm
         self.MHA = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
-        self.norm1 = InstanceNorm(hidden_dim)
-        self.FF = nn.Sequential(
-            nn.Linear(hidden_dim, ff_dim),
-            nn.ReLU(),
-            nn.Linear(ff_dim, hidden_dim),
-        )
-        self.norm2 = InstanceNorm(hidden_dim)
+        self.norm1 = _build_norm(norm_type, hidden_dim)
+        self.norm2 = _build_norm(norm_type, hidden_dim)
+        self.FF = _build_feedforward(ff_activation, hidden_dim, ff_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        attn_out, _ = self.MHA(x, x, x)
-        x = self.norm1(x + attn_out)
-        x = self.norm2(x + self.FF(x))
+        x = self._residual(x, self._self_attention, self.norm1)
+        x = self._residual(x, self.FF, self.norm2)
         return x
+
+    def _residual(
+        self,
+        x: torch.Tensor,
+        sublayer: Callable[[torch.Tensor], torch.Tensor],
+        norm: nn.Module,
+    ) -> torch.Tensor:
+        if self.pre_norm:
+            return x + sublayer(norm(x))
+        return norm(x + sublayer(x))
+
+    def _self_attention(self, x: torch.Tensor) -> torch.Tensor:
+        out, _ = self.MHA(x, x, x)
+        return out
 
 
 class NeighboursEncodingLayer(nn.Module):

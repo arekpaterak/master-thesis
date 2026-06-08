@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from core.models.entropy import entropy
+from core.models.nds.config import EncoderConfig
 from core.models.nds.decoders.ar import (
     AutoregressiveNDSDecoder,
     DecoderCache,
@@ -30,6 +31,7 @@ class AutoregressiveNDSModel(nn.Module):
         ff_dim: int = 512,
         poly_dim: int = 256,
         seed_dim: int = 10,
+        encoder_config: EncoderConfig | None = None,
         with_neighbours_encoding: bool = True,
         with_route_encoding: bool | None = None,
         use_hidden_decoding_state: bool = True,
@@ -55,6 +57,7 @@ class AutoregressiveNDSModel(nn.Module):
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,
+            encoder_config=encoder_config,
             with_neighbours_encoding=with_neighbours_encoding,
             with_route_encoding=with_route_encoding,
         )

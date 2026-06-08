@@ -20,6 +20,23 @@ class OriginalPretrainedConfig(BaseModel):
     load_decoder: bool = Field(default=False, description="Also load decoder weights.")
 
 
+class EncoderConfig(BaseModel):
+    """Architecture choices for the transformer encoder layers."""
+
+    norm_type: Literal["instance", "rms"] = Field(
+        default="instance",
+        description="Normalization. 'instance' = InstanceNorm1d (AM default), 'rms' = RMSNorm.",
+    )
+    pre_norm: bool = Field(
+        default=False,
+        description="If True, normalize before each sublayer (pre-norm). Default is post-norm.",
+    )
+    ff_activation: Literal["relu", "swiglu"] = Field(
+        default="relu",
+        description="Feed-forward variant. 'relu' = 2-layer ReLU MLP (AM default), 'swiglu' = SwiGLU.",
+    )
+
+
 class ModelParams(BaseModel):
     """Configuration for the model architecture and weight initialisation."""
 
@@ -33,6 +50,7 @@ class ModelParams(BaseModel):
         default=None,
         description="Use route encoding. None means problem-specific default (True for CVRP, False for TSP).",
     )
+    encoder: EncoderConfig = Field(default_factory=EncoderConfig)
     decoder: DecoderConfig = Field(default_factory=AutoregressiveDecoderConfig)
 
     init_weights: str | None = Field(

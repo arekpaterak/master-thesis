@@ -23,6 +23,7 @@ def build_model(model: ModelParams, problem_name: str) -> NDSModel:
         hidden_dim=model.hidden_dim,
         num_heads=model.num_heads,
         ff_dim=model.ff_dim,
+        encoder_config=model.encoder,
         with_neighbours_encoding=model.with_neighbours_encoding,
         with_route_encoding=model.with_route_encoding,
     )

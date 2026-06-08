@@ -4,6 +4,7 @@ from typing import Literal
 
 import torch.nn as nn
 
+from core.models.nds.config import EncoderConfig
 from core.models.nds.decoders.one_pass.base import OnePassDestroyDecoder
 from core.models.nds.decoders.one_pass.proximity import ProximityDecoder
 from core.models.nds.encoder import NDSEncoder
@@ -24,6 +25,7 @@ class OnePassNDSModel(nn.Module):
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
+        encoder_config: EncoderConfig | None = None,
         with_neighbours_encoding: bool = True,
         with_route_encoding: bool | None = None,
         decoder: OnePassDestroyDecoder,
@@ -48,6 +50,7 @@ class OnePassNDSModel(nn.Module):
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,
+            encoder_config=encoder_config,
             with_neighbours_encoding=with_neighbours_encoding,
             with_route_encoding=with_route_encoding,
         )

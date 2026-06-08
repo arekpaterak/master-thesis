@@ -26,6 +26,7 @@ with app.setup(hide_code=True):
     from core.models.nds.config import (
         AmpConfig,
         CompileConfig,
+        EncoderConfig,
         LoggingConfig,
         ModelParams,
         OptimizerParams,
@@ -237,6 +238,33 @@ def _(defaults):
         model_seed_dim,
         model_with_neighbours_encoding,
     )
+
+
+@app.cell(hide_code=True)
+def _(defaults):
+    encoder_norm_type = mo.ui.dropdown(
+        ["instance", "rms"],
+        value=defaults.model.encoder.norm_type,
+        label="Encoder norm type",
+    )
+    encoder_pre_norm = mo.ui.checkbox(
+        value=defaults.model.encoder.pre_norm,
+        label="Pre-norm",
+    )
+    encoder_ff_activation = mo.ui.dropdown(
+        ["relu", "swiglu"],
+        value=defaults.model.encoder.ff_activation,
+        label="FF activation",
+    )
+    mo.vstack(
+        [
+            mo.md("### Encoder architecture"),
+            encoder_norm_type,
+            encoder_pre_norm,
+            encoder_ff_activation,
+        ]
+    )
+    return encoder_ff_activation, encoder_norm_type, encoder_pre_norm
 
 
 @app.cell(hide_code=True)
@@ -551,6 +579,9 @@ def _(
     decoder_sigma_widget,
     decoder_type_widget,
     decoder_use_hidden_widget,
+    encoder_ff_activation,
+    encoder_norm_type,
+    encoder_pre_norm,
     is_script_mode,
     logging_wandb_project,
     model_ff_dim,
@@ -634,6 +665,11 @@ def _(
                 poly_dim=model_poly_dim.value,
                 seed_dim=model_seed_dim.value,
                 with_neighbours_encoding=model_with_neighbours_encoding.value,
+                encoder=EncoderConfig(
+                    norm_type=encoder_norm_type.value,
+                    pre_norm=encoder_pre_norm.value,
+                    ff_activation=encoder_ff_activation.value,
+                ),
                 decoder=_decoder_config,
                 init_weights=_init_weights,
                 original_pretrained_weights=_original_pretrained,
