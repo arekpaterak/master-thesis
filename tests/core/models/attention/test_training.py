@@ -7,17 +7,17 @@ from core.models.attention_model.model import AttentionModel
 from core.models.attention_model.module import AMModule
 from core.models.attention_model.training_helpers import prepare_baseline, sync_baseline_
 from core.models.trainer import Trainer
-from core.problems.cvrp import CVRPConfig, CVRPSampler
-from core.problems.tsp.config import TSPConfig
+from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.tsp.config import TSP
 from core.problems.tsp.sampler import TSPSampler
 
 
 @pytest.mark.parametrize("problem", ["tsp", "cvrp"])
 def test_train_one_epoch(problem: str):
     if problem == "tsp":
-        sampler = TSPSampler(TSPConfig(num_locations=10), seed=0)
+        sampler = TSPSampler(TSP(num_locations=10), seed=0)
     else:
-        sampler = CVRPSampler(CVRPConfig.for_n(20), seed=0)
+        sampler = CVRPSampler(CVRP.for_n(20), seed=0)
 
     model = AttentionModel(problem_name=problem, hidden_dim=8, num_layers=1)
     attention_module = AMModule(model, sampler, eval_n_instances=32, eval_batch_size=32)

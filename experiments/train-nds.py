@@ -31,7 +31,6 @@ with app.setup(hide_code=True):
         ModelParams,
         OptimizerParams,
         OriginalPretrainedConfig,
-        ProblemParams,
         TrainConfig,
         TrainerParams,
         ValidationConfig,
@@ -52,7 +51,8 @@ with app.setup(hide_code=True):
     from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
     from core.models.trainer import Trainer
     from core.models.utils import load_checkpoint
-    from core.problems.setup import make_sampler
+    from core.problems import make_problem_config
+    from core.problems.sampler import Sampler
     from core.results.plots import plot_lns_progress
     from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
 
@@ -654,7 +654,7 @@ def _(
         )
 
         config = TrainConfig(
-            problem=ProblemParams(
+            problem=make_problem_config(
                 name=problem_name.value,
                 size=problem_size.value,
             ),
@@ -735,10 +735,8 @@ def _():
 
 @app.cell
 def _(config):
-    sampler = make_sampler(config.problem.name, config.problem.size)
-    val_sampler = make_sampler(
-        config.problem.name, config.problem.size, seed=config.validation.seed
-    )
+    sampler = Sampler.from_config(config.problem)
+    val_sampler = Sampler.from_config(config.problem, seed=config.validation.seed)
     return sampler, val_sampler
 
 

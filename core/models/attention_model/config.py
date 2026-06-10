@@ -5,12 +5,7 @@ import json
 
 from pydantic import BaseModel, Field, computed_field
 
-
-class ProblemParams(BaseModel):
-    """Configuration for the optimisation problem."""
-
-    name: str = Field(default="tsp", description="Problem to solve (tsp or cvrp).")
-    size: int = Field(default=20, description="Number of nodes in the problem.")
+from core.problems import ProblemConfig, TSPConfig
 
 
 class ModelParams(BaseModel):
@@ -52,7 +47,7 @@ class LoggingConfig(BaseModel):
 class TrainConfig(BaseModel):
     """Complete configuration for Attention Model training."""
 
-    problem: ProblemParams = Field(default_factory=ProblemParams)
+    problem: ProblemConfig = Field(default_factory=TSPConfig)
     model: ModelParams = Field(default_factory=ModelParams)
     optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
     trainer: TrainerParams = Field(default_factory=TrainerParams)

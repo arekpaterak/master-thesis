@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 from core.lns.acceptance_criterion import GreedyAcceptanceConfig
 from core.lns.config import SearchParams
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
-from core.problems.config import ProblemParams
+from core.problems import CVRPConfig, ProblemConfig
 
 
 class OriginalPretrainedConfig(BaseModel):
@@ -166,7 +166,7 @@ class CompileConfig(BaseModel):
 class TrainConfig(BaseModel):
     """Complete configuration for NDS model training."""
 
-    problem: ProblemParams = Field(default_factory=ProblemParams)
+    problem: ProblemConfig = Field(default_factory=CVRPConfig)
     model: ModelParams = Field(default_factory=ModelParams)
     optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
     trainer: TrainerParams = Field(default_factory=TrainerParams)

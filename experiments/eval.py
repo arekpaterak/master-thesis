@@ -38,7 +38,7 @@ with app.setup:
     from core.methods.base import Method
     from core.models.nds.config import ModelParams, TrainConfig
     from core.models.nds.decoders.config import AutoregressiveDecoderConfig
-    from core.problems.config import ProblemParams
+    from core.problems import make_problem_config
     from core.problems.setup import resolve_start_solution
     from core.results.plots import plot_lns_progress
     from core.results.wandb_artifacts import upload_eval_plots, upload_eval_results
@@ -426,7 +426,7 @@ def _(
     else:
         eval_config = preset_defaults.model_copy(
             update={
-                "problem": ProblemParams(
+                "problem": make_problem_config(
                     name=problem_name_widget.value, size=int(problem_size_widget.value)
                 ),
                 "num_test_instances": num_test_instances_widget.value,

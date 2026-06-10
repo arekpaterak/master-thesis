@@ -5,11 +5,11 @@ from tensordict import TensorDict
 from torch.distributions import Uniform
 
 from core.problems.sampler import Sampler
-from core.problems.tsp.config import TSPConfig
+from core.problems.tsp.config import TSP
 
 
 class RL4COTSPSampler(Sampler[TensorDict]):
-    def __init__(self, config: TSPConfig) -> None:
+    def __init__(self, config: TSP) -> None:
         assert config.distribution_of_locations == "uniform"
 
         self._config = config

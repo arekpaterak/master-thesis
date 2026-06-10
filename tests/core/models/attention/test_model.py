@@ -1,8 +1,8 @@
 import pytest
 
 from core.models.attention_model.model import AttentionModel, rollout_to_solution
-from core.problems.cvrp import CVRPConfig, CVRPSampler
-from core.problems.tsp import TSPConfig, TSPSampler
+from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.tsp import TSP, TSPSampler
 
 
 @pytest.mark.parametrize("problem", ["tsp", "cvrp"])
@@ -12,9 +12,9 @@ def test_attention_model_rollout(problem: str):
 
     model = AttentionModel(problem_name=problem, hidden_dim=hidden_dim, num_heads=2, num_layers=1)
     if problem == "tsp":
-        instance = TSPSampler(TSPConfig(num_locations=5))(batch_size)
+        instance = TSPSampler(TSP(num_locations=5))(batch_size)
     else:
-        instance = CVRPSampler(CVRPConfig.for_n(20))(batch_size)
+        instance = CVRPSampler(CVRP.for_n(20))(batch_size)
 
     result = model.rollout(instance, greedy=False)
     assert result.actions.shape[0] == batch_size

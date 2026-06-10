@@ -4,17 +4,23 @@ import torch
 
 from ..sampler import Sampler
 from . import CVRPInstance
-from .config import CVRPConfig
+from .config import CVRP
 
 
 class CVRPSampler(Sampler[CVRPInstance]):
-    def __init__(self, config: CVRPConfig, seed: int | None = None) -> None:
+    problem_name = "cvrp"
+
+    def __init__(self, config: CVRP, seed: int | None = None) -> None:
         assert config.distribution_of_locations == "uniform"
 
         self._config = config
         self._generator = torch.Generator()
         if seed is not None:
             self._generator.manual_seed(seed)
+
+    @classmethod
+    def for_size(cls, size: int, *, seed: int | None = None) -> CVRPSampler:
+        return cls(CVRP.for_n(size), seed=seed)
 
     def __call__(self, batch_size: int) -> CVRPInstance:
         cfg = self._config

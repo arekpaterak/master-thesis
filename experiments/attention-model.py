@@ -232,9 +232,9 @@ def _(
         LoggingConfig,
         ModelParams,
         OptimizerParams,
-        ProblemParams,
         TrainerParams,
     )
+    from core.problems import make_problem_config
 
     if is_script_mode:
         config = TrainConfig.model_validate(yaml_data)
@@ -244,7 +244,7 @@ def _(
             mo.md("*Click 'Start Training' to begin.*"),
         )
         config = TrainConfig(
-            problem=ProblemParams(**problem_widgets.value),
+            problem=make_problem_config(**problem_widgets.value),
             model=ModelParams(**model_widgets.value),
             optimizer=OptimizerParams(**optimizer_widgets.value),
             trainer=TrainerParams(**trainer_widgets.value),
@@ -263,16 +263,9 @@ def _():
 
 @app.cell
 def _(config):
-    from core.problems.cvrp import CVRPConfig, CVRPSampler
-    from core.problems.tsp import TSPConfig, TSPSampler
+    from core.problems.sampler import Sampler
 
-    match config.problem.name:
-        case "tsp":
-            sampler = TSPSampler(TSPConfig(num_locations=config.problem.size))
-        case "cvrp":
-            sampler = CVRPSampler(CVRPConfig.for_n(config.problem.size))
-        case _:
-            raise ValueError(f"Unknown problem name: {config.problem.name}")
+    sampler = Sampler.from_config(config.problem)
     return (sampler,)
 
 

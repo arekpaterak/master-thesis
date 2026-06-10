@@ -1,13 +1,13 @@
 import pytest
 import torch
 
-from core.problems.tsp import TSPConfig, TSPInstance, TSPSampler
+from core.problems.tsp import TSP, TSPInstance, TSPSampler
 from core.problems.tsp.solution import TSPSolution
 from core.problems.tsp.solve import random_permutation
 
 
 def test_visualize_without_batch_dim():
-    instance = TSPSampler(TSPConfig(num_locations=10))(10)[0]
+    instance = TSPSampler(TSP(num_locations=10))(10)[0]
     solution = random_permutation(instance)
     assert solution.batch_dims == 0
 
@@ -15,7 +15,7 @@ def test_visualize_without_batch_dim():
 
 
 def test_visualize_with_batch_of_one():
-    instance = TSPSampler(TSPConfig(num_locations=10))(10)[:1]
+    instance = TSPSampler(TSP(num_locations=10))(10)[:1]
     solution = random_permutation(instance)
     assert solution.batch_dims == 1
 
@@ -23,7 +23,7 @@ def test_visualize_with_batch_of_one():
 
 
 def test_if_fails_to_visualize_batch():
-    instance = TSPSampler(TSPConfig(num_locations=10))(10)
+    instance = TSPSampler(TSP(num_locations=10))(10)
     solution = random_permutation(instance)
 
     with pytest.raises(ValueError):
@@ -88,7 +88,7 @@ def test_tour_length(locations, tour, expected):
 
 
 def test_deconstructed():
-    instance = TSPSampler(TSPConfig(num_locations=10))(10)
+    instance = TSPSampler(TSP(num_locations=10))(10)
     solution = random_permutation(instance)
 
     solution[0, 1] = -1
@@ -114,7 +114,7 @@ def test_remove_nodes(tour, to_remove, expected):
     tour = torch.tensor(tour, dtype=torch.long)
     to_remove = torch.tensor(to_remove, dtype=torch.long)
     expected = torch.tensor(expected, dtype=torch.long)
-    config = TSPConfig(num_locations=10)
+    config = TSP(num_locations=10)
     instance = TSPSampler(config, seed=0)(tour.shape[0])
     solution = TSPSolution.create(instance=instance, tour=tour)
 
@@ -138,7 +138,7 @@ def test_remove_nodes(tour, to_remove, expected):
 def test_neighbours_index(tour, expected):
     tour = torch.tensor(tour, dtype=torch.long)
     expected = torch.tensor(expected, dtype=torch.long)
-    config = TSPConfig(num_locations=4)
+    config = TSP(num_locations=4)
     instance = TSPSampler(config, seed=0)(tour.shape[0])
     solution = TSPSolution.create(instance=instance, tour=tour)
 
@@ -158,7 +158,7 @@ def test_neighbours_index(tour, expected):
 def test_tour_index(tour, expected):
     tour = torch.tensor(tour, dtype=torch.long)
     expected = torch.tensor(expected, dtype=torch.long)
-    config = TSPConfig(num_locations=4)
+    config = TSP(num_locations=4)
     instance = TSPSampler(config, seed=0)(tour.shape[0])
     solution = TSPSolution.create(instance=instance, tour=tour)
 

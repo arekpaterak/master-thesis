@@ -5,7 +5,7 @@ from core.lns.operators.destroy.random_edge import TSPRandomEdgeDestroy
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair import TSPGreedyReconnectRepair
 from core.lns.operators.repair.greedy_insert import TSPGreedyInsertRepair
-from core.problems.tsp import TSPConfig, TSPSampler, TSPSolution
+from core.problems.tsp import TSP, TSPSampler, TSPSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solve import random_permutation
 
@@ -20,7 +20,7 @@ class TestGreedyRepair:
     )
     def test_repairs_tsp(self, batch_size: int, num_locations: int, destruction_size: int) -> None:
         # Create full solution
-        config = TSPConfig(num_locations=num_locations)
+        config = TSP(num_locations=num_locations)
         instance = TSPSampler(config, seed=42)(batch_size)
 
         torch.manual_seed(42)
@@ -55,7 +55,7 @@ class TestGreedyEdgeRepair:
     def test_repairs_tsp(
         self, batch_size: int, num_locations: int, num_edges_to_destroy: int
     ) -> None:
-        config = TSPConfig(num_locations=num_locations)
+        config = TSP(num_locations=num_locations)
         instance = TSPSampler(config, seed=42)(batch_size)
 
         sequence = random_permutation(instance).tour
@@ -89,7 +89,7 @@ class TestGreedyEdgeRepairWithNodeDestroy:
         ],
     )
     def test_repairs_tsp(self, batch_size: int, num_locations: int, destruction_size: int) -> None:
-        config = TSPConfig(num_locations=num_locations)
+        config = TSP(num_locations=num_locations)
         instance = TSPSampler(config, seed=42)(batch_size)
 
         sequence = random_permutation(instance).tour

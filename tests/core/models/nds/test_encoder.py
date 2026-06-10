@@ -1,12 +1,12 @@
 from core.models.embeddings import CVRPInitialEmbedding
 from core.models.nds.encoder import NDSEncoder
-from core.problems.cvrp import CVRPConfig, CVRPSampler
+from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.solve import one_customer_per_route
 
 
 def test_encoder() -> None:
     B, N = 4, 20
-    sampler = CVRPSampler(CVRPConfig.for_n(N))
+    sampler = CVRPSampler(CVRP.for_n(N))
     instance = sampler(B)
     solution = one_customer_per_route(instance)
 
@@ -28,7 +28,7 @@ def test_encoder() -> None:
 
 def test_initial_node_embedding() -> None:
     N = 20
-    sampler = CVRPSampler(CVRPConfig.for_n(N))
+    sampler = CVRPSampler(CVRP.for_n(N))
     instance = sampler(4)
 
     initial_embedding = CVRPInitialEmbedding(hidden_dim=128)

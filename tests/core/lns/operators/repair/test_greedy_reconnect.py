@@ -6,10 +6,10 @@ from core.lns.operators.repair.greedy_reconnect import (
     CVRPGreedyReconnectRepair,
     TSPGreedyReconnectRepair,
 )
-from core.problems.cvrp import CVRPConfig, CVRPSampler
+from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.solve import one_customer_per_route_graph
-from core.problems.tsp import TSPConfig, TSPSampler
+from core.problems.tsp import TSP, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solve import random_permutation
 
@@ -26,7 +26,7 @@ def batch_size(request) -> int:
 
 @pytest.fixture
 def cvrp_graph_solution(batch_size: int) -> CVRPGraphSolution:
-    config = CVRPConfig.for_n(20)
+    config = CVRP.for_n(20)
     instance = CVRPSampler(config, seed=42)(batch_size)
     return one_customer_per_route_graph(instance)
 
@@ -71,7 +71,7 @@ class TestCVRPGreedyReconnectRepair:
     def test_rollout_batch_shape(self, batch_size: int) -> None:
         """Repair must work when solution has 2D batch shape (B, R) from remove_customers."""
         B, R, N, K = batch_size, 5, 20, 3
-        config = CVRPConfig.for_n(N)
+        config = CVRP.for_n(N)
         instance = CVRPSampler(config, seed=42)(B)
         solution = one_customer_per_route_graph(instance)
 
@@ -142,7 +142,7 @@ class TestCVRPGreedyReconnectRepair:
 
 
 def _make_deconstructed_cvrp(batch_size: int, num_nodes: int, destruction_size: int):
-    config = CVRPConfig.for_n(num_nodes)
+    config = CVRP.for_n(num_nodes)
     instance = CVRPSampler(config, seed=42)(batch_size)
     solution = one_customer_per_route_graph(instance)
     destroy = RandomNodeDestroy[CVRPGraphSolution](destruction_size=destruction_size, seed=42)
@@ -150,7 +150,7 @@ def _make_deconstructed_cvrp(batch_size: int, num_nodes: int, destruction_size: 
 
 
 def _make_deconstructed_tsp(batch_size: int, num_nodes: int, destruction_size: int):
-    config = TSPConfig(num_locations=num_nodes)
+    config = TSP(num_locations=num_nodes)
     instance = TSPSampler(config, seed=42)(batch_size)
     torch.manual_seed(42)
     sequence = random_permutation(instance).tour

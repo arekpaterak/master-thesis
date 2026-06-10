@@ -3,7 +3,7 @@ import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair.greedy_insert import CVRPGreedyInsertRepair
-from core.problems.cvrp import CVRPConfig, CVRPSampler
+from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.solve import one_customer_per_route_graph
 
@@ -20,7 +20,7 @@ def batch_size(request) -> int:
 
 @pytest.fixture
 def cvrp_graph_solution(batch_size: int) -> CVRPGraphSolution:
-    config = CVRPConfig.for_n(20)
+    config = CVRP.for_n(20)
     instance = CVRPSampler(config, seed=42)(batch_size)
     return one_customer_per_route_graph(instance)
 
@@ -67,7 +67,7 @@ class TestCVRPGreedyInsertRepair:
     def test_rollout_batch_shape(self, batch_size: int) -> None:
         """Repair must work when solution has 2D batch shape (B, R) from remove_customers."""
         B, R, N, K = batch_size, 5, 20, 3
-        config = CVRPConfig.for_n(N)
+        config = CVRP.for_n(N)
         instance = CVRPSampler(config, seed=42)(B)
         solution = one_customer_per_route_graph(instance)
 
@@ -143,9 +143,7 @@ class TestCVRPGreedyInsertRepair:
 
     def test_inserts_at_arbitrary_position(self) -> None:
         """Repair must be able to insert mid-route, not only at depot-connected ends."""
-        config = CVRPConfig(
-            num_customers=4, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1
-        )
+        config = CVRP(num_customers=4, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1)
         instance = CVRPSampler(config, seed=0)(1)
         # One route 0 -> 1 -> 3 -> 4 -> 0, customer 2 free.
         solution = CVRPGraphSolution.create_from_sequence(
@@ -180,9 +178,7 @@ class TestCVRPGreedyInsertRepair:
         # Two customers per route, capacity exactly = sum of two demands. Removing one
         # customer from a tight route and trying to insert another free customer must
         # NOT exceed capacity on any existing route.
-        config = CVRPConfig(
-            num_customers=3, vehicle_capacity_raw=2, min_demand_raw=1, max_demand_raw=1
-        )
+        config = CVRP(num_customers=3, vehicle_capacity_raw=2, min_demand_raw=1, max_demand_raw=1)
         instance = CVRPSampler(config, seed=0)(1)
         # Route layout: 0 -> 1 -> 2 -> 0, 0 -> 3 -> 0. Capacity 2: first route has
         # demand 2 (full), second has demand 1.
@@ -195,9 +191,7 @@ class TestCVRPGreedyInsertRepair:
         # Both existing routes can accept customer 2 since each currently has demand 1
         # and capacity 2 — so a new tour is NOT forced here. Let's force it with a
         # heavier demand instance.
-        config = CVRPConfig(
-            num_customers=3, vehicle_capacity_raw=2, min_demand_raw=2, max_demand_raw=2
-        )
+        config = CVRP(num_customers=3, vehicle_capacity_raw=2, min_demand_raw=2, max_demand_raw=2)
         instance = CVRPSampler(config, seed=0)(1)
         # Each customer has demand 2 == capacity, so each route holds exactly one
         # customer. Layout: 0 -> 1 -> 0, 0 -> 2 -> 0, 0 -> 3 -> 0.

@@ -1,12 +1,12 @@
 import pytest
 import torch
 
-from core.problems.cvrp import CVRPConfig, CVRPSampler, CVRPSolution
+from core.problems.cvrp import CVRP, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import all_customers_one_route, one_customer_per_route
 
 
 def test_referencing_to_instance():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
 
     assert solution.instance is instance
@@ -18,7 +18,7 @@ def test_referencing_to_instance():
 
 
 def test_solution_clone_does_not_alias_instance_tensors():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(2)
+    instance = CVRPSampler(CVRP.for_n(20))(2)
     solution = one_customer_per_route(instance)
 
     cloned = solution.clone()
@@ -33,7 +33,7 @@ def test_solution_clone_does_not_alias_instance_tensors():
 
 
 def test_solution_to_device_moves_instance_and_sequence():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(3)
+    instance = CVRPSampler(CVRP.for_n(20))(3)
     solution = one_customer_per_route(instance)
 
     moved = solution.to("cpu")
@@ -51,7 +51,7 @@ def test_solution_to_device_moves_instance_and_sequence():
 
 
 def test_instance_to_device_moves_solution_instance():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(3)
+    instance = CVRPSampler(CVRP.for_n(20))(3)
     solution = one_customer_per_route(instance)
 
     instance.to("cpu")
@@ -67,7 +67,7 @@ def test_instance_to_device_moves_solution_instance():
 
 
 def test_solution_slices_keep_per_element_instance_reference():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
 
     head = solution[:1]
@@ -86,7 +86,7 @@ def test_solution_slices_keep_per_element_instance_reference():
 
 
 def test_concatenate_two_solutions():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution1 = one_customer_per_route(instance)
     solution2 = one_customer_per_route(instance)
 
@@ -99,7 +99,7 @@ def test_concatenate_two_solutions():
 
 
 def test_if_can_visualize_without_batch_dim():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)[0]
     assert solution.batch_dims == 0
 
@@ -107,7 +107,7 @@ def test_if_can_visualize_without_batch_dim():
 
 
 def test_if_can_visualize_with_batch_of_one():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)[:1]
     assert solution.batch_dims == 1
 
@@ -115,7 +115,7 @@ def test_if_can_visualize_with_batch_of_one():
 
 
 def test_if_fails_to_visualize_batch():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
 
     with pytest.raises(ValueError):
@@ -123,7 +123,7 @@ def test_if_fails_to_visualize_batch():
 
 
 def test_single_instance_routes():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)[0]
 
     routes = solution.routes()
@@ -133,7 +133,7 @@ def test_single_instance_routes():
 
 
 def test_objective():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
 
     objective = solution.objective()
@@ -141,7 +141,7 @@ def test_objective():
 
 
 def test_mean_objective_per_instance_in_batch():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
     rollout_size = 5
     expanded_solution = solution.unsqueeze(-1).expand(*solution.batch_size, rollout_size)
@@ -157,7 +157,7 @@ def test_mean_objective_per_instance_in_batch():
 
 
 def test_gather_from_multiple_rollouts():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
     rollout_size = 5
     expanded_solution = solution.unsqueeze(-1).expand(*solution.batch_size, rollout_size)
@@ -170,7 +170,7 @@ def test_gather_from_multiple_rollouts():
 
 
 def test_is_complete():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
 
     # sequence: [0, 1, 0, 2, 0, ..., 0, 19, 0], expected: True
     solution = one_customer_per_route(instance)
@@ -182,7 +182,7 @@ def test_is_complete():
 
 
 def test_deconstructed():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
 
     solution.sequence[0, 4] = -1
@@ -198,11 +198,11 @@ def test_deconstructed():
 
 
 def test_is_feasible():
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
     assert solution.is_feasible.all()
 
-    infeasible_config = CVRPConfig(
+    infeasible_config = CVRP(
         num_customers=20,
         vehicle_capacity_raw=1,
         min_demand_raw=1,
@@ -212,7 +212,7 @@ def test_is_feasible():
     infeasible_solution = all_customers_one_route(infeasible_instance)
     assert (~infeasible_solution.is_feasible).all()
 
-    feasible_config = CVRPConfig(
+    feasible_config = CVRP(
         num_customers=20,
         vehicle_capacity_raw=20,
         min_demand_raw=1,
@@ -233,7 +233,7 @@ def test_is_feasible_on_deconstructed():
     Test if is_feasible is safe to call on deconstructed solutions.
     """
 
-    instance = CVRPSampler(CVRPConfig.for_n(20))(10)
+    instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)
 
     # Deconstruct one element by introducing an UNASSIGNED token.
@@ -271,7 +271,7 @@ def test_is_feasible_on_deconstructed():
 def test_route_indexed_sequence(sequence, expected):
     sequence = torch.tensor(sequence, dtype=torch.long)
     expected = torch.tensor(expected, dtype=torch.long)
-    instance = CVRPSampler(CVRPConfig.for_n(20))(1)
+    instance = CVRPSampler(CVRP.for_n(20))(1)
     solution = CVRPSolution.create(
         instance=instance,
         sequence=sequence.unsqueeze(0),
@@ -298,7 +298,7 @@ def test_route_indexed_sequence(sequence, expected):
 )
 def test_num_routes(sequence, expected):
     sequence = torch.tensor(sequence, dtype=torch.long)
-    instance = CVRPSampler(CVRPConfig.for_n(20))(1)
+    instance = CVRPSampler(CVRP.for_n(20))(1)
     solution = CVRPSolution.create(
         instance=instance,
         sequence=sequence.unsqueeze(0),
@@ -329,7 +329,7 @@ def test_num_routes(sequence, expected):
 def test_demand_per_route(sequence, expected):
     sequence = torch.tensor(sequence, dtype=torch.long)
     expected = torch.tensor(expected, dtype=torch.float32)
-    config = CVRPConfig(
+    config = CVRP(
         num_customers=100,
         vehicle_capacity_raw=100,
         min_demand_raw=1,
@@ -358,7 +358,7 @@ def test_demand_per_route(sequence, expected):
 def test_demand_per_route_with_mixed_num_routes_in_batch(sequence, expected):
     sequence = torch.tensor(sequence, dtype=torch.long)
     expected = torch.tensor(expected, dtype=torch.float32)
-    config = CVRPConfig(
+    config = CVRP(
         num_customers=100,
         vehicle_capacity_raw=100,
         min_demand_raw=1,
@@ -395,7 +395,7 @@ def test_demand_per_route_with_mixed_num_routes_in_batch(sequence, expected):
 def test_route_per_customer(sequence, expected):
     sequence = torch.tensor(sequence, dtype=torch.long).unsqueeze(0)
     expected = torch.tensor(expected, dtype=torch.long).unsqueeze(0)
-    config = CVRPConfig(
+    config = CVRP(
         num_customers=3,
         vehicle_capacity_raw=3,
         min_demand_raw=1,
@@ -432,7 +432,7 @@ def test_route_per_customer(sequence, expected):
 def test_neighbours_per_customer(sequence, expected):
     sequence = torch.tensor(sequence, dtype=torch.long).unsqueeze(0)
     expected = torch.tensor(expected, dtype=torch.long).unsqueeze(0)
-    config = CVRPConfig(
+    config = CVRP(
         num_customers=3,
         vehicle_capacity_raw=3,
         min_demand_raw=1,
@@ -466,7 +466,7 @@ def test_remove_customers(sequence, to_remove, expected):
     sequence = torch.tensor(sequence, dtype=torch.long)
     to_remove = torch.tensor(to_remove, dtype=torch.long)
     expected = torch.tensor(expected, dtype=torch.long)
-    config = CVRPConfig(
+    config = CVRP(
         num_customers=10,
         vehicle_capacity_raw=10,
         min_demand_raw=1,

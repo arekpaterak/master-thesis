@@ -5,12 +5,12 @@ from core.models.nds.config import AmpConfig, TrainConfig, TrainerParams
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.nds.module import NDSModule
 from core.models.trainer import Trainer
-from core.problems.cvrp import CVRPConfig, CVRPSampler
+from core.problems.cvrp import CVRP, CVRPSampler
 
 
 def test_train():
     B, R, N = 4, 10, 20
-    sampler = CVRPSampler(CVRPConfig.for_n(N))
+    sampler = CVRPSampler(CVRP.for_n(N))
     model = AutoregressiveNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(
@@ -42,7 +42,7 @@ def test_train():
 
 def test_train_with_amp_enabled():
     B, R, N = 4, 10, 20
-    sampler = CVRPSampler(CVRPConfig.for_n(N))
+    sampler = CVRPSampler(CVRP.for_n(N))
     model = AutoregressiveNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(

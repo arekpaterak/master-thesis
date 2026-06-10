@@ -8,15 +8,15 @@ from core.evaluation import BatchEvaluationResult, Evaluator, PlotSnapshotCallba
 from core.lns.acceptance_criterion import GreedyAcceptanceConfig
 from core.methods.base import Method
 from core.methods.random_destroy import RANDOM_DESTROY_PRESETS, RandomDestroyMethod
-from core.problems.config import ProblemParams
+from core.problems import CVRPConfig, ProblemConfig
 from core.problems.cvrp import CVRPSampler
-from core.problems.cvrp.config import CVRPConfig
+from core.problems.cvrp.config import CVRP
 from core.problems.setup import resolve_start_solution
 from core.solve import solve
 
 
 def _build(
-    preset: str, problem: ProblemParams, *, num_steps: int = 3, greedy: bool = False
+    preset: str, problem: ProblemConfig, *, num_steps: int = 3, greedy: bool = False
 ) -> Method:
     base = RANDOM_DESTROY_PRESETS[preset]
     search = base.search.model_copy(
@@ -36,7 +36,7 @@ def _build(
 @pytest.fixture
 def tiny_eval_config() -> EvaluationConfig:
     return EvaluationConfig(
-        problem=ProblemParams(name="cvrp", size=20),
+        problem=CVRPConfig(size=20),
         num_test_instances=4,
         batch_size=2,
         test_seed=7,
@@ -116,7 +116,7 @@ def test_solve_returns_solution_with_matching_batch_shape(
 ) -> None:
     method = _build("source", tiny_eval_config.problem)
     sampler = CVRPSampler(
-        CVRPConfig.for_n(tiny_eval_config.problem.size), seed=tiny_eval_config.test_seed
+        CVRP.for_n(tiny_eval_config.problem.size), seed=tiny_eval_config.test_seed
     )
     instance = sampler(2)
     final_solution = solve(method, instance)
@@ -155,9 +155,9 @@ def test_plot_snapshot_callback_warns_when_batch_too_small(
 
 
 def test_solve_on_step_fires_once_per_step_plus_initial() -> None:
-    problem = ProblemParams(name="cvrp", size=20)
+    problem = CVRPConfig(size=20)
     method = _build("source", problem, num_steps=4)
-    sampler = CVRPSampler(CVRPConfig.for_n(problem.size), seed=0)
+    sampler = CVRPSampler(CVRP.for_n(problem.size), seed=0)
     seen_steps: list[int] = []
 
     def on_step(step: int, _solution) -> None:

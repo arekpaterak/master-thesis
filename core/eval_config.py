@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from core.problems.config import ProblemParams
+from core.problems import CVRPConfig, ProblemConfig
 
 
 class EvaluationConfig(BaseModel):
@@ -12,7 +12,7 @@ class EvaluationConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    problem: ProblemParams = Field(default_factory=ProblemParams, description="Test problem")
+    problem: ProblemConfig = Field(default_factory=CVRPConfig, description="Test problem")
     num_test_instances: int = Field(default=100, description="Number of test instances")
     batch_size: int = Field(
         default=100, description="Evaluation batch size (last batch may be short)"

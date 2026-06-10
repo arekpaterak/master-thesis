@@ -6,7 +6,7 @@ from core.lns.config import SearchParams
 from core.lns.improvement_step import ParallelImprovementStep, SequentialImprovementStep
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.methods.base import Method
-from core.problems.config import ProblemParams
+from core.problems import ProblemConfig
 from core.problems.setup import resolve_repair
 
 
@@ -21,7 +21,7 @@ class RandomDestroyMethod:
         cls,
         config: RandomDestroyMethodConfig,
         *,
-        problem: ProblemParams,
+        problem: ProblemConfig,
         generate_start_solution,
     ) -> Method:
         repair = resolve_repair(

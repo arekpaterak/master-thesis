@@ -11,7 +11,7 @@ from core.models.nds.config import ModelParams
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import resolve_improvement_step
 from core.models.nds.models.ar import AutoregressiveNDSModel
-from core.problems.config import ProblemParams
+from core.problems import ProblemConfig
 from core.problems.setup import resolve_repair
 
 
@@ -33,7 +33,7 @@ class NDSPretrainedMethod:
         cls,
         config: NDSPretrainedConfig,
         *,
-        problem: ProblemParams,
+        problem: ProblemConfig,
         generate_start_solution,
         device: torch.device,
     ) -> Method:

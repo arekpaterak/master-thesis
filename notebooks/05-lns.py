@@ -33,20 +33,20 @@ def _():
         TSPGreedyReconnectRepair,
     )
     from core.models.nds.models.ar import AutoregressiveNDSModel
-    from core.problems.cvrp import CVRPConfig, CVRPSampler
+    from core.problems.cvrp import CVRP, CVRPSampler
     from core.problems.cvrp.solve import one_customer_per_route, one_customer_per_route_graph
-    from core.problems.tsp import TSPConfig, TSPSampler
+    from core.problems.tsp import TSP, TSPSampler
     from core.problems.tsp.solve import random_permutation, random_permutation_graph
 
     return (
         AutoregressiveNDSModel,
-        CVRPConfig,
+        CVRP,
         CVRPGreedyInsertRepair,
         CVRPGreedyReconnectRepair,
         CVRPSampler,
         GreedyAcceptance,
         RandomNodeDestroy,
-        TSPConfig,
+        TSP,
         TSPGreedyInsertRepair,
         TSPGreedyReconnectRepair,
         TSPSampler,
@@ -135,9 +135,9 @@ def _(
 
 @app.cell
 def _(
-    CVRPConfig,
+    CVRP,
     CVRPSampler,
-    TSPConfig,
+    TSP,
     TSPSampler,
     batch_size_slider,
     mo,
@@ -150,11 +150,11 @@ def _(
     mo.stop(not run.value)
 
     if problem_dropdown.value == "cvrp":
-        instance = CVRPSampler(CVRPConfig.for_n(n_dropdown.value), seed=seed_widget.value)(
+        instance = CVRPSampler(CVRP.for_n(n_dropdown.value), seed=seed_widget.value)(
             batch_size_slider.value
         )
     else:
-        instance = TSPSampler(TSPConfig(num_locations=n_dropdown.value), seed=seed_widget.value)(
+        instance = TSPSampler(TSP(num_locations=n_dropdown.value), seed=seed_widget.value)(
             batch_size_slider.value
         )
     if use_gpu_widget.value:
@@ -513,12 +513,12 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(
     AutoregressiveNDSModel,
-    CVRPConfig,
+    CVRP,
     CVRPGreedyInsertRepair,
     CVRPGreedyReconnectRepair,
     CVRPSampler,
     RandomNodeDestroy,
-    TSPConfig,
+    TSP,
     TSPGreedyInsertRepair,
     TSPGreedyReconnectRepair,
     TSPSampler,
@@ -589,7 +589,7 @@ def _(
                 "reconnect": CVRPGreedyReconnectRepair,
                 "insert": CVRPGreedyInsertRepair,
             }
-            sampler = CVRPSampler(CVRPConfig.for_n(n), seed=0)
+            sampler = CVRPSampler(CVRP.for_n(n), seed=0)
         else:
             start_builders = {
                 "reconnect": random_permutation_graph,
@@ -599,7 +599,7 @@ def _(
                 "reconnect": TSPGreedyReconnectRepair,
                 "insert": TSPGreedyInsertRepair,
             }
-            sampler = TSPSampler(TSPConfig(num_locations=n), seed=0)
+            sampler = TSPSampler(TSP(num_locations=n), seed=0)
 
         def make_destroy(destroy_name, *, destruction_size, model):
             if destroy_name == "random":

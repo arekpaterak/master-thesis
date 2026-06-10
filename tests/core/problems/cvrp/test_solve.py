@@ -1,13 +1,13 @@
 import pytest
 
-from core.problems.cvrp import CVRPConfig, CVRPInstance, CVRPSampler
+from core.problems.cvrp import CVRP, CVRPInstance, CVRPSampler
 from core.problems.cvrp.solution import CVRPSolution
 from core.problems.cvrp.solve import STRATEGIES
 
 
 @pytest.fixture
 def simple_instance() -> CVRPInstance:
-    config = CVRPConfig.for_n(20)
+    config = CVRP.for_n(20)
     sampler = CVRPSampler(config)
     batch_size = 5
     return sampler(batch_size)

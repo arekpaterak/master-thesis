@@ -8,16 +8,16 @@ import yaml
 from core.lns.config import SearchParams
 from core.models.nds.config import (
     LoggingConfig,
-    ProblemParams,
     TrainConfig,
     TrainerParams,
 )
+from core.problems import CVRPConfig
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "nds.py"
 
 _MINIMAL_CONFIG = TrainConfig(
-    problem=ProblemParams(size=10),
+    problem=CVRPConfig(size=10),
     trainer=TrainerParams(
         epochs=1,
         instances_per_epoch=5,

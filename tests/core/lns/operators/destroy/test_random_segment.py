@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_segment import TSPRandomSegmentDestroy
-from core.problems.tsp import TSPConfig, TSPSampler
+from core.problems.tsp import TSP, TSPSampler
 from core.problems.tsp.solution import TSPSolution
 
 
@@ -10,7 +10,7 @@ from core.problems.tsp.solution import TSPSolution
 def sample_solution():
     batch_size = 3
     n = 10
-    instance = TSPSampler(TSPConfig(num_locations=n))(batch_size)
+    instance = TSPSampler(TSP(num_locations=n))(batch_size)
 
     # Create a simple sequential tour: [0, 1, 2, ..., 9]
     tour = torch.stack([torch.arange(n) for _ in range(batch_size)])
@@ -24,7 +24,7 @@ def sample_solution():
 def small_solution():
     batch_size = 1
     n = 5
-    instance = TSPSampler(TSPConfig(num_locations=n))(batch_size)
+    instance = TSPSampler(TSP(num_locations=n))(batch_size)
     tour = torch.tensor([[0, 1, 2, 3, 4]])  # Sequential tour
     return TSPSolution.create(
         instance=instance,

@@ -10,7 +10,7 @@ from pydantic import BaseModel, computed_field
 from core.eval_config import EvaluationConfig
 from core.methods.base import Method
 from core.problems.instance import BaseProblemInstance
-from core.problems.setup import make_sampler
+from core.problems.sampler import Sampler
 from core.problems.solution import BaseSolution
 from core.solve import solve
 
@@ -67,9 +67,7 @@ class Evaluator:
         return self._aggregate(method.name, batches)
 
     def _iter_batches(self, eval_config: EvaluationConfig) -> Iterator[BaseProblemInstance]:
-        sampler = make_sampler(
-            eval_config.problem.name, eval_config.problem.size, seed=eval_config.test_seed
-        )
+        sampler = Sampler.from_config(eval_config.problem, seed=eval_config.test_seed)
         num_batches = math.ceil(eval_config.num_test_instances / eval_config.batch_size)
         remaining = eval_config.num_test_instances
         for _ in range(num_batches):
