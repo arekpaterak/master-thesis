@@ -7,11 +7,11 @@ import yaml
 from pydantic import BaseModel, Field
 
 from core.lns.config import SearchParams
+from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
 from core.models.nds.config import TrainConfig
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import resolve_improvement_step
-from core.problems.setup import resolve_repair
 
 
 class NDSTrainedConfig(BaseModel):
@@ -45,7 +45,7 @@ class NDSTrainedMethod:
         model.load_state_dict(ckpt["model"])
         model.eval()
 
-        repair = resolve_repair(
+        repair = RepairOperator.create(
             train_config.problem.name,
             config.search.repair_type,
             deconstruction_size=config.search.deconstruction_size,

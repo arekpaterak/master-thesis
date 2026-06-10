@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field
 from core.lns.config import SearchParams
 from core.lns.improvement_step import ParallelImprovementStep, SequentialImprovementStep
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
+from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
 from core.problems import ProblemConfig
-from core.problems.setup import resolve_repair
 
 
 class RandomDestroyMethodConfig(BaseModel):
@@ -24,7 +24,7 @@ class RandomDestroyMethod:
         problem: ProblemConfig,
         generate_start_solution,
     ) -> Method:
-        repair = resolve_repair(
+        repair = RepairOperator.create(
             problem.name,
             config.search.repair_type,
             deconstruction_size=config.search.deconstruction_size,

@@ -24,6 +24,9 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
     non-removed predecessors), so the bound is ``2 * M``.
     """
 
+    repair_type = "greedy_reconnect"
+    problem_name = "cvrp"
+
     def __init__(
         self,
         *,
@@ -122,6 +125,9 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
     Removing M nodes from a tour creates at most 2M unassigned successors, so
     the bound is ``2 * M``.
     """
+
+    repair_type = "greedy_reconnect"
+    problem_name = "tsp"
 
     def __init__(
         self,
