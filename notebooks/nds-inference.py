@@ -25,8 +25,8 @@ def _():
     from drawdata import ScatterWidget
 
     from core.lns.acceptance_criterion import GreedyAcceptance
-    from core.lns.operators.repair.greedy_insert import CVRPGreedyInsertRepair
-    from core.lns.operators.repair.greedy_reconnect import TSPGreedyReconnectRepair
+    from core.lns.operators.repair import TSPGreedyReconnectRepair
+    from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
     from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
     from core.models.nds.improvement_step import ModelSequentialImprovementStep

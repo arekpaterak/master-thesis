@@ -3,8 +3,7 @@ import torch
 
 from core.lns.operators.destroy.random_edge import TSPRandomEdgeDestroy
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair import TSPGreedyReconnectRepair
-from core.lns.operators.repair.greedy_insert import TSPGreedyInsertRepair
+from core.lns.operators.repair import TSPGreedyInsertRepair, TSPGreedyReconnectRepair
 from core.problems.tsp import TSP, TSPSampler, TSPSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solve import random_permutation

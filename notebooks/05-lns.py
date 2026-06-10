@@ -24,14 +24,14 @@ def _():
 
     from core.lns import GreedyAcceptance, search
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
-    from core.lns.operators.repair.greedy_insert import (
+    from core.lns.operators.repair.insert.cvrp import (
         CVRPGreedyInsertRepair,
-        TSPGreedyInsertRepair,
     )
-    from core.lns.operators.repair.greedy_reconnect import (
+    from core.lns.operators.repair.insert.tsp import TSPGreedyInsertRepair
+    from core.lns.operators.repair.reconnect.cvrp import (
         CVRPGreedyReconnectRepair,
-        TSPGreedyReconnectRepair,
     )
+    from core.lns.operators.repair.reconnect.tsp import TSPGreedyReconnectRepair
     from core.models.nds.models.ar import AutoregressiveNDSModel
     from core.problems.cvrp import CVRP, CVRPSampler
     from core.problems.cvrp.solve import one_customer_per_route, one_customer_per_route_graph

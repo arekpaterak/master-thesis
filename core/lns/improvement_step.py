@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from core.lns.acceptance_criterion import AcceptanceCriterion
-from core.lns.operators.destroy.base import DestroyOperator
-from core.lns.operators.repair.base import RepairOperator
-from core.lns.utils import best_repair, select_solution
 from core.problems.solution import BaseSolution
+
+from .acceptance_criterion import AcceptanceCriterion
+from .operators.destroy.base import DestroyOperator
+from .operators.repair.base import RepairOperator
+from .utils import best_repair, select_solution
 
 
 class ImprovementStep(ABC):

@@ -9,8 +9,8 @@ from core.problems.solution import BaseSolution
 class RepairOperator[S: BaseSolution](ABC):
     requires_stitch: bool = False
 
-    # Factory keys. A subclass that sets its own 'repair_type' is registered; 'problem_name'
-    # may stay None to mean the operator applies to any problem (e.g. NoopRepair).
+    # Registry keys. A subclass that sets its own 'repair_type' is registered;
+    # 'problem_name' may stay None to mean the operator applies to any problem.
     repair_type: ClassVar[str | None] = None
     problem_name: ClassVar[str | None] = None
     _registry: ClassVar[dict[tuple[str, str | None], type[RepairOperator]]] = {}

@@ -1,7 +1,9 @@
 from .base import NoopRepair, RepairOperator
-from .greedy_insert import CVRPGreedyInsertRepair, TSPGreedyInsertRepair
-from .greedy_reconnect import CVRPGreedyReconnectRepair, TSPGreedyReconnectRepair
+from .insert.cvrp import CVRPGreedyInsertRepair
+from .insert.tsp import TSPGreedyInsertRepair
 from .random import RandomRepair
+from .reconnect.cvrp import CVRPGreedyReconnectRepair
+from .reconnect.tsp import TSPGreedyReconnectRepair
 
 __all__ = [
     "CVRPGreedyInsertRepair",
