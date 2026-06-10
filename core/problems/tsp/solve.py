@@ -4,9 +4,17 @@ from typing import Protocol
 
 import torch
 
-from core.problems.tsp import TSPInstance
+from core.problems.solve import initial_solution
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.problems.tsp.instance import TSPInstance
 from core.problems.tsp.solution import TSPSolution
+
+__all__ = [
+    "STRATEGIES",
+    "TSPSolveStrategy",
+    "random_permutation",
+    "random_permutation_graph",
+]
 
 
 class TSPSolveStrategy(Protocol):
@@ -44,6 +52,11 @@ def random_permutation(instance: TSPInstance, *, seed: int | None = None) -> TSP
 def random_permutation_graph(instance: TSPInstance, *, seed: int | None = None) -> TSPGraphSolution:
     solution = random_permutation(instance, seed=seed)
     return TSPGraphSolution.create_from_sequence(instance=instance, sequence=solution.tour)
+
+
+@initial_solution.register
+def _(instance: TSPInstance) -> TSPGraphSolution:
+    return random_permutation_graph(instance)
 
 
 STRATEGIES = [

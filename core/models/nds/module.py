@@ -30,7 +30,7 @@ from core.models.nds.training import (
     configure_training_step,
 )
 from core.problems.instance import BaseProblemInstance
-from core.problems.setup import resolve_start_solution
+from core.problems.solve import initial_solution
 
 
 class NDSModule(Module):
@@ -65,7 +65,7 @@ class NDSModule(Module):
             else None
         )
 
-        generate_start_solution = resolve_start_solution(config.problem.name)
+        generate_start_solution = initial_solution
         repair = RepairOperator.create(
             config.problem.name,
             config.search.repair_type,
