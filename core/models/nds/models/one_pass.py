@@ -9,6 +9,7 @@ from core.models.nds.decoders.one_pass.base import OnePassDestroyDecoder
 from core.models.nds.decoders.one_pass.proximity import ProximityDecoder
 from core.models.nds.encoder import NDSEncoder
 from core.models.nds.seed_sampler import sample_seed
+from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
 from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
@@ -64,6 +65,7 @@ class OnePassNDSModel(nn.Module):
         deconstruction_size: int,
         greedy: bool = False,
     ) -> Rollout:
+        solution, batch_dims = flatten_instance_batch(solution)
         instance = solution.instance
 
         B = instance.batch_size[0]
@@ -101,7 +103,7 @@ class OnePassNDSModel(nn.Module):
             )  # (B, R, N, 2)
             extra_kwargs["node_coordinates"] = node_coordinates_expanded
 
-        return self.decoder.rollout(
+        rollout = self.decoder.rollout(
             h_nodes=h_nodes_expanded,
             seed=seed,
             action_mask=action_mask,
@@ -109,3 +111,4 @@ class OnePassNDSModel(nn.Module):
             greedy=greedy,
             **extra_kwargs,
         )
+        return unflatten_rollout(rollout, batch_dims)

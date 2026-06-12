@@ -20,23 +20,31 @@ def solve(
         method.search.acceptance, n_steps=method.search.num_improvement_steps
     )
 
-    # TODO: Possibly refactor by unifying paths
-    if method.search.n_augmentations > 1:
-        if not isinstance(criterion, SimulatedAnnealingAcceptance):
-            raise ValueError(
-                "Augmented search (n_augmentations > 1) requires a simulated_annealing "
-                "acceptance criterion -- the cross-augmentation threshold depends on "
-                "the SA temperature."
-            )
+    augmented = method.search.n_augmentations > 1
+    if augmented and not isinstance(criterion, SimulatedAnnealingAcceptance):
+        raise ValueError(
+            "Augmented search (n_augmentations > 1) requires a simulated_annealing "
+            "acceptance criterion -- the cross-augmentation threshold depends on "
+            "the SA temperature."
+        )
+
+    if augmented:
         instance = instance.augment(method.search.n_augmentations)
-        solution = method.generate_start_solution(instance)
-        step_callback = None
-        if on_step is not None:
+    solution = method.generate_start_solution(instance)
 
-            def step_callback(step: int, aug_solution: BaseSolution) -> None:
-                on_step(step, _best_augmentation(aug_solution))
+    # Reduce a (B, A) augmented solution to (B,); identity for the plain (B,) path.
+    reduce_augmentations = _best_augmentation if augmented else lambda solution: solution
 
-            step_callback(0, solution)
+    step_callback: Callable[[int, BaseSolution], None] | None = None
+    if on_step is not None:
+
+        def step_callback(step: int, current: BaseSolution) -> None:
+            on_step(step, reduce_augmentations(current))
+
+        step_callback(0, solution)
+
+    if augmented:
+        assert isinstance(criterion, SimulatedAnnealingAcceptance)
         result = augmented_search(
             solution,
             improvement_step=method.improvement_step,
@@ -46,20 +54,17 @@ def solve(
             on_step=step_callback,
             step_progress=step_progress,
         )
-        return _best_augmentation(result.solution)
     else:
-        solution = method.generate_start_solution(instance)
-        if on_step is not None:
-            on_step(0, solution)
         result = search(
             solution,
             improvement_step=method.improvement_step,
             criterion=criterion,
             n_iterations=method.search.num_improvement_steps,
-            on_step=on_step,
+            on_step=step_callback,
             step_progress=step_progress,
         )
-        return result.solution
+
+    return reduce_augmentations(result.solution)
 
 
 def _best_augmentation(solution: BaseSolution) -> BaseSolution:

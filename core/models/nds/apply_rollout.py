@@ -6,17 +6,16 @@ from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.solution import BaseSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 
+
 # TODO: Refactor
-
-
 def apply_rollout(
     solution: BaseSolution, rollout: Rollout, *, stitch: bool = False
 ) -> BaseSolution:
     match solution:
         case CVRPSolution() as s:
-            return s.remove_customers(rollout.actions)
+            return s.remove_nodes(rollout.actions)
         case CVRPGraphSolution() as s:
-            return s.remove_customers(rollout.actions, stitch=stitch)
+            return s.remove_nodes(rollout.actions, stitch=stitch)
         case TSPGraphSolution() as s:
             return s.remove_nodes(rollout.actions)
         case _:
@@ -25,6 +24,9 @@ def apply_rollout(
 
 def only_expanding_apply_rollout(solution: BaseSolution, rollout: Rollout, **_) -> BaseSolution:
     """
-    Only expands the ``solution`` from (B, destruction_size) to (B, num_rollouts, destruction_size), based on the ``rollout`` dimensionality.
+    Only expands the ``solution`` by adding the rollout dim as the innermost batch
+    dim, e.g. ``(B, ...) -> (B, num_rollouts, ...)`` or ``(B, A, ...) -> (B, A, num_rollouts, ...)``,
+    based on the ``rollout`` dimensionality.
     """
-    return solution.unsqueeze(1).expand(*solution.batch_size, rollout.batch_size[1])
+    num_rollouts = rollout.batch_size[-1]
+    return solution.unsqueeze(-1).expand(*solution.batch_size, num_rollouts)

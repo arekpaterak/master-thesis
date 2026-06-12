@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import pytest
+import torch
+
+from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
+from core.lns.operators.repair import RepairOperator
+from core.lns.search import augmented_search
+from core.models.nds.improvement_step import ModelSequentialImprovementStep
+from core.models.nds.models.ar import AutoregressiveNDSModel
+from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.cvrp.instance import CVRPInstance
+
+B, A, N, R, DECONSTRUCTION_SIZE = 2, 3, 8, 4, 3
+
+
+def _make_solution(*, augment: int | None) -> CVRPGraphSolution:
+    torch.manual_seed(0)
+    locations = torch.rand(B, N + 1, 2)
+    demand = torch.cat([torch.zeros(B, 1), torch.rand(B, N) + 1.0], dim=-1)
+    capacity = torch.ones(B, 1) * (N * 1.5)
+    instance = CVRPInstance.create(locations=locations, demand=demand, capacity=capacity)
+    if augment is not None:
+        instance = instance.augment(augment)
+    return CVRPGraphSolution.one_customer_per_route(instance)
+
+
+@pytest.fixture(scope="module")
+def model() -> AutoregressiveNDSModel:
+    return AutoregressiveNDSModel(problem_name="cvrp")
+
+
+def test_rollout_on_augmented_solution_keeps_augmentation_dim(model: AutoregressiveNDSModel):
+    solution = _make_solution(augment=A)
+
+    rollout = model.rollout(
+        solution,
+        rollouts_per_solution=R,
+        deconstruction_size=DECONSTRUCTION_SIZE,
+        greedy=False,
+    )
+
+    assert rollout.batch_size == torch.Size([B, A, R])
+    assert rollout.actions.shape == (B, A, R, DECONSTRUCTION_SIZE)
+    assert rollout.log_p.shape == (B, A, R)
+
+
+def test_rollout_plain_path_is_unchanged(model: AutoregressiveNDSModel):
+    solution = _make_solution(augment=None)
+
+    rollout = model.rollout(
+        solution,
+        rollouts_per_solution=R,
+        deconstruction_size=DECONSTRUCTION_SIZE,
+        greedy=False,
+    )
+
+    assert rollout.batch_size == torch.Size([B, R])
+    assert rollout.actions.shape == (B, R, DECONSTRUCTION_SIZE)
+
+
+def test_augmented_search_with_model_reduces_to_batch_augmentation(model: AutoregressiveNDSModel):
+    solution = _make_solution(augment=A)
+    repair = RepairOperator.create(
+        "cvrp", "greedy_reconnect", deconstruction_size=DECONSTRUCTION_SIZE
+    )
+    improvement_step = ModelSequentialImprovementStep(
+        model=model,
+        repair=repair,
+        num_rollouts=R,
+        deconstruction_size=DECONSTRUCTION_SIZE,
+        n_repairs=1,
+    )
+    criterion = SimulatedAnnealingAcceptance.from_range(
+        temperature_start=0.1, temperature_min=0.001, n_steps=3
+    )
+
+    result = augmented_search(
+        solution,
+        improvement_step=improvement_step,
+        criterion=criterion,
+        n_iterations=3,
+        threshold_factor=15.0,
+    )
+
+    assert result.solution.batch_size == torch.Size([B, A])
+    objective = result.solution.objective()
+    assert objective.shape == (B, A)
+    assert torch.isfinite(objective).all()

@@ -65,7 +65,7 @@ class ModelSequentialImprovementStep(ImprovementStep):
         )
         current = solution
         for r in range(self._num_rollouts):
-            single_rollout = rollout[:, r]
+            single_rollout = rollout[..., r]
             deconstructed = self._apply_rollout_fn(current, single_rollout, stitch=self._stitch)
             candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)

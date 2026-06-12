@@ -13,6 +13,7 @@ from core.models.nds.decoders.ar import (
 )
 from core.models.nds.encoder import NDSEncoder
 from core.models.nds.seed_sampler import sample_seed
+from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
 from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
@@ -121,6 +122,7 @@ class AutoregressiveNDSModel(nn.Module):
         deconstruction_size: int,
         greedy: bool = False,
     ) -> Rollout:
+        solution, batch_dims = flatten_instance_batch(solution)
         instance = solution.instance
 
         B = instance.batch_size[0]
@@ -172,9 +174,10 @@ class AutoregressiveNDSModel(nn.Module):
 
         selected = torch.stack(selected, dim=-1).detach()
 
-        return Rollout.create(
+        rollout = Rollout.create(
             actions=selected,
             log_prob=torch.stack(log_prob_of_selected, dim=-1).sum(dim=-1),
             entropy=torch.stack(entropies, dim=-1).mean(dim=-1),
             entropy_norm=torch.stack(entropies_norm, dim=-1).mean(dim=-1),
         )
+        return unflatten_rollout(rollout, batch_dims)
