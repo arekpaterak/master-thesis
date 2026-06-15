@@ -10,6 +10,7 @@ from ..solution import BaseSolution
 from .instance import CVRPInstance
 
 if TYPE_CHECKING:
+    import numpy as np
     from matplotlib.axes import Axes
 
 
@@ -133,6 +134,65 @@ class CVRPGraphSolution(BaseSolution):
         route_id = parent.clone()
         route_id[..., 0] = CVRPGraphSolution.UNASSIGNED
         return route_id
+
+    def to_numpy_arrays(
+        self,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Extract contiguous numpy arrays for a numba improvement kernel.
+
+        Batch dims are collapsed to a single leading dim G; floats are float64.
+        Pair with :meth:`from_arrays` to rebuild a solution from the kernel output.
+
+        Returns:
+            ``(next, prev, locations, demand, capacity)`` with shapes
+            ``(G, N+1)`` int64, ``(G, N+1)`` int64, ``(G, N+1, 2)`` float64,
+            ``(G, N+1)`` float64 and ``(G,)`` float64.
+        """
+        N = self.instance.num_customers
+        instance = self.instance
+        next = self._next.reshape(-1, N + 1).detach().cpu().contiguous().numpy()
+        prev = self._prev.reshape(-1, N + 1).detach().cpu().contiguous().numpy()
+        locations = (
+            instance.locations.reshape(-1, N + 1, 2).detach().cpu().double().contiguous().numpy()
+        )
+        demand = instance.demand.reshape(-1, N + 1).detach().cpu().double().contiguous().numpy()
+        capacity = instance.capacity.reshape(-1).detach().cpu().double().contiguous().numpy()
+        return next, prev, locations, demand, capacity
+
+    @classmethod
+    def from_numpy_arrays(
+        cls,
+        *,
+        instance: CVRPInstance,
+        next: np.ndarray,
+        prev: np.ndarray,
+        batch_size: torch.Size,
+        device: torch.device,
+    ) -> CVRPGraphSolution:
+        """Rebuild a solution from kernel-produced ``next``/``prev`` numpy arrays.
+
+        ``route_id`` is recomputed from ``prev`` so the result satisfies the class
+        invariants without the kernel having to maintain it.
+        """
+        num_customers = instance.num_customers
+        next_tensor = (
+            torch.from_numpy(next)
+            .to(device=device, dtype=torch.long)
+            .reshape(*batch_size, num_customers + 1)
+        )
+        prev_tensor = (
+            torch.from_numpy(prev)
+            .to(device=device, dtype=torch.long)
+            .reshape(*batch_size, num_customers + 1)
+        )
+        route_id = cls._compute_route_ids(prev_tensor, num_customers)
+        return cls(
+            _instance=instance,
+            _next=next_tensor,
+            _prev=prev_tensor,
+            _route_id=route_id,
+            batch_size=batch_size,
+        )
 
     def __post_init__(self) -> None:
         assert self._next.shape == self._prev.shape == self._route_id.shape

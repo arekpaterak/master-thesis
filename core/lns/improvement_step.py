@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from core.constants import EPS
 from core.problems.solution import BaseSolution
 
-from .acceptance_criterion import AcceptanceCriterion
+from .acceptance_criterion import (
+    AcceptanceCriterion,
+    GreedyAcceptance,
+    SimulatedAnnealingAcceptance,
+)
 from .operators.destroy.base import DestroyOperator
 from .operators.repair.base import RepairOperator
 from .utils import best_repair, select_solution
@@ -68,3 +73,86 @@ class ParallelImprovementStep(ImprovementStep):
         best_from_candidate = candidate.gather(-1, best_idx).squeeze(-1)
         mask = accept(solution, best_from_candidate)
         return select_solution(mask, best_from_candidate, solution)
+
+
+class NumbaSequentialImprovementStep(ImprovementStep):
+    """CPU/numba sequential step for CVRP with in-kernel random-node destroy.
+
+    Folds the whole rollout loop (random-node destroy, best-of-n greedy
+    cheapest-insertion and acceptance) into a single numba pass over the batch,
+    avoiding the per-iteration GPU kernel launches of ``SequentialImprovementStep``.
+    Only supports a stitched CVRP greedy-insert repair (the kernel reimplements the
+    repair, so the ``repair`` argument is validated and otherwise unused) paired
+    with ``RandomNodeDestroy``.
+    """
+
+    def __init__(
+        self,
+        *,
+        destroy: DestroyOperator,
+        repair: RepairOperator,
+        num_rollouts: int = 1,
+        n_repairs: int = 1,
+        seed: int = 0,
+    ) -> None:
+        from .operators.destroy.random_node import RandomNodeDestroy
+
+        if not isinstance(destroy, RandomNodeDestroy):
+            raise NotImplementedError(
+                "NumbaSequentialImprovementStep only supports RandomNodeDestroy."
+            )
+        if getattr(repair, "problem_name", None) != "cvrp" or not repair.requires_stitch:
+            raise NotImplementedError(
+                "NumbaSequentialImprovementStep only supports the stitched CVRP greedy-insert repair."
+            )
+        self._destruction_size = destroy.destruction_size
+        self._num_rollouts = num_rollouts
+        self._n_repairs = n_repairs
+        self._seed = seed
+
+    def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
+        from core.lns.numba_kernels.cvrp_sequential_improvement_step import run_with_random
+        from core.problems.cvrp.graph_solution import CVRPGraphSolution
+
+        if not isinstance(solution, CVRPGraphSolution):
+            raise NotImplementedError(
+                f"NumbaSequentialImprovementStep not implemented for {type(solution)}"
+            )
+
+        accept_kind, temperature = _acceptance_to_kernel(accept)
+        next_np, prev_np, locations, demand, capacity = solution.to_numpy_arrays()
+        next_out, prev_out = run_with_random(
+            next=next_np,
+            prev=prev_np,
+            locations=locations,
+            demand=demand,
+            capacity=capacity,
+            num_rollouts=self._num_rollouts,
+            destruction_size=self._destruction_size,
+            n_repairs=self._n_repairs,
+            accept_kind=accept_kind,
+            temperature=temperature,
+            eps=EPS,
+            base_seed=self._seed,
+        )
+        return CVRPGraphSolution.from_numpy_arrays(
+            instance=solution.instance,
+            next=next_out,
+            prev=prev_out,
+            batch_size=solution.batch_size,
+            device=solution.device,
+        )
+
+
+def _acceptance_to_kernel(accept: AcceptanceCriterion) -> tuple[int, float]:
+    """Map an acceptance criterion to the (kind, temperature) the numba kernel expects.
+
+    ``kind`` is 0 for greedy (strict improvement) and 1 for simulated annealing.
+    """
+    if isinstance(accept, GreedyAcceptance):
+        return 0, 0.0
+    if isinstance(accept, SimulatedAnnealingAcceptance):
+        return 1, float(accept.temperature)
+    raise NotImplementedError(
+        f"Numba ImprovementSteps support GreedyAcceptance and SimulatedAnnealingAcceptance, got {type(accept)}"
+    )

@@ -77,7 +77,7 @@ class AutoregressiveNDSModel(nn.Module):
         rollout_size: int,
         **features: torch.Tensor,
     ) -> tuple[DestroyState, DecoderState, DecoderCache]:
-        encoded_nodes = self.encoder(**features)
+        encoded_nodes = self.encoder.forward(**features)
 
         B = encoded_nodes.shape[0]
         N = encoded_nodes.shape[1]

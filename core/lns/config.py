@@ -23,7 +23,7 @@ class SearchParams(BaseModel):
     num_rollouts: int = Field(default=128, description="Rollouts per step.")
     deconstruction_size: int = Field(default=15, description="Number of nodes removed per rollout.")
     n_repairs: int = Field(default=5, description="Repair attempts per rollout; best is kept.")
-    improvement_step_type: Literal["sequential", "parallel"] = Field(
+    improvement_step_type: Literal["sequential", "parallel", "numba"] = Field(
         default="parallel",
         description="Improvement step variant.",
     )

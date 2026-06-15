@@ -3,7 +3,11 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from core.lns.config import SearchParams
-from core.lns.improvement_step import ParallelImprovementStep, SequentialImprovementStep
+from core.lns.improvement_step import (
+    NumbaSequentialImprovementStep,
+    ParallelImprovementStep,
+    SequentialImprovementStep,
+)
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
@@ -34,17 +38,26 @@ class RandomDestroyMethod:
             seed=config.seed,
             stitch=repair.requires_stitch,
         )
-        step_cls = (
-            SequentialImprovementStep
-            if config.search.improvement_step_type == "sequential"
-            else ParallelImprovementStep
-        )
-        improvement_step = step_cls(
-            destroy=destroy,
-            repair=repair,
-            num_rollouts=config.search.num_rollouts,
-            n_repairs=config.search.n_repairs,
-        )
+        if config.search.improvement_step_type == "numba":
+            improvement_step = NumbaSequentialImprovementStep(
+                destroy=destroy,
+                repair=repair,
+                num_rollouts=config.search.num_rollouts,
+                n_repairs=config.search.n_repairs,
+                seed=config.seed or 0,
+            )
+        else:
+            step_cls = (
+                SequentialImprovementStep
+                if config.search.improvement_step_type == "sequential"
+                else ParallelImprovementStep
+            )
+            improvement_step = step_cls(
+                destroy=destroy,
+                repair=repair,
+                num_rollouts=config.search.num_rollouts,
+                n_repairs=config.search.n_repairs,
+            )
 
         name = _build_name(config.search)
 

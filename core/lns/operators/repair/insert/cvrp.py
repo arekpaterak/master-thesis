@@ -42,7 +42,7 @@ class CVRPGreedyInsertRepair(RepairOperator[CVRPGraphSolution]):
         device = solution.instance.locations.device
         generator = self._device_generator(device)
 
-        distances = solution.instance.distances()  # we cconstant across iterations
+        distances = solution.instance.distances()  # constant across iterations
         for _ in range(self._loop_bound(solution)):
             is_unassigned = (solution._prev[..., 1:] == solution.UNASSIGNED) & (
                 solution._next[..., 1:] == solution.UNASSIGNED
