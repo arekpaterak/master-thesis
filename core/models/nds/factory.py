@@ -24,6 +24,7 @@ def build_model(model_params: ModelParams, problem_name: str) -> NDSModel:
         num_heads=model_params.num_heads,
         ff_dim=model_params.ff_dim,
         encoder_config=model_params.encoder,
+        positional=model_params.positional,
         with_neighbours_encoding=model_params.with_neighbours_encoding,
         with_route_encoding=model_params.with_route_encoding,
     )

@@ -1,97 +1,91 @@
+from __future__ import annotations
+
+from typing import Protocol
+
 import torch
+from tensordict.tensorclass import TensorClass
 
 from core.problems.cvrp.instance import CVRPInstance
-from core.problems.cvrp.solution import CVRPSolution
 from core.problems.features import InstanceFeatureExtractor, SolutionFeatureExtractor
 
 
-class CVRPSolutionFeatureExtractor(SolutionFeatureExtractor[CVRPSolution]):
-    def __call__(self, solution: CVRPSolution) -> dict[str, torch.Tensor]:
-        return {
-            "depot_features": solution.instance.depot_location,
-            "customer_features": solution.instance.customer_features,
-            "neighbours_index": solution.neighbours_per_customer(),
-            "route_index": solution.route_per_customer(),
-        }
+class CVRPInstanceFeatures(TensorClass):
+    """Instance-derived inputs for a CVRP encoder. Fields are raw signals."""
+
+    depot_location: torch.Tensor
+    """(..., 1, 2)"""
+    customer_locations: torch.Tensor
+    """(..., N, 2)"""
+    customer_demand: torch.Tensor
+    """(..., N, 1)"""
+    depot_angle: torch.Tensor | None = None
+    """(..., N) raw depot-anchored polar angle (XPE). None when PE is disabled."""
+
+    @property
+    def customer_features(self) -> torch.Tensor:
+        """(..., N, 3) content features [x, y, demand]."""
+        return torch.cat([self.customer_locations, self.customer_demand], dim=-1)
+
+    @property
+    def depot_features(self) -> torch.Tensor:
+        """(..., 1, 2) depot content features."""
+        return self.depot_location
+
+    @property
+    def locations(self) -> torch.Tensor:
+        """(..., N+1, 2) all node coordinates (depot first), matching encoder node order."""
+        return torch.cat([self.depot_location, self.customer_locations], dim=-2)
 
 
-class CVRPInstanceFeatureExtractor(InstanceFeatureExtractor[CVRPInstance]):
-    def __call__(self, instance: CVRPInstance) -> dict[str, torch.Tensor]:
-        return {
-            "depot_features": instance.depot_location,
-            "customer_features": instance.customer_features,
-        }
+class CVRPSolutionFeatures(TensorClass):
+    """Solution-derived inputs for a CVRP encoder. Fields are raw signals."""
+
+    neighbours_index: torch.Tensor
+    """(..., N, 2) [prev, next] node index per customer."""
+    route_index: torch.Tensor
+    """(..., N) route assignment per customer."""
+    route_phase: torch.Tensor | None = None
+    """(..., N) raw in-route phase (IPE) in [0, 2*pi]. None when PE is disabled."""
 
 
-class RepairCVRPSolutionFeatureExtractor(SolutionFeatureExtractor[CVRPSolution]):
+class CVRPSolutionLike(Protocol):
+    """Structural contract the CVRP solution extractor relies on.
+
+    Satisfied by both CVRPSolution (sequence) and CVRPGraphSolution. ``route_phase`` is
+    only implemented by the graph representation; the sequence one raises.
     """
-    Feature extractor for the CVRP repair model.
-    Extracts only the nodes that are free to be reinserted (degree < 2).
-    """
 
-    def __call__(self, solution: CVRPSolution) -> dict[str, torch.Tensor]:
-        b_size = solution.batch_size
-        device = solution.device
+    @property
+    def instance(self) -> CVRPInstance: ...
+    def neighbours_per_customer(self) -> torch.Tensor: ...
+    def route_per_customer(self) -> torch.Tensor: ...
+    def route_phase(self) -> torch.Tensor: ...
 
-        # 1. State of the solution and degree
-        degree = solution.node_degree()
 
-        # In CVRP, depot is always required. Customers with degree < 2 are free.
-        relevant_customer_mask = degree < 2
+class CVRPInstanceFeatureExtractor(InstanceFeatureExtractor[CVRPInstance, CVRPInstanceFeatures]):
+    def __init__(self, *, with_positional: bool = False) -> None:
+        self._with_positional = with_positional
 
-        # 2. Subset dimensions
-        max_k = int(relevant_customer_mask.sum(dim=-1).max().item())
-
-        # Select indices of relevant nodes (top-k over mask)
-        top_k = relevant_customer_mask.float().topk(max_k, dim=-1)
-        subset_indices = top_k.indices
-        valid_subset_mask = top_k.values.bool()
-
-        # 3. Calculate Custom CVRP features: Fulfilled Demand & State
-        # Calculate fulfilled demand per route
-        route_ids = solution.route_per_customer()
-        demand_per_route = solution.demand_per_route()
-
-        # Map back to customers
-        # If route_id is -1, demand is 0.0
-        valid_route = route_ids != -1
-        customer_fulfilled_demand = torch.where(
-            valid_route,
-            demand_per_route.gather(dim=-1, index=route_ids.clamp(min=0)),
-            torch.tensor(0.0, device=demand_per_route.device),
+    def __call__(self, instance: CVRPInstance) -> CVRPInstanceFeatures:
+        return CVRPInstanceFeatures(
+            depot_location=instance.depot_location,
+            customer_locations=instance.customer_locations,
+            customer_demand=instance.customer_demands.unsqueeze(-1),
+            depot_angle=instance.depot_anchored_polar_angle() if self._with_positional else None,
+            batch_size=instance.batch_size,
         )
 
-        # 4. Gather customer features
-        extended_customer_features = torch.cat(
-            [
-                solution.instance.customer_features,
-                customer_fulfilled_demand.unsqueeze(-1),
-                degree.float().unsqueeze(-1),
-            ],
-            dim=-1,
-        )
 
-        subset_customer_features = extended_customer_features.gather(
-            dim=-2, index=subset_indices.unsqueeze(-1).expand(*b_size, max_k, 5)
-        )
-        subset_customer_features = subset_customer_features.masked_fill(
-            ~valid_subset_mask.unsqueeze(-1), 0.0
-        )
+class CVRPSolutionFeatureExtractor(
+    SolutionFeatureExtractor[CVRPSolutionLike, CVRPSolutionFeatures]
+):
+    def __init__(self, *, with_positional: bool = False) -> None:
+        self._with_positional = with_positional
 
-        # 5. Depot features
-        depot_features = torch.cat(
-            [
-                solution.instance.depot_location,
-                torch.zeros((*b_size, 1, 1), device=device),
-                torch.full((*b_size, 1, 1), 0.0, device=device),
-                torch.full((*b_size, 1, 1), -1.0, device=device),
-            ],
-            dim=-1,
+    def __call__(self, solution: CVRPSolutionLike) -> CVRPSolutionFeatures:
+        return CVRPSolutionFeatures(
+            neighbours_index=solution.neighbours_per_customer(),
+            route_index=solution.route_per_customer(),
+            route_phase=solution.route_phase() if self._with_positional else None,
+            batch_size=solution.instance.batch_size,
         )
-
-        return {
-            "depot_features": depot_features,
-            "customer_features": subset_customer_features,
-            "padding_mask": ~valid_subset_mask,
-            "original_indices": subset_indices,
-        }

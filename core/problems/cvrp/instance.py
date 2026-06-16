@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import torch
 from matplotlib.axes import Axes
 
@@ -100,6 +102,16 @@ class CVRPInstance(BaseProblemInstance):
         customer_locations = self.locations[..., 1:, :]
         customer_demands = self.demand[..., 1:].unsqueeze(-1)
         return torch.cat([customer_locations, customer_demands], dim=-1)
+
+    def depot_anchored_polar_angle(self) -> torch.Tensor:
+        """(..., N) float - depot-anchored polar angle of each customer in [0, 2*pi].
+
+        The cross-route component of the hierarchical positional encoding:
+        customers in the same angular sector around the depot get similar encodings.
+        """
+        relative = self.customer_locations - self.depot_location  # (..., N, 2)
+        angle = torch.atan2(relative[..., 1], relative[..., 0])  # (..., N) in [-pi, pi]
+        return angle % (2 * math.pi)
 
     def visualize(
         self,

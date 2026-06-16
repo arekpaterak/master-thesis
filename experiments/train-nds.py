@@ -13,6 +13,7 @@ with app.setup(hide_code=True):
     import torch
     import torch.nn
     import torch.optim as optim
+    import wandb
     import yaml
     from dotenv import load_dotenv
     from rich.console import Console
@@ -20,7 +21,6 @@ with app.setup(hide_code=True):
     from tqdm import tqdm
     from wigglystuff import EnvConfig
 
-    import wandb
     from core.lns.acceptance_criterion import GreedyAcceptanceConfig
     from core.lns.config import SearchParams
     from core.models.nds.config import (

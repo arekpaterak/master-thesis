@@ -37,6 +37,32 @@ class EncoderConfig(BaseModel):
     )
 
 
+class PositionalEncodingConfig(BaseModel):
+    """Hierarchical positional encoding (IPE + XPE) settings.
+
+    The encoding is injected at the initial embedding. ``mode="off"`` keeps the
+    projection dimensions unchanged (and is compatible with strict pretrained loading);
+    ``mode="concat"`` concatenates the sinusoidal encoding to the node content features
+    before the first projection.
+    """
+
+    mode: Literal["off", "concat"] = Field(
+        default="off",
+        description="Injection mode. 'off' disables PE; 'concat' concatenates it to input features.",
+    )
+    dim: int = Field(default=16, description="Per-component encoding dimension (must be even).")
+    direction_aware: bool = Field(
+        default=False,
+        description="If True, use sin/cos pairs (direction-sensitive). False = cosine-only "
+        "(reversal-invariant; CVRP, TSP).",
+    )
+    frequency_schedule: Literal["integer", "geometric"] = Field(
+        default="integer",
+        description="Frequency schedule. 'integer' = Fourier harmonics (exact reversal "
+        "invariance for the cosine-only variant); 'geometric' = Vaswani lambda^(-2k/D).",
+    )
+
+
 class ModelParams(BaseModel):
     """Configuration for the model architecture and weight initialisation."""
 
@@ -50,6 +76,7 @@ class ModelParams(BaseModel):
         default=None,
         description="Use route encoding. None means problem-specific default (True for CVRP, False for TSP).",
     )
+    positional: PositionalEncodingConfig = Field(default_factory=PositionalEncodingConfig)
     encoder: EncoderConfig = Field(default_factory=EncoderConfig)
     decoder: DecoderConfig = Field(default_factory=AutoregressiveDecoderConfig)
 

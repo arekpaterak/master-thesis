@@ -301,6 +301,67 @@ class CVRPGraphSolution(BaseSolution):
         """(..., N) int - route ID for each customer. Always >= 1."""
         return self._route_id[..., 1:]
 
+    def cumulative_route_length(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Cumulative travel distances and route totals per customer.
+
+        Chains run from the opening depot edge to each customer; the depot
+        (prev < 0) self-loops with zero edge length and terminates each chain.
+        Route total = acc of the last customer in the route + its closing edge
+        to the depot.
+
+        Returns:
+            acc:   (..., N) cumulative distance from the route's depot edge.
+            total: (..., N) total route length for each customer's route.
+        """
+        locations = self._instance.locations  # (..., N+1, 2)
+        N = self._instance.num_customers
+
+        # Incoming edge length per node: ||x_v - x_prev[v]||. Depot and unassigned
+        # nodes (prev < 0) contribute 0.
+        safe_prev = self._prev.clamp(min=0)
+        prev_loc = locations.gather(-2, safe_prev.unsqueeze(-1).expand(*safe_prev.shape, 2))
+        edge_len = (locations - prev_loc).norm(dim=-1) * (self._prev >= 0)  # (..., N+1)
+
+        # Cumulative distance from the route's depot edge to each node, via pointer
+        # doubling along prev. The depot self-loops (safe_prev[..., 0] = 0) with
+        # edge_len 0, so chains terminate there.
+        acc_full = edge_len.clone()
+        ptr = safe_prev.clone()
+        for _ in range(math.ceil(math.log2(N + 2))):
+            acc_full = acc_full + acc_full.gather(-1, ptr)
+            ptr = ptr.gather(-1, ptr)
+
+        acc = acc_full[..., 1:]  # (..., N)
+
+        # Route total: acc of last customer + its closing edge to the depot,
+        # bucketed by route_id then looked up per customer.
+        cust_route = self._route_id[..., 1:]  # (..., N), all >= 1
+        depot_loc = locations[..., :1, :]
+        closing = (locations[..., 1:, :] - depot_loc).norm(dim=-1)  # (..., N)
+        is_last = self._next[..., 1:] == self.DEPOT  # (..., N) bool
+
+        route_total = torch.zeros(*cust_route.shape[:-1], N + 1, dtype=acc.dtype, device=acc.device)
+        route_total.scatter_add_(-1, cust_route, (acc + closing) * is_last)
+        total = route_total.gather(-1, cust_route)  # (..., N)
+
+        return acc, total
+
+    def route_phase(self) -> torch.Tensor:
+        """(..., N) float - in-route position d_hat in [0, 2*pi] per customer.
+
+        The cumulative travel distance from the route's opening depot edge to the
+        customer, rescaled so a full closed route maps back to 2*pi (the in-route
+        component of the hierarchical positional encoding). Computed from the
+        next/prev pointers via the same pointer-doubling idiom as
+        _compute_route_ids, so it needs no explicit route ordering.
+
+        An isolated single-customer route has phase pi (the depot->customer edge is
+        half of the depot->customer->depot loop). Degenerate zero-length routes map
+        to 0.
+        """
+        acc, total = self.cumulative_route_length()
+        return 2 * math.pi * acc / total.clamp_min(EPS)
+
     def demand_per_route(self) -> torch.Tensor:
         """(..., N+1) float - total demand accumulated per route.
 

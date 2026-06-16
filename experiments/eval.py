@@ -12,6 +12,7 @@ with app.setup:
     import matplotlib.pyplot as plt
     import polars as pl
     import torch
+    import wandb
     import yaml
     from dotenv import load_dotenv
     from rich.console import Console
@@ -19,7 +20,6 @@ with app.setup:
     from tqdm import tqdm
     from wigglystuff import EnvConfig
 
-    import wandb
     from core.eval_config import EvaluationConfig
     from core.evaluation import Evaluator, PlotSnapshotCallback
     from core.lns.acceptance_criterion import AcceptanceCriterionConfig

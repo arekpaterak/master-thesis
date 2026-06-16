@@ -4,7 +4,7 @@ from typing import Literal
 
 import torch.nn as nn
 
-from core.models.nds.config import EncoderConfig
+from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.decoders.one_pass.base import OnePassDestroyDecoder
 from core.models.nds.decoders.one_pass.proximity import ProximityDecoder
 from core.models.nds.encoder import NDSEncoder
@@ -12,9 +12,15 @@ from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
-from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
+from core.problems.cvrp.features import (
+    CVRPInstanceFeatureExtractor,
+    CVRPSolutionFeatureExtractor,
+)
 from core.problems.solution import BaseSolution
-from core.problems.tsp.features import TSPSolutionFeatureExtractor
+from core.problems.tsp.features import (
+    TSPInstanceFeatureExtractor,
+    TSPSolutionFeatureExtractor,
+)
 from core.states.destroy import CVRPDestroyState, TSPDestroyState
 
 
@@ -27,6 +33,7 @@ class OnePassNDSModel(nn.Module):
         num_heads: int = 8,
         ff_dim: int = 512,
         encoder_config: EncoderConfig | None = None,
+        positional: PositionalEncodingConfig | None = None,
         with_neighbours_encoding: bool = True,
         with_route_encoding: bool | None = None,
         decoder: OnePassDestroyDecoder,
@@ -38,11 +45,22 @@ class OnePassNDSModel(nn.Module):
         if with_route_encoding is None:
             with_route_encoding = problem_name == "cvrp"
 
+        positional = positional or PositionalEncodingConfig()
+        with_positional = positional.mode != "off"
+
         match problem_name:
             case "cvrp":
-                self.feature_extractor = CVRPSolutionFeatureExtractor()
+                self.instance_feature_extractor = CVRPInstanceFeatureExtractor(
+                    with_positional=with_positional
+                )
+                self.solution_feature_extractor = CVRPSolutionFeatureExtractor(
+                    with_positional=with_positional
+                )
             case "tsp":
-                self.feature_extractor = TSPSolutionFeatureExtractor()
+                self.instance_feature_extractor = TSPInstanceFeatureExtractor()
+                self.solution_feature_extractor = TSPSolutionFeatureExtractor(
+                    with_positional=with_positional
+                )
             case _:
                 raise ValueError(f"Unsupported problem_name: {self.problem_name}")
 
@@ -52,6 +70,7 @@ class OnePassNDSModel(nn.Module):
             num_heads=num_heads,
             ff_dim=ff_dim,
             encoder_config=encoder_config,
+            positional=positional,
             with_neighbours_encoding=with_neighbours_encoding,
             with_route_encoding=with_route_encoding,
         )
@@ -76,10 +95,10 @@ class OnePassNDSModel(nn.Module):
             batch_size=B, rollout_size=R, seed_dim=self.decoder.seed_dim, device=device
         )
 
-        features = self.feature_extractor(solution)
-        features = {key: value.to(device) for key, value in features.items()}
+        instance_features = self.instance_feature_extractor(instance).to(device)
+        solution_features = self.solution_feature_extractor(solution).to(device)
 
-        encoded_nodes = self.encoder(**features)  # (B, N, D)
+        encoded_nodes = self.encoder(instance_features, solution_features)  # (B, N, D)
         N = encoded_nodes.shape[1]
 
         match self.problem_name:
@@ -94,10 +113,9 @@ class OnePassNDSModel(nn.Module):
 
         h_nodes_expanded = encoded_nodes.unsqueeze(1).expand(B, R, N, -1)  # (B, R, N, D)
 
-        # TODO: Refactor
         extra_kwargs = {}
         if isinstance(self.decoder, ProximityDecoder):
-            node_coordinates = instance.locations.to(device)  # (B, N, 2)
+            node_coordinates = instance_features.locations  # (B, N, 2), already on device
             node_coordinates_expanded = node_coordinates.unsqueeze(1).expand(
                 B, R, N, 2
             )  # (B, R, N, 2)

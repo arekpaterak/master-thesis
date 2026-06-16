@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from core.models.embeddings.cvrp import CVRPInitialEmbedding
 from core.models.embeddings.tsp import TSPInitialEmbedding
-from core.models.nds.config import EncoderConfig
+from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
 
 
 class NDSEncoder(nn.Module):
@@ -18,6 +18,7 @@ class NDSEncoder(nn.Module):
         num_heads: int = 8,
         ff_dim: int = 512,
         encoder_config: EncoderConfig | None = None,
+        positional: PositionalEncodingConfig | None = None,
         with_neighbours_encoding: bool = True,
         with_route_encoding: bool = True,
         initial_embedding: nn.Module | None = None,
@@ -36,9 +37,13 @@ class NDSEncoder(nn.Module):
                 )
             self.initial_embedding = initial_embedding
         elif problem_name == "cvrp":
-            self.initial_embedding = CVRPInitialEmbedding(hidden_dim=hidden_dim)
+            self.initial_embedding = CVRPInitialEmbedding(
+                hidden_dim=hidden_dim, positional=positional
+            )
         elif problem_name == "tsp":
-            self.initial_embedding = TSPInitialEmbedding(hidden_dim=hidden_dim)
+            self.initial_embedding = TSPInitialEmbedding(
+                hidden_dim=hidden_dim, positional=positional
+            )
         else:
             raise ValueError(f"Unknown problem_name: {problem_name}")
 
@@ -66,22 +71,23 @@ class NDSEncoder(nn.Module):
             attention_layer(),
         )
 
-    def forward(self, **features: torch.Tensor) -> torch.Tensor:
+    def forward(self, instance, solution) -> torch.Tensor:
         """
         Args:
-            **features: Problem-specific feature dictionary.
+            instance: Problem-specific instance feature container.
+            solution: Problem-specific solution feature container.
 
         Returns:
             (B, N, hidden_dim) or (B, N+1, hidden_dim)
         """
-        h = self.initial_embedding(**features)
+        h = self.initial_embedding(instance, solution)
         h = self.pre_attention(h)
 
-        if self.neighbours_encoding is not None and "neighbours_index" in features:
-            h = self.neighbours_encoding(h, neighbours_index=features["neighbours_index"])
+        if self.neighbours_encoding is not None:
+            h = self.neighbours_encoding(h, neighbours_index=solution.neighbours_index)
 
-        if self.route_encoding is not None and "route_index" in features:
-            h = self.route_encoding(h, route_index=features["route_index"])
+        if self.route_encoding is not None:
+            h = self.route_encoding(h, route_index=solution.route_index)
 
         h = self.post_attention(h)
         return h

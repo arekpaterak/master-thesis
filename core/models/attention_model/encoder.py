@@ -55,11 +55,11 @@ class Encoder(nn.Module):
         *,
         batch: torch.Tensor,
         edge_index: torch.Tensor,
-        **features: torch.Tensor,
+        instance_features,
     ) -> EncoderOutput:
         """
         Args:
-            **features: Feature dictionary consumed by the selected initial embedding.
+            instance_features: Instance feature container consumed by the initial embedding.
             batch: (total_nodes,)
             edge_index: (2, total_edges)
 
@@ -67,7 +67,7 @@ class Encoder(nn.Module):
             h_nodes: (total_nodes, d_model)
             h_graph: (batch_size, d_model)
         """
-        h = self.initial_embedding(**features)
+        h = self.initial_embedding(instance_features)
         h = h.reshape(-1, h.size(-1))
 
         for layer in self.layers:

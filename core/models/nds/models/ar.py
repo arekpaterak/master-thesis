@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from core.models.entropy import entropy
-from core.models.nds.config import EncoderConfig
+from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.decoders.ar import (
     AutoregressiveNDSDecoder,
     DecoderCache,
@@ -16,9 +16,15 @@ from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
-from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
+from core.problems.cvrp.features import (
+    CVRPInstanceFeatureExtractor,
+    CVRPSolutionFeatureExtractor,
+)
 from core.problems.solution import BaseSolution
-from core.problems.tsp.features import TSPSolutionFeatureExtractor
+from core.problems.tsp.features import (
+    TSPInstanceFeatureExtractor,
+    TSPSolutionFeatureExtractor,
+)
 from core.states.destroy import CVRPDestroyState, DestroyState, TSPDestroyState
 
 
@@ -33,6 +39,7 @@ class AutoregressiveNDSModel(nn.Module):
         poly_dim: int = 256,
         seed_dim: int = 10,
         encoder_config: EncoderConfig | None = None,
+        positional: PositionalEncodingConfig | None = None,
         with_neighbours_encoding: bool = True,
         with_route_encoding: bool | None = None,
         use_hidden_decoding_state: bool = True,
@@ -45,11 +52,22 @@ class AutoregressiveNDSModel(nn.Module):
         if with_route_encoding is None:
             with_route_encoding = problem_name == "cvrp"
 
+        positional = positional or PositionalEncodingConfig()
+        with_positional = positional.mode != "off"
+
         match problem_name:
             case "cvrp":
-                self.feature_extractor = CVRPSolutionFeatureExtractor()
+                self.instance_feature_extractor = CVRPInstanceFeatureExtractor(
+                    with_positional=with_positional
+                )
+                self.solution_feature_extractor = CVRPSolutionFeatureExtractor(
+                    with_positional=with_positional
+                )
             case "tsp":
-                self.feature_extractor = TSPSolutionFeatureExtractor()
+                self.instance_feature_extractor = TSPInstanceFeatureExtractor()
+                self.solution_feature_extractor = TSPSolutionFeatureExtractor(
+                    with_positional=with_positional
+                )
             case _:
                 raise ValueError(f"Unsupported problem_name: {self.problem_name}")
 
@@ -59,6 +77,7 @@ class AutoregressiveNDSModel(nn.Module):
             num_heads=num_heads,
             ff_dim=ff_dim,
             encoder_config=encoder_config,
+            positional=positional,
             with_neighbours_encoding=with_neighbours_encoding,
             with_route_encoding=with_route_encoding,
         )
@@ -75,9 +94,10 @@ class AutoregressiveNDSModel(nn.Module):
         *,
         seed: torch.Tensor,
         rollout_size: int,
-        **features: torch.Tensor,
+        instance_features,
+        solution_features,
     ) -> tuple[DestroyState, DecoderState, DecoderCache]:
-        encoded_nodes = self.encoder.forward(**features)
+        encoded_nodes = self.encoder(instance_features, solution_features)
 
         B = encoded_nodes.shape[0]
         N = encoded_nodes.shape[1]
@@ -136,14 +156,14 @@ class AutoregressiveNDSModel(nn.Module):
             device=device,
         )
 
-        features = self.feature_extractor(solution)
-        # Move features to correct device
-        features = {k: v.to(device) for k, v in features.items()}
+        instance_features = self.instance_feature_extractor(instance).to(device)
+        solution_features = self.solution_feature_extractor(solution).to(device)
 
         problem_state, decoder_state, cache = self.pre_forward(
             seed=seed,
             rollout_size=rollouts_per_solution,
-            **features,
+            instance_features=instance_features,
+            solution_features=solution_features,
         )
 
         selected = []
