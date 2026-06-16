@@ -38,7 +38,7 @@ def _make_improvement_step(model: AutoregressiveNDSModel) -> NumbaModelSequentia
 
 class TestNumbaModelSequentialImprovementStep:
     def test_resolves_via_config_literal(self) -> None:
-        assert resolve_improvement_step("numba") is NumbaModelSequentialImprovementStep
+        assert resolve_improvement_step("numba_sequential") is NumbaModelSequentialImprovementStep
 
     def test_if_complete_and_feasible(
         self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution

@@ -415,7 +415,7 @@ def _(defaults):
         1, 20, value=defaults.search.n_repairs, step=1, label="n_repairs"
     )
     search_improvement_step_type = mo.ui.dropdown(
-        ["sequential", "parallel"],
+        ["sequential", "parallel", "numba_sequential"],
         value=defaults.search.improvement_step_type,
         label="Improvement step type",
     )
@@ -540,7 +540,7 @@ def _(defaults):
         1, 20, value=_search.n_repairs, step=1, label="n_repairs"
     )
     validation_search_improvement_step_type = mo.ui.dropdown(
-        ["sequential", "parallel"],
+        ["sequential", "parallel", "numba_sequential"],
         value=_search.improvement_step_type,
         label="Improvement step type",
     )

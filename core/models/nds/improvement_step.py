@@ -21,7 +21,7 @@ from .models import NDSModel
 
 ApplyRollout = Callable[[BaseSolution, Rollout], BaseSolution]
 
-ImprovementStepType = Literal["sequential", "parallel", "numba"]
+ImprovementStepType = Literal["sequential", "parallel", "numba_sequential"]
 
 
 def resolve_improvement_step(
@@ -35,7 +35,7 @@ def resolve_improvement_step(
         return ModelSequentialImprovementStep
     if improvement_step_type == "parallel":
         return ModelParallelImprovementStep
-    if improvement_step_type == "numba":
+    if improvement_step_type == "numba_sequential":
         return NumbaModelSequentialImprovementStep
     raise ValueError(f"Unknown improvement_step_type: {improvement_step_type!r}")
 

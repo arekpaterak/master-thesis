@@ -22,10 +22,7 @@ with app.setup:
     import wandb
     from core.eval_config import EvaluationConfig
     from core.evaluation import Evaluator, PlotSnapshotCallback
-    from core.lns.acceptance_criterion import (
-        GreedyAcceptanceConfig,
-        SimulatedAnnealingAcceptanceConfig,
-    )
+    from core.lns.acceptance_criterion import AcceptanceCriterionConfig
     from core.lns.config import SearchParams
     from core.methods import (
         NDSPretrainedConfig,
@@ -43,6 +40,7 @@ with app.setup:
     from core.results.plots import plot_lns_progress
     from core.results.wandb_artifacts import upload_eval_plots, upload_eval_results
     from core.results.writer import write_eval_results
+    from core.ui.forms import build_mo_ui_dict, union_variants
 
     load_dotenv(".env")
 
@@ -263,72 +261,46 @@ def _(
 
 @app.cell(hide_code=True)
 def _():
-    search_num_improvement_steps_widget = mo.ui.number(value=50, label="num_improvement_steps")
-    search_num_rollouts_widget = mo.ui.number(0, 200, value=100, step=1, label="num_rollouts")
-    search_deconstruction_size_widget = mo.ui.number(
-        1, 50, value=15, step=1, label="deconstruction_size"
+    # Widgets for SearchParams' scalar fields are generated from the schema, so they
+    # stay in sync with the config (e.g. new improvement_step_type values appear
+    # automatically). The acceptance union is rendered separately below.
+    search_defaults = SearchParams(
+        repair_type="greedy_insert",
+        num_improvement_steps=50,
+        num_rollouts=100,
+        deconstruction_size=15,
+        n_repairs=5,
+        improvement_step_type="sequential",
+        n_augmentations=1,
     )
-    search_n_repairs_widget = mo.ui.number(1, 50, value=5, step=1, label="n_repairs")
-    search_repair_type_widget = mo.ui.dropdown(
-        ["greedy_insert", "greedy_reconnect", "noop"],
-        value="greedy_insert",
-        label="repair_type",
-    )
-    search_step_type_widget = mo.ui.dropdown(
-        ["sequential", "parallel"], value="sequential", label="improvement_step_type"
-    )
-    search_acceptance_type_widget = mo.ui.dropdown(["sa", "greedy"], value="sa", label="acceptance")
-    search_sa_temperature_start_widget = mo.ui.number(
-        1e-4, 10.0, value=0.1, step=0.01, label="SA temperature_start"
-    )
-    search_sa_temperature_min_widget = mo.ui.number(
-        1e-6, 1.0, value=1e-3, step=1e-4, label="SA temperature_min"
-    )
-    search_n_augmentations_widget = mo.ui.number(1, 8, value=1, step=1, label="Num. augmentations")
-    return (
-        search_acceptance_type_widget,
-        search_deconstruction_size_widget,
-        search_n_augmentations_widget,
-        search_n_repairs_widget,
-        search_num_improvement_steps_widget,
-        search_num_rollouts_widget,
-        search_repair_type_widget,
-        search_sa_temperature_min_widget,
-        search_sa_temperature_start_widget,
-        search_step_type_widget,
-    )
+    search_form = build_mo_ui_dict(SearchParams, search_defaults, skip={"acceptance"})
+    return (search_form,)
 
 
 @app.cell(hide_code=True)
-def _(
-    search_acceptance_type_widget,
-    search_deconstruction_size_widget,
-    search_n_augmentations_widget,
-    search_n_repairs_widget,
-    search_num_improvement_steps_widget,
-    search_num_rollouts_widget,
-    search_repair_type_widget,
-    search_sa_temperature_min_widget,
-    search_sa_temperature_start_widget,
-    search_step_type_widget,
-):
-    sa_widgets = (
-        [search_sa_temperature_start_widget, search_sa_temperature_min_widget]
-        if search_acceptance_type_widget.value == "sa"
-        else []
+def _():
+    acceptance_variants = union_variants(AcceptanceCriterionConfig)
+    acceptance_type_widget = mo.ui.dropdown(
+        list(acceptance_variants), value="sa", label="acceptance"
     )
+    return acceptance_type_widget, acceptance_variants
+
+
+@app.cell(hide_code=True)
+def _(acceptance_type_widget, acceptance_variants):
+    acceptance_variant_cls = acceptance_variants[acceptance_type_widget.value]
+    acceptance_form = build_mo_ui_dict(acceptance_variant_cls, acceptance_variant_cls())
+    return acceptance_form, acceptance_variant_cls
+
+
+@app.cell(hide_code=True)
+def _(acceptance_form, acceptance_type_widget, search_form):
     mo.vstack(
         [
             mo.md("### Search"),
-            search_num_improvement_steps_widget,
-            search_num_rollouts_widget,
-            search_deconstruction_size_widget,
-            search_n_repairs_widget,
-            search_repair_type_widget,
-            search_step_type_widget,
-            search_acceptance_type_widget,
-            *sa_widgets,
-            search_n_augmentations_widget,
+            *search_form.values(),
+            acceptance_type_widget,
+            *acceptance_form.values(),
         ]
     )
     return
@@ -448,35 +420,9 @@ def _():
 
 
 @app.cell
-def _(
-    search_acceptance_type_widget,
-    search_deconstruction_size_widget,
-    search_n_augmentations_widget,
-    search_n_repairs_widget,
-    search_num_improvement_steps_widget,
-    search_num_rollouts_widget,
-    search_repair_type_widget,
-    search_sa_temperature_min_widget,
-    search_sa_temperature_start_widget,
-    search_step_type_widget,
-):
-    if search_acceptance_type_widget.value == "sa":
-        acceptance = SimulatedAnnealingAcceptanceConfig(
-            temperature_start=float(search_sa_temperature_start_widget.value),
-            temperature_min=float(search_sa_temperature_min_widget.value),
-        )
-    else:
-        acceptance = GreedyAcceptanceConfig()
-    search_params = SearchParams(
-        repair_type=search_repair_type_widget.value,
-        num_improvement_steps=int(search_num_improvement_steps_widget.value),
-        num_rollouts=int(search_num_rollouts_widget.value),
-        deconstruction_size=int(search_deconstruction_size_widget.value),
-        n_repairs=int(search_n_repairs_widget.value),
-        improvement_step_type=search_step_type_widget.value,
-        acceptance=acceptance,
-        n_augmentations=int(search_n_augmentations_widget.value),
-    )
+def _(acceptance_form, acceptance_variant_cls, search_form):
+    acceptance = acceptance_variant_cls(**acceptance_form.value)
+    search_params = SearchParams.model_validate({**search_form.value, "acceptance": acceptance})
     return (search_params,)
 
 
@@ -655,8 +601,10 @@ def _(result):
 
 @app.cell
 def _(method: Method, result):
-    method.improvement_step._model.to("cpu")
-    torch.cuda.empty_cache()
+    _model = getattr(method.improvement_step, "_model", None)
+    if _model is not None:
+        _model.to("cpu")
+        torch.cuda.empty_cache()
     result
     return
 

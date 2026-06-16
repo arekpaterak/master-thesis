@@ -38,26 +38,32 @@ class RandomDestroyMethod:
             seed=config.seed,
             stitch=repair.requires_stitch,
         )
-        if config.search.improvement_step_type == "numba":
-            improvement_step = NumbaSequentialImprovementStep(
-                destroy=destroy,
-                repair=repair,
-                num_rollouts=config.search.num_rollouts,
-                n_repairs=config.search.n_repairs,
-                seed=config.seed or 0,
-            )
-        else:
-            step_cls = (
-                SequentialImprovementStep
-                if config.search.improvement_step_type == "sequential"
-                else ParallelImprovementStep
-            )
-            improvement_step = step_cls(
-                destroy=destroy,
-                repair=repair,
-                num_rollouts=config.search.num_rollouts,
-                n_repairs=config.search.n_repairs,
-            )
+
+        match config.search.improvement_step_type:
+            case "numba_sequential":
+                improvement_step = NumbaSequentialImprovementStep(
+                    destroy=destroy,
+                    repair=repair,
+                    num_rollouts=config.search.num_rollouts,
+                    n_repairs=config.search.n_repairs,
+                    seed=config.seed or 0,
+                )
+            case "sequential":
+                improvement_step = SequentialImprovementStep(
+                    destroy=destroy,
+                    repair=repair,
+                    num_rollouts=config.search.num_rollouts,
+                    n_repairs=config.search.n_repairs,
+                )
+            case "parallel":
+                improvement_step = ParallelImprovementStep(
+                    destroy=destroy,
+                    repair=repair,
+                    num_rollouts=config.search.num_rollouts,
+                    n_repairs=config.search.n_repairs,
+                )
+            case _:
+                raise NotImplementedError("Unknown improvement step type.")
 
         name = _build_name(config.search)
 
