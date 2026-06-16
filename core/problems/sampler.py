@@ -30,6 +30,13 @@ class Sampler[T: BaseProblemInstance](ABC):
     @abstractmethod
     def __call__(self, batch_size: int) -> T: ...
 
+    def reset(self) -> None:
+        """Rewind any internal position so the next pass starts from the beginning.
+
+        Random samplers are stateless and keep this a no-op; dataset-backed
+        samplers override it to re-serve the same fixed instances each pass.
+        """
+
     @classmethod
     def for_size(cls, size: int, *, seed: int | None = None) -> Self:
         """Build a sampler for a problem of the given size.

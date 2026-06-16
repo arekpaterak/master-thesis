@@ -52,6 +52,7 @@ with app.setup(hide_code=True):
     from core.models.trainer import Trainer
     from core.models.utils import load_checkpoint
     from core.problems import make_problem_config
+    from core.problems.dataset import DatasetSampler
     from core.problems.sampler import Sampler
     from core.results.plots import plot_lns_progress
     from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
@@ -736,7 +737,21 @@ def _():
 @app.cell
 def _(config):
     sampler = Sampler.from_config(config.problem)
-    val_sampler = Sampler.from_config(config.problem, seed=config.validation.seed)
+    if config.validation.dataset_path is None:
+        val_sampler = Sampler.from_config(config.problem, seed=config.validation.seed)
+    else:
+        val_sampler = DatasetSampler.from_file(config.problem.name, config.validation.dataset_path)
+        _val_dataset_size = val_sampler.num_nodes - 1
+        if _val_dataset_size != config.problem.size:
+            raise ValueError(
+                f"Validation dataset instances have size {_val_dataset_size} but "
+                f"problem.size is {config.problem.size}."
+            )
+        if config.validation.num_instances > len(val_sampler):
+            raise ValueError(
+                f"validation.num_instances={config.validation.num_instances} exceeds "
+                f"the {len(val_sampler)} instances in {config.validation.dataset_path}."
+            )
     return sampler, val_sampler
 
 

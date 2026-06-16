@@ -9,6 +9,7 @@ from pydantic import BaseModel, computed_field
 
 from core.eval_config import EvaluationConfig
 from core.methods.base import Method
+from core.problems.dataset import DatasetSampler
 from core.problems.instance import BaseProblemInstance
 from core.problems.sampler import Sampler
 from core.problems.solution import BaseSolution
@@ -67,7 +68,7 @@ class Evaluator:
         return self._aggregate(method.name, batches)
 
     def _iter_batches(self, eval_config: EvaluationConfig) -> Iterator[BaseProblemInstance]:
-        sampler = Sampler.from_config(eval_config.problem, seed=eval_config.test_seed)
+        sampler = self._build_sampler(eval_config)
         num_batches = math.ceil(eval_config.num_test_instances / eval_config.batch_size)
         remaining = eval_config.num_test_instances
         for _ in range(num_batches):
@@ -77,6 +78,24 @@ class Evaluator:
             if self.device is not None:
                 instance = instance.to(self.device)
             yield instance
+
+    def _build_sampler(self, eval_config: EvaluationConfig) -> Sampler:
+        if eval_config.dataset_path is None:
+            return Sampler.from_config(eval_config.problem, seed=eval_config.test_seed)
+
+        sampler = DatasetSampler.from_file(eval_config.problem.name, eval_config.dataset_path)
+        dataset_problem_size = sampler.num_nodes - 1
+        if dataset_problem_size != eval_config.problem.size:
+            raise ValueError(
+                f"Dataset instances have size {dataset_problem_size} but problem.size is "
+                f"{eval_config.problem.size}."
+            )
+        if eval_config.num_test_instances > len(sampler):
+            raise ValueError(
+                f"num_test_instances={eval_config.num_test_instances} exceeds the "
+                f"{len(sampler)} instances available in {eval_config.dataset_path}."
+            )
+        return sampler
 
     def _evaluate_batch(
         self, method: Method, instance: BaseProblemInstance, batch_idx: int

@@ -13,6 +13,13 @@ class EvaluationConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
     problem: ProblemConfig = Field(default_factory=CVRPConfig, description="Test problem")
+    dataset_path: str | None = Field(
+        default=None,
+        description=(
+            "If set, load test instances from this benchmark file instead of "
+            "sampling them randomly. The first num_test_instances are used."
+        ),
+    )
     num_test_instances: int = Field(default=100, description="Number of test instances")
     batch_size: int = Field(
         default=100, description="Evaluation batch size (last batch may be short)"

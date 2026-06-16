@@ -132,6 +132,7 @@ class Trainer[BatchSummaryT]:
 
             if with_validation and epoch % self.validate_every_n_epochs == 0:
                 val_batch_sizes = self._validation_batch_sizes()
+                validation_instance_sampler.reset()
                 if self.on_epoch_validation_start:
                     self.on_epoch_validation_start(epoch, len(val_batch_sizes))
                 val_accumulator = module.validation_accumulator_cls()

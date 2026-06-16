@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
@@ -64,7 +64,7 @@ class ModelParams(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_weights_mutually_exclusive(self) -> ModelParams:
+    def _validate_weights_mutually_exclusive(self) -> Self:
         if self.init_weights is not None and self.original_pretrained_weights is not None:
             raise ValueError("init_weights and original_pretrained_weights are mutually exclusive.")
         return self
@@ -119,6 +119,13 @@ class ValidationConfig(BaseModel):
     batch_size: int = Field(default=20, description="Batch size.")
     every_n_epochs: int = Field(default=10, description="Run validation every N training epochs.")
     seed: int = Field(default=42, description="Fixed seed for reproducible validation instances.")
+    dataset_path: str | None = Field(
+        default=None,
+        description=(
+            "If set, validate on instances loaded from this benchmark file instead "
+            "of sampling them randomly. The first num_instances are used."
+        ),
+    )
     plot_enabled: bool = Field(default=True, description="Plot LNS progress for one instance.")
     plot_every_n_improvement_steps: int = Field(
         default=5, description="Capture solution snapshot every N main search iterations."
