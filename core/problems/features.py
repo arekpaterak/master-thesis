@@ -1,20 +1,15 @@
 from abc import ABC, abstractmethod
 
-import torch
 
-from core.problems.instance import BaseProblemInstance
-from core.problems.solution import BaseSolution
-
-
-class SolutionFeatureExtractor[S: BaseSolution](ABC):
-    """Abstract base class for extracting neural network input features from a solution."""
+class InstanceFeatureExtractor[I, F](ABC):
+    """Maps a problem instance to a typed feature container consumed by a model."""
 
     @abstractmethod
-    def __call__(self, solution: S) -> dict[str, torch.Tensor]: ...
+    def __call__(self, instance: I) -> F: ...
 
 
-class InstanceFeatureExtractor[I: BaseProblemInstance](ABC):
-    """Abstract base class for extracting neural network input features from an instance."""
+class SolutionFeatureExtractor[S, F](ABC):
+    """Maps a solution to a typed feature container consumed by a model."""
 
     @abstractmethod
-    def __call__(self, instance: I) -> dict[str, torch.Tensor]: ...
+    def __call__(self, solution: S) -> F: ...

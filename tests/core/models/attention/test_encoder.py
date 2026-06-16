@@ -3,6 +3,7 @@ from torch_geometric.data import Batch
 
 from core.models.attention_model.encoder import Encoder
 from core.models.attention_model.preprocessing import make_complete_graph
+from core.problems.tsp.features import TSPInstanceFeatures
 
 
 def test_encoder_output_shape():
@@ -21,10 +22,11 @@ def test_encoder_output_shape():
     node_features = torch.rand((batch_size, n, d_x))
     data = Batch.from_data_list([make_complete_graph(node_features[b]) for b in range(batch_size)])
 
+    instance_features = TSPInstanceFeatures(node_locations=node_features, batch_size=(batch_size,))
     output = encoder(
         edge_index=data["edge_index"],
         batch=data["batch"],
-        node_features=node_features,
+        instance_features=instance_features,
     )
 
     assert output.h_nodes.shape == (batch_size * n, hidden_dim), (

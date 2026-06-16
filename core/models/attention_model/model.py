@@ -94,7 +94,7 @@ class AttentionModel(nn.Module):
         h_nodes, h_graph = self.encoder(
             edge_index=data["edge_index"],
             batch=data["batch"],
-            **features,
+            instance_features=features,
         )
         h_nodes = h_nodes.view(batch_size, n, -1)
 

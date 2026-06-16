@@ -1,7 +1,10 @@
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.nds.seed_sampler import sample_seed
 from core.problems.cvrp import CVRP, CVRPSampler
-from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
+from core.problems.cvrp.features import (
+    CVRPInstanceFeatureExtractor,
+    CVRPSolutionFeatureExtractor,
+)
 from core.problems.cvrp.solve import one_customer_per_route
 
 
@@ -14,13 +17,14 @@ def test_model() -> None:
 
     model = AutoregressiveNDSModel(problem_name="cvrp")
 
-    extractor = CVRPSolutionFeatureExtractor()
-    features = extractor(solution)
+    instance_features = CVRPInstanceFeatureExtractor()(instance)
+    solution_features = CVRPSolutionFeatureExtractor()(solution)
 
     problem_state, decoder_state, cache = model.pre_forward(
         seed=seed,
         rollout_size=R,
-        **features,
+        instance_features=instance_features,
+        solution_features=solution_features,
     )
 
     log_p, gru_hidden_state = model.forward(

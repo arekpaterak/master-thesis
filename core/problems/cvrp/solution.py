@@ -212,6 +212,13 @@ class CVRPSolution(BaseSolution):
         neighbours = self.neighbours_per_customer()
         return (neighbours != self.UNASSIGNED).sum(dim=-1)
 
+    def route_phase(self) -> torch.Tensor:
+        """Not supported on the sequence representation; use CVRPGraphSolution."""
+        raise NotImplementedError(
+            "route_phase is only implemented for CVRPGraphSolution, not the sequence "
+            "representation."
+        )
+
     def remove_customers(self, customers: torch.Tensor) -> CVRPSolution:
         """
         Deconstruct the solution.

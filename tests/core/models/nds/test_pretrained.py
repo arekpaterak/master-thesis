@@ -12,7 +12,10 @@ from core.models.nds.pretrained import (
 )
 from core.models.nds.seed_sampler import sample_seed
 from core.problems.cvrp import CVRP, CVRPSampler
-from core.problems.cvrp.features import CVRPSolutionFeatureExtractor
+from core.problems.cvrp.features import (
+    CVRPInstanceFeatureExtractor,
+    CVRPSolutionFeatureExtractor,
+)
 from core.problems.cvrp.solve import one_customer_per_route
 
 CHECKPOINT = Path("../experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt")
@@ -55,9 +58,10 @@ def test_load_pretrained_encoder_forward() -> None:
     load_original_pretrained_encoder_weights(encoder, CHECKPOINT)
     encoder.eval()
 
-    features = CVRPSolutionFeatureExtractor()(solution)
+    instance_features = CVRPInstanceFeatureExtractor()(instance)
+    solution_features = CVRPSolutionFeatureExtractor()(solution)
     with torch.no_grad():
-        output = encoder(**features)
+        output = encoder(instance_features, solution_features)
 
     assert output.shape == (B, N + 1, 128)
 
@@ -89,11 +93,15 @@ def test_load_pretrained_model_forward() -> None:
     model.eval()
 
     seed = sample_seed(batch_size=B, rollout_size=R, seed_dim=10)
-    features = CVRPSolutionFeatureExtractor()(solution)
+    instance_features = CVRPInstanceFeatureExtractor()(instance)
+    solution_features = CVRPSolutionFeatureExtractor()(solution)
 
     with torch.no_grad():
         problem_state, decoder_state, cache = model.pre_forward(
-            seed=seed, rollout_size=R, **features
+            seed=seed,
+            rollout_size=R,
+            instance_features=instance_features,
+            solution_features=solution_features,
         )
         log_p, _ = model.forward(
             problem_state=problem_state, decoder_state=decoder_state, cache=cache

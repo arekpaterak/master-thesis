@@ -141,6 +141,12 @@ class TSPSolution(BaseSolution):
         neighbours = self.neighbours_index()
         return (neighbours != self.UNASSIGNED).sum(dim=-1)
 
+    def tour_phase(self) -> torch.Tensor:
+        """Not supported on the sequence representation; use TSPGraphSolution."""
+        raise NotImplementedError(
+            "tour_phase is only implemented for TSPGraphSolution, not the sequence representation."
+        )
+
     def remove_nodes(self, to_remove: torch.Tensor) -> TSPSolution:
         """
         Deconstruct the TSP solution.

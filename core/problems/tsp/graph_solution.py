@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
 
+from core.constants import EPS
 from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPInstance
 
@@ -85,6 +87,53 @@ class TSPGraphSolution(BaseSolution):
 
     def neighbours_index(self) -> torch.Tensor:
         return torch.stack([self._prev, self._next], dim=-1)
+
+    def cumulative_tour_length(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Cumulative travel distances and tour total per node.
+
+        The cycle is broken at node 0: its incoming edge is counted in total
+        but zeroed in acc so that acc[0] = 0 (the fixed origin).
+
+        Returns:
+            acc:   (..., N) cumulative distance from node 0 along the tour.
+            total: (..., N) full tour length broadcast to all nodes.
+        """
+        locations = self._instance.locations  # (..., N, 2)
+        n = self._instance.num_nodes
+
+        # Incoming edge length per node: ||x_v - x_prev[v]||. Unassigned nodes
+        # (prev < 0) contribute 0.
+        safe_prev = self._prev.clamp(min=0)
+        prev_loc = locations.gather(-2, safe_prev.unsqueeze(-1).expand(*safe_prev.shape, 2))
+        edge_len = (locations - prev_loc).norm(dim=-1) * (self._prev >= 0)  # (..., N)
+
+        # Full tour length: every edge is the incoming edge of exactly one node.
+        # Computed before the cycle-break so node 0's incoming edge is included.
+        total = edge_len.sum(dim=-1, keepdim=True).expand_as(edge_len)  # (..., N)
+
+        # Break the cycle at the origin (node 0): zero its incoming edge and make it
+        # self-loop so pointer doubling terminates there.
+        acc = edge_len.clone()
+        ptr = safe_prev.clone()
+        acc[..., 0] = 0.0
+        ptr[..., 0] = 0
+
+        for _ in range(math.ceil(math.log2(n + 1))):
+            acc = acc + acc.gather(-1, ptr)
+            ptr = ptr.gather(-1, ptr)
+
+        return acc, total
+
+    def tour_phase(self) -> torch.Tensor:
+        """(..., N) float - in-tour position d_hat in [0, 2*pi] per node.
+
+        The cumulative travel distance from a fixed origin (node 0) along the tour,
+        rescaled by the full tour length (the in-route component of the hierarchical
+        positional encoding for the single-route TSP case). Computed from the
+        next/prev pointers via pointer doubling; the cycle is broken at the origin.
+        """
+        acc, total = self.cumulative_tour_length()
+        return 2 * math.pi * acc / total.clamp_min(EPS)
 
     def node_degree(self) -> torch.Tensor:
         return (self._next != self.UNASSIGNED).long() + (self._prev != self.UNASSIGNED).long()
