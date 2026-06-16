@@ -11,7 +11,7 @@ from core.problems.tsp.solution import TSPSolution
 
 
 def best_repair(repair: RepairOperator, deconstructed: BaseSolution, n: int) -> BaseSolution:
-    """Repair `deconstructed` n times and return the per-element best by objective."""
+    """Repair ``deconstructed`` solution ``n`` times and return the best by objective."""
     best = repair(deconstructed)
     for _ in range(n - 1):
         candidate = repair(deconstructed)

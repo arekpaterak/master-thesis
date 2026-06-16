@@ -4,7 +4,7 @@ from typing import Self, cast
 
 import torch
 
-from core.problems.cvrp import CVRPSolution
+from core.problems.cvrp import CVRPInstance
 
 
 class ConstructiveState(ABC):
@@ -176,7 +176,7 @@ class CVRPConstructiveState(ConstructiveState):
             remaining_capacity=capacity.clone(),
             last_node_idx=torch.full(
                 (demand.size(0), 1),
-                fill_value=CVRPSolution.DEPOT,
+                fill_value=CVRPInstance.DEPOT,
                 dtype=torch.long,
                 device=demand.device,
             ),
@@ -217,7 +217,7 @@ class CVRPConstructiveState(ConstructiveState):
         if self.last_node_idx is None:
             mask_depot = torch.ones((demand.size(0), 1), dtype=torch.bool, device=demand.device)
         else:
-            mask_depot = self.last_node_idx.eq(CVRPSolution.DEPOT)
+            mask_depot = self.last_node_idx.eq(CVRPInstance.DEPOT)
 
         # Once all customers are served, keep depot selectable to avoid an all-masked row.
         mask_depot = mask_depot & ~all_served
@@ -232,7 +232,7 @@ class CVRPConstructiveState(ConstructiveState):
         if self.last_node_idx is None:
             return False
         all_served = bool(self.all_served.all())
-        back_at_depot = bool(self.last_node_idx.eq(CVRPSolution.DEPOT).all())
+        back_at_depot = bool(self.last_node_idx.eq(CVRPInstance.DEPOT).all())
         return all_served and back_at_depot
 
     @property

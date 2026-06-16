@@ -261,9 +261,6 @@ def _(
 
 @app.cell(hide_code=True)
 def _():
-    # Widgets for SearchParams' scalar fields are generated from the schema, so they
-    # stay in sync with the config (e.g. new improvement_step_type values appear
-    # automatically). The acceptance union is rendered separately below.
     search_defaults = SearchParams(
         repair_type="greedy_insert",
         num_improvement_steps=50,

@@ -18,6 +18,8 @@ class CVRPInstance(BaseProblemInstance):
     capacity: torch.Tensor
     """(B, 1) or (1,)"""
 
+    DEPOT = 0
+
     @classmethod
     def create(
         cls, locations: torch.Tensor, demand: torch.Tensor, capacity: torch.Tensor

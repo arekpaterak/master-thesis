@@ -40,6 +40,7 @@ class DecoderState(NamedTuple):
 
     gru_hidden: torch.Tensor
 
+    # TODO: Refactor, it is stupid
     @staticmethod
     def transition(gru_hidden: torch.Tensor) -> DecoderState:
         return DecoderState(gru_hidden=gru_hidden)
