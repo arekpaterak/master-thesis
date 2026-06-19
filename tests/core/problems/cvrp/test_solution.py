@@ -140,6 +140,38 @@ def test_objective():
     assert (objective > 0).all()
 
 
+def test_total_distance_rounded_false_matches_objective():
+    instance = CVRPSampler(CVRP.for_n(20))(4)
+    solution = one_customer_per_route(instance)
+
+    assert torch.allclose(solution.total_distance(rounded=False), solution.objective())
+
+
+def test_total_distance_rounded_recovers_original_scale():
+    from core.problems.cvrp.instance import CVRPInstance
+
+    # Two nodes: depot at (0,0), one customer at (300, 400) - in original integer coords.
+    # normalize_() scales by amax = 400, so locations become [[0,0],[0.75,1.0]].
+    # Distance per leg = sqrt(0.75^2 + 1^2) = 1.25 (normalized), 500 (original).
+    locations = torch.tensor([[[0.0, 0.0], [300.0, 400.0]]])  # (1, 2, 2)
+    demand = torch.tensor([[0.0, 0.5]])
+    capacity = torch.ones(1, 1)
+    instance = CVRPInstance.create(locations=locations, demand=demand, capacity=capacity)
+    instance.normalize_()  # scale = 400
+
+    # Sequence: depot -> customer -> depot
+    sequence = torch.tensor([[0, 1, 0]])
+    solution = CVRPSolution.create(instance=instance, sequence=sequence)
+
+    dist_normalized = solution.total_distance(rounded=False)
+    dist_rounded = solution.total_distance(rounded=True)
+
+    # Normalized: 2 * sqrt(0.75^2 + 1^2) = 2 * 1.25 = 2.5
+    assert torch.allclose(dist_normalized, torch.tensor([2.5]))
+    # Original-scale rounded: 2 * round(sqrt(300^2 + 400^2)) = 2 * 500 = 1000
+    assert torch.allclose(dist_rounded, torch.tensor([1000.0]))
+
+
 def test_mean_objective_per_instance_in_batch():
     instance = CVRPSampler(CVRP.for_n(20))(10)
     solution = one_customer_per_route(instance)

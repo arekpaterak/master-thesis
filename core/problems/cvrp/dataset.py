@@ -4,6 +4,7 @@ import pickle
 from pathlib import Path
 
 import torch
+import vrplib
 
 from . import CVRPInstance
 
@@ -72,3 +73,47 @@ def load_cvrp_dataset(path: str | Path) -> CVRPInstance:
         demand=torch.stack(demands, dim=0),
         capacity=torch.stack(capacities, dim=0),
     )
+
+
+def load_cvrplib_instance(path: str | Path) -> CVRPInstance:
+    """Load a single CVRPLIB instance from a .vrp file into an unbatched CVRPInstance.
+
+    Coordinates are normalized in-place via normalize_(), with the original scale
+    recorded in coordinate_scale. Demands are normalized by the vehicle capacity
+    (effective capacity becomes 1.0), matching the CVRPSampler convention.
+
+    Assumes CVRP format (EUC_2D edge weights, single depot at index 0).
+    """
+    raw = vrplib.read_instance(str(path))
+    coords = torch.tensor(raw["node_coord"], dtype=torch.float32)  # (N+1, 2)
+    demand = torch.tensor(raw["demand"], dtype=torch.float32)  # (N+1,)
+    capacity = float(raw["capacity"])
+    instance = CVRPInstance.create(
+        locations=coords,
+        demand=demand / capacity,
+        capacity=torch.ones(1),
+    )
+    instance.normalize_()
+    return instance
+
+
+def load_cvrplib_dataset(directory: str | Path) -> list[CVRPInstance]:
+    """Load all .vrp files in a directory, returning one CVRPInstance per file.
+
+    Files are sorted by name for reproducibility. Each instance is unbatched
+    and independently normalized. Raises if the directory contains no .vrp files.
+    """
+    directory = Path(directory)
+    paths = sorted(directory.glob("*.vrp"))
+    if not paths:
+        raise ValueError(f"No .vrp files found in {directory}.")
+    return [load_cvrplib_instance(p) for p in paths]
+
+
+def load_cvrplib_solution_bks(path: str | Path) -> int:
+    """Return the BKS cost from a CVRPLIB solution file (.sol).
+
+    The cost is the sum of rounded Euclidean distances on the original integer
+    coordinates, matching CVRPSolution.total_distance(rounded=True).
+    """
+    return vrplib.read_solution(str(path))["cost"]

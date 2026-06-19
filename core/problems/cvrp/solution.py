@@ -62,14 +62,23 @@ class CVRPSolution(BaseSolution):
     def objective(self) -> torch.Tensor:
         return self.total_distance()
 
-    def total_distance(self) -> torch.Tensor:
-        # (..., L, 2) - Gather locations based on sequence indices
-        # We need to expand sequence to match the (x, y) dimension
+    def total_distance(self, *, rounded: bool = False) -> torch.Tensor:
+        """Total route distance.
+
+        Args:
+            rounded: If True, recover original-scale coordinates via coordinate_scale
+                and round each segment distance before summing. This matches the CVRPLIB
+                convention for BKS comparison. If False (default), compute exact float
+                Euclidean on the stored (normalized) coordinates.
+        """
         idx = self.sequence.unsqueeze(-1).expand(*self.sequence.shape, 2)
         points = self.instance.locations.gather(dim=-2, index=idx)
-
-        # Distance between consecutive points in the sequence
-        return (points[..., 1:, :] - points[..., :-1, :]).norm(dim=-1).sum(dim=-1)
+        if rounded:
+            points = points * self.instance.coordinate_scale.unsqueeze(-1)
+        dists = (points[..., 1:, :] - points[..., :-1, :]).norm(dim=-1)
+        if rounded:
+            dists = dists.round()
+        return dists.sum(dim=-1)
 
     @property
     def is_deconstructed(self) -> torch.Tensor:

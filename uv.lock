@@ -1934,6 +1934,7 @@ dependencies = [
     { name = "torchinfo" },
     { name = "tqdm" },
     { name = "typer" },
+    { name = "vrplib" },
     { name = "wandb" },
     { name = "wigglystuff" },
 ]
@@ -1973,6 +1974,7 @@ requires-dist = [
     { name = "torchinfo", specifier = ">=1.8.0" },
     { name = "tqdm", specifier = ">=4.67.3" },
     { name = "typer", specifier = ">=0.24.1" },
+    { name = "vrplib", specifier = ">=2.2.0" },
     { name = "wandb", specifier = ">=0.25.1" },
     { name = "wigglystuff", specifier = ">=0.3.1" },
 ]
@@ -4516,6 +4518,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/69/e1/665267cea4767debd19f584667a9197c2098b5e7f67a502da9f3a086ab37/virtualenv-21.3.2.tar.gz", hash = "sha256:3ecda97894a6fc1c53106356f488690e5c86278c1f693f3fc0805ac85a513686", size = 7613810, upload-time = "2026-05-12T14:44:18.01Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/20/5b/885f479093f6627669d39b57bc3d4e674da532e1a4b247d473a61d8d2118/virtualenv-21.3.2-py3-none-any.whl", hash = "sha256:c58ea748fa50bb2a4367da5ba3d30b02458ed40b4ea888faad94021f3309f764", size = 7594558, upload-time = "2026-05-12T14:44:15.193Z" },
+]
+
+[[package]]
+name = "vrplib"
+version = "2.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/76/35/57055aaa3c42efb5e314ba81ab0274d5694d365dc7a97f7584d64923ed05/vrplib-2.2.0.tar.gz", hash = "sha256:806177ecb52ae63b126700135ad08c9c27054bf780525bcdcd7cea4b4848886f", size = 10756, upload-time = "2026-04-06T07:47:29.615Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/0d/377dd5a682ff62bb043ec08a8f70941d6e43ff71d4727942a34ab939f531/vrplib-2.2.0-py3-none-any.whl", hash = "sha256:5bed28c4ff8cfaf99da7af3081e5627bc4108f0056abc25be0285d0a8b9ad104", size = 15724, upload-time = "2026-04-06T07:47:28.507Z" },
 ]
 
 [[package]]

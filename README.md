@@ -54,7 +54,28 @@ The project is organised with the following structure:
 │   ├── experiments/               # Tests for experiments
 │   ├── conftest.py                # Pytest configuration
 │   └── NOTES.md
+├── data/
+│   ├── nds/
+│   └── cvrlip/
 ├── pyproject.toml                 # Python project configuration (uv)
 ├── uv.lock                        # Dependency lock file
 └── README.md
 ```
+
+## Resources
+
+Data:
+- [CVRPLib CVRP Instance Sets](https://galgos.inf.puc-rio.br/cvrplib/en/instances/1)
+
+Solvers:
+- [PyVRP](https://github.com/PyVRP/PyVRP)
+
+NCO Methods:
+- [Attention, Learn to Solve Routing Problems!](https://github.com/wouterkool/attention-learn-to-route)
+- [NDS](https://github.com/ahottung/NDS)
+
+Tools:
+- [VRPLIB](https://github.com/PyVRP/VRPLIB)
+
+Miscellaneous:
+- https://github.com/Thinklab-SJTU/awesome-ml4co
