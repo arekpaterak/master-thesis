@@ -93,8 +93,12 @@ class GreedyAcceptanceConfig(BaseModel):
 
 class SimulatedAnnealingAcceptanceConfig(BaseModel):
     type: Literal["sa"] = "sa"
-    temperature_start: float = Field(default=0.1, description="SA initial temperature.")
-    temperature_min: float = Field(default=0.001, description="SA minimum temperature.")
+    temperature_start: float = Field(
+        default=0.1, title="Initial temperature", description="SA initial temperature."
+    )
+    temperature_min: float = Field(
+        default=0.001, title="Minimum temperature", description="SA minimum temperature."
+    )
 
 
 AcceptanceCriterionConfig = Annotated[

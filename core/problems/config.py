@@ -18,7 +18,11 @@ class BaseProblemConfig(BaseModel):
     """
 
     name: str
-    size: int = Field(default=20, description="Problem size (number of customers/locations).")
+    size: int = Field(
+        default=20,
+        title="Problem size",
+        description="Problem size (number of customers/locations).",
+    )
 
     def to_problem(self) -> CVRP | TSP:
         raise NotImplementedError

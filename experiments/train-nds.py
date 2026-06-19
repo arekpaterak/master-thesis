@@ -13,7 +13,6 @@ with app.setup(hide_code=True):
     import torch
     import torch.nn
     import torch.optim as optim
-    import wandb
     import yaml
     from dotenv import load_dotenv
     from rich.console import Console
@@ -21,7 +20,8 @@ with app.setup(hide_code=True):
     from tqdm import tqdm
     from wigglystuff import EnvConfig
 
-    from core.lns.acceptance_criterion import GreedyAcceptanceConfig
+    import wandb
+    from core.lns.acceptance_criterion import AcceptanceCriterionConfig
     from core.lns.config import SearchParams
     from core.models.nds.config import (
         AmpConfig,
@@ -31,16 +31,12 @@ with app.setup(hide_code=True):
         ModelParams,
         OptimizerParams,
         OriginalPretrainedConfig,
+        PositionalEncodingConfig,
         TrainConfig,
         TrainerParams,
         ValidationConfig,
     )
-    from core.models.nds.decoders.config import (
-        AutoregressiveDecoderConfig,
-        ProximityDecoderConfig,
-        SimpleOnePassDecoderConfig,
-        SlotDecoderConfig,
-    )
+    from core.models.nds.decoders.config import DecoderConfig
     from core.models.nds.evaluation import EpochValidationSummary
     from core.models.nds.factory import build_model
     from core.models.nds.module import NDSModule
@@ -56,6 +52,7 @@ with app.setup(hide_code=True):
     from core.problems.sampler import Sampler
     from core.results.plots import plot_lns_progress
     from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
+    from core.ui.forms import build_mo_ui_dict, build_union_selector, collect_union_value
 
     load_dotenv(".env")
 
@@ -174,11 +171,8 @@ def _():
 
 @app.cell(hide_code=True)
 def _(is_script_mode, presets):
-    if is_script_mode:
-        preset_dropdown = None
-    else:
-        preset_dropdown = mo.ui.dropdown(presets, value=presets[0], label="Training preset")
-    preset_dropdown
+    preset_dropdown = mo.ui.dropdown(presets, value=presets[0], label="Training preset")
+    preset_dropdown if not is_script_mode else None
     return (preset_dropdown,)
 
 
@@ -204,364 +198,210 @@ def _(defaults):
 
 @app.cell(hide_code=True)
 def _(defaults):
-    model_hidden_dim = mo.ui.dropdown(
-        [64, 128, 256, 512], value=defaults.model.hidden_dim, label="Hidden dim"
+    model_form = build_mo_ui_dict(
+        ModelParams,
+        defaults.model,
+        skip={
+            "positional",
+            "encoder",
+            "decoder",
+            "init_weights",
+            "original_pretrained_weights",
+            "with_route_encoding",
+            "freeze_encoder",
+        },
+        hints={
+            "hidden_dim": {"options": [64, 128, 256, 512]},
+            "ff_dim": {"options": [128, 256, 512, 1024]},
+            "poly_dim": {"options": [64, 128, 256, 512]},
+            "seed_dim": {"options": [4, 8, 10, 16, 32]},
+            "num_heads": {"start": 1, "stop": 16},
+        },
     )
-    model_num_heads = mo.ui.slider(1, 16, value=defaults.model.num_heads, step=1, label="Num heads")
-    model_ff_dim = mo.ui.dropdown(
-        [128, 256, 512, 1024], value=defaults.model.ff_dim, label="FF dim"
-    )
-    model_poly_dim = mo.ui.dropdown(
-        [64, 128, 256, 512], value=defaults.model.poly_dim, label="Poly dim"
-    )
-    model_seed_dim = mo.ui.dropdown(
-        [4, 8, 10, 16, 32], value=defaults.model.seed_dim, label="Seed dim"
-    )
-    model_with_neighbours_encoding = mo.ui.checkbox(
-        value=defaults.model.with_neighbours_encoding, label="With neighbours encoding"
-    )
-    mo.vstack(
-        [
-            mo.md("### Model"),
-            model_hidden_dim,
-            model_num_heads,
-            model_ff_dim,
-            model_poly_dim,
-            model_seed_dim,
-            model_with_neighbours_encoding,
-        ]
-    )
-    return (
-        model_ff_dim,
-        model_hidden_dim,
-        model_num_heads,
-        model_poly_dim,
-        model_seed_dim,
-        model_with_neighbours_encoding,
-    )
+    mo.vstack([mo.md("### Model"), *model_form.values()])
+    return (model_form,)
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    encoder_norm_type = mo.ui.dropdown(
-        ["instance", "rms"],
-        value=defaults.model.encoder.norm_type,
-        label="Encoder norm type",
-    )
-    encoder_pre_norm = mo.ui.checkbox(
-        value=defaults.model.encoder.pre_norm,
-        label="Pre-norm",
-    )
-    encoder_ff_activation = mo.ui.dropdown(
-        ["relu", "swiglu"],
-        value=defaults.model.encoder.ff_activation,
-        label="FF activation",
-    )
-    mo.vstack(
-        [
-            mo.md("### Encoder architecture"),
-            encoder_norm_type,
-            encoder_pre_norm,
-            encoder_ff_activation,
-        ]
-    )
-    return encoder_ff_activation, encoder_norm_type, encoder_pre_norm
+    positional_form = build_mo_ui_dict(PositionalEncodingConfig, defaults.model.positional)
+    mo.vstack([mo.md("### Positional encoding"), *positional_form.values()])
+    return (positional_form,)
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    _default_decoder = defaults.model.decoder
-
-    decoder_type_widget = mo.ui.dropdown(
-        ["ar", "simple", "slot", "proximity"],
-        value=_default_decoder.type,
-        label="Decoder type",
-    )
-    decoder_use_hidden_widget = mo.ui.checkbox(
-        value=_default_decoder.use_hidden_decoding_state
-        if isinstance(_default_decoder, AutoregressiveDecoderConfig)
-        else True,
-        label="Use hidden decoding state",
-    )
-    decoder_sigma_widget = mo.ui.number(
-        0.01,
-        2.0,
-        value=_default_decoder.sigma
-        if isinstance(_default_decoder, ProximityDecoderConfig)
-        else 0.1,
-        step=0.01,
-        label="Sigma",
-    )
-    return decoder_sigma_widget, decoder_type_widget, decoder_use_hidden_widget
+    encoder_form = build_mo_ui_dict(EncoderConfig, defaults.model.encoder)
+    mo.vstack([mo.md("### Encoder"), *encoder_form.values()])
+    return (encoder_form,)
 
 
 @app.cell(hide_code=True)
-def _(decoder_sigma_widget, decoder_type_widget, decoder_use_hidden_widget):
-    _items = [mo.md("### Decoder"), decoder_type_widget]
-    if decoder_type_widget.value == "ar":
-        _items.append(decoder_use_hidden_widget)
-    elif decoder_type_widget.value == "proximity":
-        _items.append(decoder_sigma_widget)
-    mo.vstack(_items)
+def _(defaults):
+    decoder_type, decoder_forms = build_union_selector(DecoderConfig, defaults.model.decoder)
+    mo.vstack([mo.md("### Decoder"), decoder_type])
+    return decoder_forms, decoder_type
+
+
+@app.cell(hide_code=True)
+def _(decoder_forms, decoder_type):
+    decoder_forms[decoder_type.value]
     return
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    model_init_weights = mo.ui.text(
-        value=defaults.model.init_weights or "",
-        label="Own checkpoint path (empty = none)",
-    )
-    _pretrained = defaults.model.original_pretrained_weights
     _pretrained_dir = Path("experiments/pretrained/nds")
     _pretrained_options = {"(none)": ""}
     for _pt in sorted(_pretrained_dir.glob("**/*.pt")):
         _pretrained_options[f"{_pt.parent.name}/{_pt.name}"] = _pt.as_posix()
-    _pretrained_default_path = Path(_pretrained.path).as_posix() if _pretrained else ""
-    _pretrained_default_key = next(
-        (k for k, v in _pretrained_options.items() if v == _pretrained_default_path),
-        "(none)",
+    _pretrained = defaults.model.original_pretrained_weights
+    _pretrained_path = Path(_pretrained.path).as_posix() if _pretrained else ""
+    _pretrained_key = next(
+        (k for k, v in _pretrained_options.items() if v == _pretrained_path), "(none)"
     )
-    model_original_pretrained_path = mo.ui.dropdown(
+    pretrained_path_widget = mo.ui.dropdown(
         options=_pretrained_options,
-        value=_pretrained_default_key,
+        value=_pretrained_key,
         label="Original pretrained checkpoint",
     )
-    model_original_pretrained_load_decoder = mo.ui.checkbox(
+    pretrained_load_decoder_widget = mo.ui.checkbox(
         value=_pretrained.load_decoder if _pretrained else False,
         label="Load decoder from original pretrained",
     )
-    model_freeze_encoder = mo.ui.checkbox(
+    init_weights_widget = mo.ui.text(
+        value=defaults.model.init_weights or "",
+        label="Own checkpoint path (empty = none)",
+    )
+    freeze_encoder_widget = mo.ui.checkbox(
         value=defaults.model.freeze_encoder,
         label="Freeze encoder",
     )
     mo.vstack(
         [
             mo.md("### Weights"),
-            model_original_pretrained_path,
-            model_original_pretrained_load_decoder,
-            model_init_weights,
-            model_freeze_encoder,
+            pretrained_path_widget,
+            pretrained_load_decoder_widget,
+            init_weights_widget,
+            freeze_encoder_widget,
         ]
     )
     return (
-        model_freeze_encoder,
-        model_init_weights,
-        model_original_pretrained_load_decoder,
-        model_original_pretrained_path,
+        freeze_encoder_widget,
+        init_weights_widget,
+        pretrained_load_decoder_widget,
+        pretrained_path_widget,
     )
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    _batch_sizes = [8, 16, 32, 64, 128, 256, 512]
-    trainer_epochs = mo.ui.number(1, 100, value=defaults.trainer.epochs, step=1, label="Epochs")
-    trainer_instances_per_epoch = mo.ui.number(
-        0, 1500, value=defaults.trainer.instances_per_epoch, step=100, label="Instances per epoch"
+    trainer_form = build_mo_ui_dict(
+        TrainerParams,
+        defaults.trainer,
+        hints={
+            "batch_size": {"options": [8, 16, 32, 64, 128, 256, 512]},
+            "num_main_improvement_steps": {"start": 10, "stop": 200, "step": 10},
+        },
     )
-    trainer_batch_size = mo.ui.dropdown(
-        _batch_sizes, value=defaults.trainer.batch_size, label="Batch size"
-    )
-    trainer_num_main_improvement_steps = mo.ui.slider(
-        10, 200, value=defaults.trainer.num_main_improvement_steps, step=10, label="Main steps"
-    )
-    trainer_checkpoint_every_n_epochs = mo.ui.number(
-        1,
-        100,
-        value=defaults.trainer.checkpoint_every_n_epochs,
-        step=1,
-        label="Checkpoint every N epochs",
-    )
-    mo.vstack(
-        [
-            mo.md("### Trainer"),
-            trainer_epochs,
-            trainer_instances_per_epoch,
-            trainer_batch_size,
-            trainer_num_main_improvement_steps,
-            trainer_checkpoint_every_n_epochs,
-        ]
-    )
-    return (
-        trainer_batch_size,
-        trainer_checkpoint_every_n_epochs,
-        trainer_epochs,
-        trainer_instances_per_epoch,
-        trainer_num_main_improvement_steps,
-    )
+    mo.vstack([mo.md("### Trainer"), *trainer_form.values()])
+    return (trainer_form,)
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    _rollout_sizes = [64, 128, 256]
-    repair_type_dropdown = mo.ui.dropdown(
-        options=["greedy_reconnect", "greedy_insert", "noop"],
-        value=defaults.search.repair_type,
-        label="Repair type",
+    search_form = build_mo_ui_dict(
+        SearchParams,
+        defaults.search,
+        skip={"acceptance", "augmented_threshold_factor"},
+        hints={
+            "num_improvement_steps": {"label": "Initial steps"},
+            "deconstruction_size": {"start": 5, "stop": 25, "step": 5},
+        },
     )
-    search_num_improvement_steps = mo.ui.slider(
-        0,
-        100,
-        value=defaults.search.num_improvement_steps,
-        step=1,
-        label="Initial steps",
+    acceptance_type, acceptance_forms = build_union_selector(
+        AcceptanceCriterionConfig, defaults.search.acceptance
     )
-    search_num_rollouts = mo.ui.dropdown(
-        _rollout_sizes, value=defaults.search.num_rollouts, label="Rollouts/instance"
-    )
-    search_deconstruction_size = mo.ui.slider(
-        5, 25, step=5, value=defaults.search.deconstruction_size, label="Deconstruction size"
-    )
-    search_n_repairs = mo.ui.number(
-        1, 20, value=defaults.search.n_repairs, step=1, label="n_repairs"
-    )
-    search_improvement_step_type = mo.ui.dropdown(
-        ["sequential", "parallel", "numba_sequential"],
-        value=defaults.search.improvement_step_type,
-        label="Improvement step type",
-    )
+    return acceptance_forms, acceptance_type, search_form
+
+
+@app.cell(hide_code=True)
+def _(acceptance_forms, acceptance_type, search_form):
     mo.vstack(
         [
             mo.md("### Search"),
-            repair_type_dropdown,
-            search_improvement_step_type,
-            search_num_improvement_steps,
-            search_num_rollouts,
-            search_deconstruction_size,
-            search_n_repairs,
+            *search_form.values(),
+            mo.md("#### Acceptance"),
+            acceptance_type,
+            *acceptance_forms[acceptance_type.value].values(),
         ]
     )
-    return (
-        repair_type_dropdown,
-        search_deconstruction_size,
-        search_improvement_step_type,
-        search_n_repairs,
-        search_num_improvement_steps,
-        search_num_rollouts,
-    )
+    return
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    optimizer_learning_rate = mo.ui.slider(
-        1e-5, 5e-4, value=defaults.optimizer.learning_rate, step=1e-5, label="Learning rate"
-    )
-    mo.vstack([mo.md("### Optimizer"), optimizer_learning_rate])
-    return (optimizer_learning_rate,)
+    optimizer_form = build_mo_ui_dict(OptimizerParams, defaults.optimizer)
+    mo.vstack([mo.md("### Optimizer"), *optimizer_form.values()])
+    return (optimizer_form,)
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    amp_enabled = mo.ui.checkbox(value=defaults.amp.enabled, label="AMP enabled")
-    amp_dtype = mo.ui.dropdown(["float16", "bfloat16"], value=defaults.amp.dtype, label="AMP dtype")
-    mo.vstack([mo.md("### Mixed precision (AMP)"), amp_enabled, amp_dtype])
-    return amp_dtype, amp_enabled
+    amp_form = build_mo_ui_dict(AmpConfig, defaults.amp)
+    mo.vstack([mo.md("### Mixed precision (AMP)"), *amp_form.values()])
+    return (amp_form,)
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    compile_enabled = mo.ui.checkbox(value=defaults.compile.enabled, label="Compile enabled")
-    compile_mode = mo.ui.dropdown(
-        ["default", "reduce-overhead", "max-autotune"],
-        value=defaults.compile.mode,
-        label="Compile mode",
-    )
-    mo.vstack([mo.md("### torch.compile"), compile_enabled, compile_mode])
-    return compile_enabled, compile_mode
+    compile_form = build_mo_ui_dict(CompileConfig, defaults.compile)
+    mo.vstack([mo.md("### torch.compile"), *compile_form.values()])
+    return (compile_form,)
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    logging_wandb_project = mo.ui.text(
-        value=defaults.logging.wandb_project, label="W&B project (empty to skip)"
-    )
-    mo.vstack([mo.md("### Logging"), logging_wandb_project])
-    return (logging_wandb_project,)
+    logging_form = build_mo_ui_dict(LoggingConfig, defaults.logging)
+    mo.vstack([mo.md("### Logging"), *logging_form.values()])
+    return (logging_form,)
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    validation_num_instances = mo.ui.number(
-        0, 5000, value=defaults.validation.num_instances, label="Num instances"
+    val_form = build_mo_ui_dict(
+        ValidationConfig, defaults.validation, skip={"search", "dataset_path"}
     )
-    validation_batch_size = mo.ui.number(value=defaults.validation.batch_size, label="Batch size")
-    validation_every_n_epochs = mo.ui.number(
-        1, 100, value=defaults.validation.every_n_epochs, step=1, label="Every N epochs"
-    )
-    validation_seed = mo.ui.number(0, 99999, value=defaults.validation.seed, step=1, label="Seed")
-    validation_plot_enabled = mo.ui.checkbox(
-        value=defaults.validation.plot_enabled, label="Plot enabled"
-    )
-    validation_plot_every_n_improvement_steps = mo.ui.number(
-        1,
-        20,
-        value=defaults.validation.plot_every_n_improvement_steps,
-        step=1,
-        label="Plot every N steps",
-    )
-    validation_plot_save_to_disk = mo.ui.checkbox(
-        value=defaults.validation.plot_save_to_disk, label="Save to disk"
-    )
-    mo.vstack(
-        [
-            mo.md("### Validation"),
-            validation_num_instances,
-            validation_batch_size,
-            validation_every_n_epochs,
-            validation_seed,
-            validation_plot_enabled,
-            validation_plot_every_n_improvement_steps,
-            validation_plot_save_to_disk,
-        ]
-    )
-    return (
-        validation_batch_size,
-        validation_every_n_epochs,
-        validation_num_instances,
-        validation_plot_enabled,
-        validation_plot_every_n_improvement_steps,
-        validation_plot_save_to_disk,
-        validation_seed,
-    )
+    mo.vstack([mo.md("### Validation"), *val_form.values()])
+    return (val_form,)
 
 
 @app.cell(hide_code=True)
 def _(defaults):
-    _search = defaults.validation.search
-    validation_search_num_improvement_steps = mo.ui.number(
-        1, 200, value=_search.num_improvement_steps, step=1, label="Improvement steps"
+    val_search_form = build_mo_ui_dict(
+        SearchParams,
+        defaults.validation.search,
+        skip={"acceptance", "augmented_threshold_factor"},
+        hints={"num_rollouts": {"label": "Rollouts per improvement step"}},
     )
-    validation_search_num_rollouts = mo.ui.number(
-        value=_search.num_rollouts, label="Rollouts per improvement step"
+    val_acceptance_type, val_acceptance_forms = build_union_selector(
+        AcceptanceCriterionConfig, defaults.validation.search.acceptance
     )
-    validation_search_deconstruction_size = mo.ui.slider(
-        5, 25, step=5, value=_search.deconstruction_size, label="Deconstruction size"
-    )
-    validation_search_n_repairs = mo.ui.number(
-        1, 20, value=_search.n_repairs, step=1, label="n_repairs"
-    )
-    validation_search_improvement_step_type = mo.ui.dropdown(
-        ["sequential", "parallel", "numba_sequential"],
-        value=_search.improvement_step_type,
-        label="Improvement step type",
-    )
+    return val_acceptance_forms, val_acceptance_type, val_search_form
+
+
+@app.cell(hide_code=True)
+def _(val_acceptance_forms, val_acceptance_type, val_search_form):
     mo.vstack(
         [
             mo.md("### Validation: Search"),
-            validation_search_improvement_step_type,
-            validation_search_num_improvement_steps,
-            validation_search_num_rollouts,
-            validation_search_deconstruction_size,
-            validation_search_n_repairs,
+            *val_search_form.values(),
+            mo.md("#### Acceptance"),
+            val_acceptance_type,
+            *val_acceptance_forms[val_acceptance_type.value].values(),
         ]
     )
-    return (
-        validation_search_deconstruction_size,
-        validation_search_improvement_step_type,
-        validation_search_n_repairs,
-        validation_search_num_improvement_steps,
-        validation_search_num_rollouts,
-    )
+    return
 
 
 @app.cell(hide_code=True)
@@ -573,55 +413,31 @@ def _(is_script_mode):
 
 @app.cell(hide_code=True)
 def _(
-    amp_dtype,
-    amp_enabled,
-    compile_enabled,
-    compile_mode,
-    decoder_sigma_widget,
-    decoder_type_widget,
-    decoder_use_hidden_widget,
-    encoder_ff_activation,
-    encoder_norm_type,
-    encoder_pre_norm,
+    acceptance_forms,
+    acceptance_type,
+    amp_form,
+    compile_form,
+    decoder_forms,
+    decoder_type,
+    encoder_form,
+    freeze_encoder_widget,
+    init_weights_widget,
     is_script_mode,
-    logging_wandb_project,
-    model_ff_dim,
-    model_freeze_encoder,
-    model_hidden_dim,
-    model_init_weights,
-    model_num_heads,
-    model_original_pretrained_load_decoder,
-    model_original_pretrained_path,
-    model_poly_dim,
-    model_seed_dim,
-    model_with_neighbours_encoding,
-    optimizer_learning_rate,
+    logging_form,
+    model_form,
+    optimizer_form,
+    positional_form,
+    pretrained_load_decoder_widget,
+    pretrained_path_widget,
     problem_name,
     problem_size,
-    repair_type_dropdown,
     run_button,
-    search_deconstruction_size,
-    search_improvement_step_type,
-    search_n_repairs,
-    search_num_improvement_steps,
-    search_num_rollouts,
-    trainer_batch_size,
-    trainer_checkpoint_every_n_epochs,
-    trainer_epochs,
-    trainer_instances_per_epoch,
-    trainer_num_main_improvement_steps,
-    validation_batch_size,
-    validation_every_n_epochs,
-    validation_num_instances,
-    validation_plot_enabled,
-    validation_plot_every_n_improvement_steps,
-    validation_plot_save_to_disk,
-    validation_search_deconstruction_size,
-    validation_search_improvement_step_type,
-    validation_search_n_repairs,
-    validation_search_num_improvement_steps,
-    validation_search_num_rollouts,
-    validation_seed,
+    search_form,
+    trainer_form,
+    val_acceptance_forms,
+    val_acceptance_type,
+    val_form,
+    val_search_form,
     yaml_data,
 ):
     if is_script_mode:
@@ -631,95 +447,47 @@ def _(
             not run_button.value,
             mo.md("Click 'Start Training' to begin."),
         )
-        match decoder_type_widget.value:
-            case "ar":
-                _decoder_config = AutoregressiveDecoderConfig(
-                    use_hidden_decoding_state=decoder_use_hidden_widget.value
-                )
-            case "simple":
-                _decoder_config = SimpleOnePassDecoderConfig()
-            case "slot":
-                _decoder_config = SlotDecoderConfig()
-            case "proximity":
-                _decoder_config = ProximityDecoderConfig(sigma=decoder_sigma_widget.value)
-
-        _init_weights = model_init_weights.value.strip() or None
-        _pretrained_path = model_original_pretrained_path.value
+        _pretrained_path = pretrained_path_widget.value
         _original_pretrained = (
             OriginalPretrainedConfig(
                 path=_pretrained_path,
-                load_decoder=model_original_pretrained_load_decoder.value,
+                load_decoder=pretrained_load_decoder_widget.value,
             )
             if _pretrained_path
             else None
         )
-
         config = TrainConfig(
             problem=make_problem_config(
                 name=problem_name.value,
                 size=problem_size.value,
             ),
             model=ModelParams(
-                hidden_dim=model_hidden_dim.value,
-                num_heads=model_num_heads.value,
-                ff_dim=model_ff_dim.value,
-                poly_dim=model_poly_dim.value,
-                seed_dim=model_seed_dim.value,
-                with_neighbours_encoding=model_with_neighbours_encoding.value,
-                encoder=EncoderConfig(
-                    norm_type=encoder_norm_type.value,
-                    pre_norm=encoder_pre_norm.value,
-                    ff_activation=encoder_ff_activation.value,
-                ),
-                decoder=_decoder_config,
-                init_weights=_init_weights,
+                **model_form.value,
+                positional=PositionalEncodingConfig(**positional_form.value),
+                encoder=EncoderConfig(**encoder_form.value),
+                decoder=collect_union_value(DecoderConfig, decoder_type, decoder_forms),
+                init_weights=init_weights_widget.value.strip() or None,
                 original_pretrained_weights=_original_pretrained,
-                freeze_encoder=model_freeze_encoder.value,
+                freeze_encoder=freeze_encoder_widget.value,
             ),
-            optimizer=OptimizerParams(
-                learning_rate=optimizer_learning_rate.value,
-            ),
-            amp=AmpConfig(
-                enabled=amp_enabled.value,
-                dtype=amp_dtype.value,
-            ),
-            compile=CompileConfig(
-                enabled=compile_enabled.value,
-                mode=compile_mode.value,
-            ),
-            trainer=TrainerParams(
-                epochs=trainer_epochs.value,
-                instances_per_epoch=trainer_instances_per_epoch.value,
-                batch_size=trainer_batch_size.value,
-                num_main_improvement_steps=trainer_num_main_improvement_steps.value,
-                checkpoint_every_n_epochs=trainer_checkpoint_every_n_epochs.value,
-            ),
+            optimizer=OptimizerParams(**optimizer_form.value),
+            amp=AmpConfig(**amp_form.value),
+            compile=CompileConfig(**compile_form.value),
+            trainer=TrainerParams(**trainer_form.value),
             search=SearchParams(
-                repair_type=repair_type_dropdown.value,
-                num_improvement_steps=search_num_improvement_steps.value,
-                num_rollouts=search_num_rollouts.value,
-                deconstruction_size=search_deconstruction_size.value,
-                n_repairs=search_n_repairs.value,
-                improvement_step_type=search_improvement_step_type.value,
+                **search_form.value,
+                acceptance=collect_union_value(
+                    AcceptanceCriterionConfig, acceptance_type, acceptance_forms
+                ),
             ),
-            logging=LoggingConfig(
-                wandb_project=logging_wandb_project.value,
-            ),
+            logging=LoggingConfig(**logging_form.value),
             validation=ValidationConfig(
-                num_instances=validation_num_instances.value,
-                batch_size=validation_batch_size.value,
-                every_n_epochs=validation_every_n_epochs.value,
-                seed=validation_seed.value,
-                plot_enabled=validation_plot_enabled.value,
-                plot_every_n_improvement_steps=validation_plot_every_n_improvement_steps.value,
-                plot_save_to_disk=validation_plot_save_to_disk.value,
+                **val_form.value,
                 search=SearchParams(
-                    num_improvement_steps=validation_search_num_improvement_steps.value,
-                    num_rollouts=validation_search_num_rollouts.value,
-                    deconstruction_size=validation_search_deconstruction_size.value,
-                    n_repairs=validation_search_n_repairs.value,
-                    improvement_step_type=validation_search_improvement_step_type.value,
-                    acceptance=GreedyAcceptanceConfig(),
+                    **val_search_form.value,
+                    acceptance=collect_union_value(
+                        AcceptanceCriterionConfig, val_acceptance_type, val_acceptance_forms
+                    ),
                 ),
             ),
         )

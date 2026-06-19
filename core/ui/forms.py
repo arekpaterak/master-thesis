@@ -26,6 +26,56 @@ def union_variants(union_type: Any) -> dict[str, type[BaseModel]]:
     return variants
 
 
+def build_union_selector(
+    union_type: Any,
+    default: BaseModel | None = None,
+) -> tuple[mo.ui.dropdown, dict[str, mo.ui.dictionary]]:
+    """Return ``(type_dropdown, variant_forms)`` for a discriminated union.
+
+    ``variant_forms`` maps each discriminator tag to a ``mo.ui.dictionary`` of
+    that variant's non-discriminator fields, seeded from ``default`` when the
+    variant matches.  Use :func:`collect_union_value` in the assembly cell.
+
+    Typical marimo pattern::
+
+        decoder_type, decoder_forms = build_union_selector(DecoderConfig, defaults.model.decoder)
+
+        # cell 1: show type selector
+        mo.vstack([mo.md("### Decoder"), decoder_type])
+
+        # cell 2 (depends on decoder_type): show active variant
+        decoder_forms[decoder_type.value]
+
+        # assembly cell
+        decoder_config = collect_union_value(DecoderConfig, decoder_type, decoder_forms)
+    """
+    variants = union_variants(union_type)
+    discriminator = _discriminator_name(union_type)
+    type_default = getattr(default, discriminator) if default is not None else next(iter(variants))
+    type_dropdown = mo.ui.dropdown(list(variants.keys()), value=type_default, label="Type")
+    variant_forms: dict[str, mo.ui.dictionary] = {
+        tag: build_mo_ui_dict(
+            model_cls,
+            default if isinstance(default, model_cls) else None,
+            skip={discriminator},
+        )
+        for tag, model_cls in variants.items()
+    }
+    return type_dropdown, variant_forms
+
+
+def collect_union_value(
+    union_type: Any,
+    type_dropdown: mo.ui.dropdown,
+    variant_forms: dict[str, mo.ui.dictionary],
+) -> BaseModel:
+    """Reconstruct a discriminated-union config from a :func:`build_union_selector` result."""
+    variants = union_variants(union_type)
+    discriminator = _discriminator_name(union_type)
+    tag = type_dropdown.value
+    return variants[tag].model_validate({discriminator: tag, **variant_forms[tag].value})
+
+
 def build_mo_ui_dict(
     model_cls: type[BaseModel],
     defaults: BaseModel | None = None,
@@ -70,7 +120,7 @@ def build_mo_ui_dict(
 
 
 def _widget_for(name: str, field: FieldInfo, current: Any, spec: dict[str, Any]) -> Any:
-    label = field.description or name
+    label = spec.get("label") or field.title or field.description or name
     widget = spec.get("widget")
     annotation = _strip_optional(field.annotation)
     options = spec.get("options") or _literal_options(field.annotation)
