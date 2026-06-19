@@ -88,7 +88,7 @@ def _():
     return (is_script_mode,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(is_script_mode):
     cli_eval_yaml: dict = {}
     cli_method_type: str | None = None
@@ -113,7 +113,7 @@ def _(is_script_mode):
     return cli_eval_yaml, cli_method_type, cli_run_name
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     env_config_widget = mo.ui.anywidget(
         EnvConfig({"WANDB_API_KEY": lambda k: wandb.login(key=k, verify=True)})
@@ -121,7 +121,7 @@ def _():
     return (env_config_widget,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(env_config_widget, is_script_mode):
     env_config_widget if not is_script_mode and not wandb.login() else None
     return
@@ -353,6 +353,16 @@ def _(preset_defaults):
     )
     batch_size_widget = mo.ui.number(value=preset_defaults.batch_size, label="batch_size")
     test_seed_widget = mo.ui.number(0, value=preset_defaults.test_seed, step=1, label="test_seed")
+    _initial_path = (
+        str(Path(preset_defaults.dataset_path).parent)
+        if preset_defaults.dataset_path
+        else str(Path(__file__).parent.parent / "data")
+    )
+    dataset_path_widget = mo.ui.file_browser(
+        initial_path=_initial_path,
+        multiple=False,
+        label="dataset_path (select nothing = random sampling)",
+    )
     num_plot_instances_widget = mo.ui.number(
         0, 100, value=preset_defaults.num_plot_instances, step=1, label="num_plot_instances"
     )
@@ -363,12 +373,14 @@ def _(preset_defaults):
             num_test_instances_widget,
             batch_size_widget,
             test_seed_widget,
+            dataset_path_widget,
             num_plot_instances_widget,
             wandb_project_widget,
         ]
     )
     return (
         batch_size_widget,
+        dataset_path_widget,
         num_plot_instances_widget,
         num_test_instances_widget,
         problem_name_widget,
@@ -381,6 +393,7 @@ def _(preset_defaults):
 @app.cell
 def _(
     batch_size_widget,
+    dataset_path_widget,
     is_script_mode,
     num_plot_instances_widget,
     num_test_instances_widget,
@@ -401,6 +414,9 @@ def _(
                 "num_test_instances": num_test_instances_widget.value,
                 "batch_size": batch_size_widget.value,
                 "test_seed": test_seed_widget.value,
+                "dataset_path": dataset_path_widget.value[0].path
+                if dataset_path_widget.value
+                else None,
                 "num_plot_instances": num_plot_instances_widget.value,
                 "wandb_project": wandb_project_widget.value,
             }
@@ -504,6 +520,14 @@ def _(device, eval_config, is_script_mode, method: Method, run_eval_button):
         device=device,
     )
     result = evaluator.evaluate(eval_config, method)
+
+    # Free GPU memory
+    _model = getattr(method.improvement_step, "_model", None)
+    if _model is not None:
+        _model.to("cpu")
+        torch.cuda.empty_cache()
+
+    print("Finished evaluation!")
     return plot_snapshot_cb, result
 
 
@@ -526,18 +550,26 @@ def _(method: Method, run_dir):
     return (artifacts_root,)
 
 
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    Aggregated results
+    """)
+    return
+
+
 @app.cell
 def _(result):
-    _po = result.objective_per_step
+    _obj = result.objective_per_step
     summary_df = pl.DataFrame(
         {
             "method": [result.method_name],
-            "n_instances": [_po.shape[1]],
-            "n_steps": [_po.shape[0] - 1],
-            "obj_initial_mean": [_po[0].mean().item()],
-            "obj_final_mean": [_po[-1].mean().item()],
-            "improvement_mean": [(_po[0] - _po[-1]).mean().item()],
-            "improvement_std": [(_po[0] - _po[-1]).std().item()],
+            "n_instances": [_obj.shape[1]],
+            "n_steps": [_obj.shape[0] - 1],
+            "obj_initial_mean": [_obj[0].mean().item()],
+            "obj_final_mean": [_obj[-1].mean().item()],
+            "improvement_mean": [(_obj[0] - _obj[-1]).mean().item()],
+            "improvement_std": [(_obj[0] - _obj[-1]).std().item()],
         }
     )
     return (summary_df,)
@@ -546,6 +578,14 @@ def _(result):
 @app.cell
 def _(summary_df):
     mo.ui.table(summary_df, selection=None)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    Results per instance
+    """)
     return
 
 
@@ -575,6 +615,14 @@ def _(result):
     return
 
 
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    Search progress
+    """)
+    return
+
+
 @app.cell
 def _(result):
     _po = result.objective_per_step
@@ -593,16 +641,6 @@ def _(result):
     _ax.legend()
     _fig.tight_layout()
     _fig
-    return
-
-
-@app.cell
-def _(method: Method, result):
-    _model = getattr(method.improvement_step, "_model", None)
-    if _model is not None:
-        _model.to("cpu")
-        torch.cuda.empty_cache()
-    result
     return
 
 

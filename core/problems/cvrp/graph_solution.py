@@ -376,13 +376,21 @@ class CVRPGraphSolution(BaseSolution):
         out.scatter_add_(-1, route_ids, demands)
         return out
 
-    def objective(self) -> torch.Tensor:
-        """(...) float - total tour distance across all routes."""
+    def total_distance(self, *, rounded: bool = False) -> torch.Tensor:
+        """(...) float - total tour distance across all routes.
+
+        Args:
+            rounded: If True, recover original-scale coordinates via coordinate_scale
+                and round each edge distance before summing, matching the CVRPLIB BKS
+                convention. If False (default), exact float Euclidean on stored coordinates.
+        """
         assert self.is_complete.all(), (
-            "objective() requires all customers to be assigned; "
+            "total_distance() requires all customers to be assigned; "
             f"found {self.num_unassigned.max().item()} unassigned in at least one batch element"
         )
         locations = self._instance.locations  # (..., N+1, 2)
+        if rounded:
+            locations = locations * self._instance.coordinate_scale.unsqueeze(-1)
         from_locs = locations[..., 1:, :]  # (..., N, 2)
 
         # Customer -> next edges (next may be depot=0 or another customer)
@@ -396,7 +404,13 @@ class CVRPGraphSolution(BaseSolution):
         depot_loc = locations[..., :1, :]  # (..., 1, 2)
         depot_dists = (from_locs - depot_loc).pow(2).sum(-1).sqrt() * is_head
 
-        return (edge_dists + depot_dists).sum(-1)
+        all_dists = edge_dists + depot_dists
+        if rounded:
+            all_dists = all_dists.round()
+        return all_dists.sum(-1)
+
+    def objective(self) -> torch.Tensor:
+        return self.total_distance()
 
     def remove_customers(
         self, customers: torch.Tensor, *, stitch: bool = False

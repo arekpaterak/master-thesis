@@ -31,6 +31,9 @@ class TSPInstance(BaseProblemInstance):
     def num_nodes(self) -> int:
         return self.num_locations
 
+    def normalize_(self) -> None:
+        pass  # TSP instances are sampled in [0, 1] and require no normalization.
+
     def distances(self) -> torch.Tensor:
         return torch.cdist(self.locations, self.locations)
 

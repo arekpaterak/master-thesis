@@ -1,7 +1,7 @@
 problem:
   name: cvrp
   size: 100
-dataset_path: data/cvrp/vrp100_test_seed1234.pkl
+dataset_path: data/nds/cvrp/vrp100_test_seed1234.pkl
 num_test_instances: 10000
 batch_size: 100
 num_plot_instances: 4

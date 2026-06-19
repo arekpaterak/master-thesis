@@ -19,18 +19,28 @@ class CVRPInstance(BaseProblemInstance):
     """(B, N+1) or (N+1,)"""
     capacity: torch.Tensor
     """(B, 1) or (1,)"""
+    coordinate_scale: torch.Tensor
+    """(B, 1) or (1,) - cumulative scale factor applied by normalize_(). 1.0 for sampler instances."""
 
     DEPOT = 0
 
     @classmethod
     def create(
-        cls, locations: torch.Tensor, demand: torch.Tensor, capacity: torch.Tensor
+        cls,
+        locations: torch.Tensor,
+        demand: torch.Tensor,
+        capacity: torch.Tensor,
+        coordinate_scale: torch.Tensor | None = None,
     ) -> CVRPInstance:
         batch_size = locations.shape[0] if locations.dim() == 3 else []
+        if coordinate_scale is None:
+            shape = (locations.shape[0], 1) if locations.dim() == 3 else (1,)
+            coordinate_scale = torch.ones(shape, dtype=locations.dtype, device=locations.device)
         return cls(
             locations=locations,
             demand=demand,
             capacity=capacity,
+            coordinate_scale=coordinate_scale,
             batch_size=batch_size,
             device=locations.device,
         )
@@ -47,9 +57,14 @@ class CVRPInstance(BaseProblemInstance):
         assert self.capacity.ndim == b_ndim + 1, (
             f"Expected capacity to have {b_ndim + 1} dims (batch + 1), got {self.capacity.ndim}"
         )
+        assert self.coordinate_scale.ndim == b_ndim + 1, (
+            f"Expected coordinate_scale to have {b_ndim + 1} dims (batch + 1), "
+            f"got {self.coordinate_scale.ndim}"
+        )
 
         assert self.locations.shape[-1] == 2, "Expected nodes last dim to be 2 (x, y)."
         assert self.capacity.shape[-1] == 1, "Expected capacity last dim to be 1."
+        assert self.coordinate_scale.shape[-1] == 1, "Expected coordinate_scale last dim to be 1."
         assert self.locations.shape[-2] == self.demand.shape[-1], (
             "Number of nodes mismatch between nodes and demands."
         )
@@ -78,6 +93,22 @@ class CVRPInstance(BaseProblemInstance):
         """(..., N+1, N+1) pairwise Euclidean distances between all nodes (depot + customers)."""
         return torch.cdist(self.locations, self.locations)
 
+    def normalize_(self) -> None:
+        """Normalize coordinates in-place by the maximum coordinate value.
+
+        Intended for instances with raw coordinates (e.g. CVRPLIB). Records the
+        scale factor in coordinate_scale so original-scale costs can be recovered
+        via total_distance(rounded=True). Do not call on sampler instances, which
+        are already normalized to [0, 1].
+        """
+        scale = self.locations.amax(dim=(-2, -1), keepdim=True)  # (*batch, 1, 1)
+        self.locations.div_(scale)
+        self.coordinate_scale.mul_(scale.squeeze(-1))  # (*batch, 1)
+
+    @property
+    def is_normalized(self) -> bool:
+        return bool((self.coordinate_scale == 1.0).all())
+
     def augment(self, n_augmentations: int) -> CVRPInstance:
         augmented_locations = apply_d4_transforms(self.locations, n_augmentations)
         expanded_demand = self.demand.unsqueeze(-2).expand(
@@ -86,10 +117,14 @@ class CVRPInstance(BaseProblemInstance):
         expanded_capacity = self.capacity.unsqueeze(-2).expand(
             *self.batch_size, n_augmentations, self.capacity.shape[-1]
         )
+        expanded_coordinate_scale = self.coordinate_scale.unsqueeze(-2).expand(
+            *self.batch_size, n_augmentations, self.coordinate_scale.shape[-1]
+        )
         return CVRPInstance(
             locations=augmented_locations,
             demand=expanded_demand.clone(),
             capacity=expanded_capacity.clone(),
+            coordinate_scale=expanded_coordinate_scale.clone(),
             batch_size=(*self.batch_size, n_augmentations),
             device=augmented_locations.device,
         )

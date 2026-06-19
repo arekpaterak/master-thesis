@@ -33,6 +33,7 @@ wandb/
 # AI agents
 .claude
 
-data/*
-!data/.gitkeep
+data/*/*
 !data/NOTE.md
+!data/nds/.gitkeep
+!data/cvrplib/.gitkeep
