@@ -9,7 +9,12 @@ from core.lns.acceptance_criterion import (
     SimulatedAnnealingAcceptanceConfig,
 )
 from core.lns.config import SearchParams
-from core.ui.forms import build_mo_ui_dict, union_variants
+from core.ui.forms import (
+    build_mo_ui_dict,
+    build_union_selector,
+    collect_union_value,
+    union_variants,
+)
 
 
 class Demo(BaseModel):
@@ -95,3 +100,46 @@ class TestConfigForm:
 
     def test_defaults_fall_back_to_model_cls(self) -> None:
         assert build_mo_ui_dict(Demo).value == build_mo_ui_dict(Demo, Demo()).value
+
+    def test_hint_label_overrides_title(self) -> None:
+        class Titled(BaseModel):
+            mode: Literal["a", "b"] = Field(default="a", title="Mode")
+
+        form = build_mo_ui_dict(Titled, Titled(), hints={"mode": {"label": "Override label"}})
+        assert form["mode"]._args.label == "Override label"
+
+    def test_title_used_as_label(self) -> None:
+        class Titled(BaseModel):
+            mode: Literal["a", "b"] = Field(default="a", title="My Mode")
+
+        form = build_mo_ui_dict(Titled, Titled())
+        assert form["mode"]._args.label == "My Mode"
+
+
+class TestUnionSelector:
+    def test_returns_type_dropdown_and_variant_forms(self) -> None:
+        type_dropdown, variant_forms = build_union_selector(AcceptanceCriterionConfig)
+
+        assert set(type_dropdown.options) == {"greedy", "sa"}
+        assert set(variant_forms) == {"greedy", "sa"}
+
+    def test_seeds_default_from_matching_instance(self) -> None:
+        default = SimulatedAnnealingAcceptanceConfig(temperature_start=0.5, temperature_min=0.01)
+        type_dropdown, variant_forms = build_union_selector(AcceptanceCriterionConfig, default)
+
+        assert type_dropdown.value == "sa"
+        assert variant_forms["sa"].value["temperature_start"] == 0.5
+
+    def test_collect_reconstructs_config(self) -> None:
+        default = SimulatedAnnealingAcceptanceConfig()
+        type_dropdown, variant_forms = build_union_selector(AcceptanceCriterionConfig, default)
+
+        result = collect_union_value(AcceptanceCriterionConfig, type_dropdown, variant_forms)
+        assert result == default
+
+    def test_collect_greedy_variant(self) -> None:
+        default = GreedyAcceptanceConfig()
+        type_dropdown, variant_forms = build_union_selector(AcceptanceCriterionConfig, default)
+
+        result = collect_union_value(AcceptanceCriterionConfig, type_dropdown, variant_forms)
+        assert result == default

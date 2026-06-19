@@ -10,9 +10,10 @@ with app.setup:
     import marimo as mo
     import torch
     import torch.nn
-    import wandb
     import yaml
     from dotenv import load_dotenv
+
+    import wandb
 
     load_dotenv(".env")
 
