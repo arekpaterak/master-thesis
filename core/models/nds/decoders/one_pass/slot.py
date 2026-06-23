@@ -60,9 +60,11 @@ class SlotDecoder(OnePassDestroyDecoder):
         seed: torch.Tensor,
         action_mask: torch.Tensor,
     ) -> torch.Tensor:
-        # h_nodes: (B, R, N, hidden_dim), seed: (B, R, seed_dim)
-        # action_mask: (B, R, N) - True = forbidden
-        B, R, N, hidden_dim = h_nodes.shape
+        # h_nodes: (B, N, hidden_dim), seed: (B, R, seed_dim), action_mask: (B, N)
+        B, N, hidden_dim = h_nodes.shape
+        R = seed.shape[1]
+        h_nodes = h_nodes.unsqueeze(1).expand(B, R, N, hidden_dim)  # (B, R, N, D)
+        action_mask = action_mask.unsqueeze(1).expand(B, R, N)  # (B, R, N)
 
         queries = self.slot_queries.expand(B, R, self.k, hidden_dim)
         # Self-attention among slots so they become aware of each other before attending to nodes
@@ -96,6 +98,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         greedy: bool,
         **kwargs,
     ) -> Rollout:
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
         assert deconstruction_size == self.k
 
         logits_per_slot = self.forward(
