@@ -27,7 +27,7 @@ def _slot():
 def _proximity():
     return ProximityDecoder(
         hidden_dim=HIDDEN_DIM, seed_dim=SEED_DIM, poly_dim=POLY_DIM, num_heads=NUM_HEADS
-    ), {"node_coordinates": torch.rand(B, R, N, 2)}
+    ), {"node_coordinates": torch.rand(B, N, 2)}
 
 
 DECODERS = [
@@ -41,9 +41,9 @@ DECODERS = [
 @pytest.mark.parametrize("greedy", [False, True])
 def test_produces_k_actions(make_decoder, greedy):
     decoder, extra_kwargs = make_decoder()
-    h_nodes = torch.randn(B, R, N, HIDDEN_DIM)
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
-    action_mask = torch.zeros(B, R, N, dtype=torch.bool)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
 
     rollout = decoder.rollout(
         h_nodes=h_nodes,
@@ -63,9 +63,9 @@ def test_produces_k_actions(make_decoder, greedy):
 @pytest.mark.parametrize("make_decoder", DECODERS)
 def test_masked_nodes_not_selected(make_decoder):
     decoder, extra_kwargs = make_decoder()
-    h_nodes = torch.randn(B, R, N, HIDDEN_DIM)
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
-    action_mask = torch.zeros(B, R, N, dtype=torch.bool)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
     action_mask[..., 0] = True  # forbid node 0
 
     rollout = decoder.rollout(

@@ -108,21 +108,15 @@ class OnePassNDSModel(nn.Module):
                 destroy_state_cls = TSPDestroyState
 
         action_mask = destroy_state_cls.build_initial(
-            batch_size=B, rollout_size=R, num_nodes=N, device=device
-        ).action_mask  # (B, R, N)
-
-        h_nodes_expanded = encoded_nodes.unsqueeze(1).expand(B, R, N, -1)  # (B, R, N, D)
+            batch_size=B, rollout_size=1, num_nodes=N, device=device
+        ).action_mask.squeeze(1)  # (B, N)
 
         extra_kwargs = {}
         if isinstance(self.decoder, ProximityDecoder):
-            node_coordinates = instance_features.locations  # (B, N, 2), already on device
-            node_coordinates_expanded = node_coordinates.unsqueeze(1).expand(
-                B, R, N, 2
-            )  # (B, R, N, 2)
-            extra_kwargs["node_coordinates"] = node_coordinates_expanded
+            extra_kwargs["node_coordinates"] = instance_features.locations  # (B, N, 2)
 
         rollout = self.decoder.rollout(
-            h_nodes=h_nodes_expanded,
+            h_nodes=encoded_nodes,
             seed=seed,
             action_mask=action_mask,
             deconstruction_size=deconstruction_size,

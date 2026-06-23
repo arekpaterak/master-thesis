@@ -36,9 +36,9 @@ class OnePassDestroyDecoder(nn.Module, ABC):
         """Select deconstruction_size nodes and return the resulting Rollout.
 
         Args:
-            h_nodes: Encoded node embeddings. Shape: (B, R, N, D).
+            h_nodes: Encoded node embeddings. Shape: (B, N, D).
             seed: Random seed vector for stochastic conditioning. Shape: (B, R, seed_dim).
-            action_mask: Boolean mask where True marks forbidden nodes. Shape: (B, R, N).
+            action_mask: Boolean mask where True marks forbidden nodes. Shape: (B, N).
             deconstruction_size: Number of nodes to select (k).
             greedy: If True, select deterministically; otherwise sample stochastically.
             **kwargs: Decoder-specific additional inputs (e.g., node_coords).

@@ -37,16 +37,22 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
     def forward(
         self, *, h_nodes: torch.Tensor, seed: torch.Tensor, action_mask: torch.Tensor
     ) -> torch.Tensor:
-        # h_nodes: (B, R, N, D), seed: (B, R, seed_dim)
-        # action_mask: (B, R, N) - True = forbidden (e.g., depot for CVRP)
-        query = h_nodes.mean(dim=-2, keepdim=True)  # (B, R, 1, D)
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
+        B, N, D = h_nodes.shape
+        R = seed.shape[1]
+        query = h_nodes.mean(dim=-2, keepdim=True)  # (B, 1, D)
         mha_out = self.MHA(query, h_nodes, h_nodes, attention_mask=~action_mask).squeeze(
             -2
-        )  # (B, R, D)
+        )  # (B, D)
+        mha_out = mha_out.unsqueeze(1).expand(B, R, D)  # (B, R, D)
 
         context = mha_out + self.poly_net(torch.cat([mha_out, seed], dim=-1))
 
-        logits = self.final_scorer(h_c=context, h_nodes=h_nodes, mask=action_mask)  # (B, R, N)
+        h_nodes_expanded = h_nodes.unsqueeze(1).expand(B, R, N, D)  # (B, R, N, D)
+        action_mask_expanded = action_mask.unsqueeze(1).expand(B, R, N)  # (B, R, N)
+        logits = self.final_scorer(
+            h_c=context, h_nodes=h_nodes_expanded, mask=action_mask_expanded
+        )  # (B, R, N)
         return logits
 
     def rollout(
@@ -59,6 +65,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         greedy: bool,
         **kwargs,
     ) -> Rollout:
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
         logits = self.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)  # (B, R, N)
 
         log_p_detached = logits.detach()

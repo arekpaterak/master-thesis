@@ -52,13 +52,15 @@ class ProximityDecoder(OnePassDestroyDecoder):
         seed: torch.Tensor,
         action_mask: torch.Tensor,
     ) -> torch.Tensor:
-        # h_nodes: (B, R, N, D), seed: (B, R, seed_dim)
-        # action_mask: (B, R, N) - True = forbidden
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
         # Returns mu: (B, R, 2) - predicted coordinate mean
-        query = h_nodes.mean(dim=-2, keepdim=True)  # (B, R, 1, D)
+        B, N, D = h_nodes.shape
+        R = seed.shape[1]
+        query = h_nodes.mean(dim=-2, keepdim=True)  # (B, 1, D)
         mha_out = self.MHA(query, h_nodes, h_nodes, attention_mask=~action_mask).squeeze(
             -2
-        )  # (B, R, D)
+        )  # (B, D)
+        mha_out = mha_out.unsqueeze(1).expand(B, R, D)  # (B, R, D)
         context = mha_out + self.poly_net(torch.cat([mha_out, seed], dim=-1))
         return self.coord_projection(context)  # (B, R, 2)
 
@@ -73,16 +75,22 @@ class ProximityDecoder(OnePassDestroyDecoder):
         node_coordinates: torch.Tensor,
         **kwargs,
     ) -> Rollout:
-        # h_nodes: (B, R, N, D), seed: (B, R, seed_dim), node_coords: (B, R, N, 2)
-        B, R, N, _ = h_nodes.shape
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
+        # node_coordinates: (B, N, 2)
+        B, N, _ = h_nodes.shape
+        R = seed.shape[1]
 
         mu = self.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)  # (B, R, 2)
 
         coordinates = mu.detach() if greedy else (mu + self.sigma * torch.randn_like(mu)).detach()
 
         # Select k nearest nodes to the sampled coordinate (action_mask -> inf distance)
-        distances = (node_coordinates - coordinates.unsqueeze(-2)).norm(dim=-1)  # (B, R, N)
-        distances = distances.masked_fill(action_mask, float("inf"))
+        node_coordinates_expanded = node_coordinates.unsqueeze(1).expand(B, R, N, 2)
+        action_mask_expanded = action_mask.unsqueeze(1).expand(B, R, N)
+        distances = (node_coordinates_expanded - coordinates.unsqueeze(-2)).norm(
+            dim=-1
+        )  # (B, R, N)
+        distances = distances.masked_fill(action_mask_expanded, float("inf"))
         selected = distances.topk(deconstruction_size, dim=-1, largest=False).indices  # (B, R, k)
 
         # log_p = log N(coordinates | mu, sigma^2 * I) - gradient flows through mu
@@ -151,6 +159,8 @@ class ProximityCategoricalSelector(OnePassDestroyDecoder):
         node_coordinates: torch.Tensor,
         **kwargs,
     ) -> Rollout:
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
+        # node_coordinates: (B, N, 2)
         # pred_coord (B, R, 2) -> squared L2 distances -> log_softmax -> log_p (B, R, N)
         # Gumbel-top-k + Plackett-Luce (same pattern as SimpleOnePassDecoder)
         raise NotImplementedError
