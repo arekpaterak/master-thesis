@@ -66,6 +66,7 @@ class NDSPretrainedMethod:
             num_rollouts=config.search.num_rollouts,
             deconstruction_size=config.search.deconstruction_size,
             n_repairs=config.search.n_repairs,
+            first_repair_uses_rollout_order=config.search.first_repair_uses_rollout_order,
         )
         decoder_type = config.model.decoder.type
         assert decoder_type in ["ar"], "Expected the original decoder"
