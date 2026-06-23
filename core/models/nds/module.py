@@ -152,4 +152,5 @@ class NDSModule(Module):
             num_rollouts=search.num_rollouts,
             deconstruction_size=search.deconstruction_size,
             n_repairs=search.n_repairs,
+            first_repair_uses_rollout_order=search.first_repair_uses_rollout_order,
         )

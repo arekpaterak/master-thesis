@@ -314,7 +314,7 @@ def _():
         num_rollouts=100,
         deconstruction_size=15,
         n_repairs=5,
-        improvement_step_type="sequential",
+        improvement_step_type="numba_sequential",
         n_augmentations=1,
     )
     search_form = build_mo_ui_dict(SearchParams, search_defaults, skip={"acceptance"})

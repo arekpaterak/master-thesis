@@ -47,8 +47,12 @@ def run_with_removals(
     temperature: float,
     eps: float,
     base_seed: int,
+    first_repair_uses_order: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sequential step with externally supplied nodes to remove (e.g. model rollouts).
+
+    When ``first_repair_uses_order`` is set, the first of the ``n_repairs`` greedy
+    insertions follows the provided removal order instead of a random order.
 
     Returns:
         (next_out, prev_out) both (G, N+1) int64.
@@ -65,6 +69,7 @@ def run_with_removals(
         temperature=float(temperature),
         eps=float(eps),
         base_seed=int(base_seed),
+        first_repair_uses_order=bool(first_repair_uses_order),
     )
 
 
@@ -107,11 +112,12 @@ def run_with_random(
         temperature=float(temperature),
         eps=float(eps),
         base_seed=int(base_seed),
+        first_repair_uses_order=False,
     )
 
 
 @njit(inline="always")
-def _seed_for(base_seed, channel, index, count):
+def _seed_for(base_seed: int, channel: int, index: int, count: int) -> int:
     """Distinct 32-bit RNG seed for one (base_seed, channel, index) triple.
 
     numpy's legacy seeding (which numba mirrors) already disperses nearby integer
@@ -126,18 +132,19 @@ def _seed_for(base_seed, channel, index, count):
 @njit(parallel=True, cache=True)
 def _run_for_batch(
     *,
-    next,
-    prev,
-    nodes_to_remove,
-    locations,
-    demand,
-    capacity,
-    n_repairs,
-    accept_kind,
-    temperature,
-    eps,
-    base_seed,
-):
+    next: np.ndarray,
+    prev: np.ndarray,
+    nodes_to_remove: np.ndarray,
+    locations: np.ndarray,
+    demand: np.ndarray,
+    capacity: np.ndarray,
+    n_repairs: int,
+    accept_kind: int,
+    temperature: float,
+    eps: float,
+    base_seed: int,
+    first_repair_uses_order: bool,
+) -> tuple[np.ndarray, np.ndarray]:
     global_size = next.shape[0]
     next_out = next.copy()
     prev_out = prev.copy()
@@ -154,23 +161,25 @@ def _run_for_batch(
             accept_kind=accept_kind,
             temperature=temperature,
             eps=eps,
+            first_repair_uses_order=first_repair_uses_order,
         )
     return next_out, prev_out
 
 
 @njit
 def _run_for_single(
-    next_out,
-    prev_out,
-    nodes_to_remove,
-    locations,
-    demand,
-    capacity,
-    n_repairs,
-    accept_kind,
-    temperature,
-    eps,
-):
+    next_out: np.ndarray,
+    prev_out: np.ndarray,
+    nodes_to_remove: np.ndarray,
+    locations: np.ndarray,
+    demand: np.ndarray,
+    capacity: float,
+    n_repairs: int,
+    accept_kind: int,
+    temperature: float,
+    eps: float,
+    first_repair_uses_order: bool,
+) -> None:
     """Run the full sequential rollout loop for one batch element.
 
     Assumes ``np.random`` has already been reseeded for this element by the caller.
@@ -204,18 +213,30 @@ def _run_for_single(
             _remove_customer_and_stitch(deconstructed_next, deconstructed_prev, c)
 
         best_repaired_objective = np.inf
-        for _ in range(n_repairs):
+        for i in range(n_repairs):
             repaired_next[:] = deconstructed_next
             repaired_prev[:] = deconstructed_prev
-            _greedy_insert_repair(
-                nxt=repaired_next,
-                prv=repaired_prev,
-                locations=locations,
-                demand=demand,
-                capacity=capacity,
-                num_customers=num_customers,
-                route_demand=route_demand,
-            )
+            if first_repair_uses_order and i == 0:
+                _greedy_insert_repair(
+                    nxt=repaired_next,
+                    prv=repaired_prev,
+                    locations=locations,
+                    demand=demand,
+                    capacity=capacity,
+                    num_customers=num_customers,
+                    route_demand=route_demand,
+                    order=nodes_to_remove[r],
+                )
+            else:
+                _greedy_insert_repair(
+                    nxt=repaired_next,
+                    prv=repaired_prev,
+                    locations=locations,
+                    demand=demand,
+                    capacity=capacity,
+                    num_customers=num_customers,
+                    route_demand=route_demand,
+                )
             objective = _objective(
                 nxt=repaired_next,
                 prv=repaired_prev,
@@ -246,14 +267,14 @@ def _run_for_single(
 
 
 @njit(inline="always")
-def _dist(locations, i, j):
+def _dist(locations: np.ndarray, i: int, j: int) -> float:
     dx = locations[i, 0] - locations[j, 0]
     dy = locations[i, 1] - locations[j, 1]
     return np.sqrt(dx * dx + dy * dy)
 
 
 @njit(inline="always")
-def _remove_customer_and_stitch(nxt, prv, customer):
+def _remove_customer_and_stitch(nxt: np.ndarray, prv: np.ndarray, customer: int) -> None:
     """Detach customer and stitch its neighbours."""
     u = prv[customer]
     v = nxt[customer]
@@ -268,7 +289,9 @@ def _remove_customer_and_stitch(nxt, prv, customer):
 
 
 @njit
-def _objective(nxt, prv, locations, num_customers):
+def _objective(
+    nxt: np.ndarray, prv: np.ndarray, locations: np.ndarray, num_customers: int
+) -> float:
     total_distance = 0.0
     for head in range(1, num_customers + 1):
         if prv[head] == DEPOT:
@@ -285,7 +308,13 @@ def _objective(nxt, prv, locations, num_customers):
 
 
 @njit
-def _compute_route_demand(nxt, prv, demand, num_customers, route_demand):
+def _compute_route_demand(
+    nxt: np.ndarray,
+    prv: np.ndarray,
+    demand: np.ndarray,
+    num_customers: int,
+    route_demand: np.ndarray,
+) -> None:
     """Fill ``route_demand[x]`` with the total demand of x's route (placed x only)."""
     for i in range(num_customers + 1):
         route_demand[i] = 0.0
@@ -309,72 +338,115 @@ def _compute_route_demand(nxt, prv, demand, num_customers, route_demand):
 
 
 @njit
-def _greedy_insert_repair(
-    nxt,
-    prv,
-    locations,
-    demand,
-    capacity,
-    num_customers,
-    route_demand,
-):
-    """Insert every free customer at its cheapest valid position. In-place."""
-    while True:
-        # Pick a random free customer: draw a score per node, mask non-free, argmax.
-        chosen = -1
-        best_score = -1.0
-        for c in range(1, num_customers + 1):
-            score = np.random.random()
-            if prv[c] == UNASSIGNED and nxt[c] == UNASSIGNED and score > best_score:
-                best_score = score
-                chosen = c
-        if chosen == -1:
-            break
-
-        c = chosen
-        demand_c = demand[c]
-        _compute_route_demand(
-            nxt=nxt, prv=prv, demand=demand, num_customers=num_customers, route_demand=route_demand
-        )
-
-        # New-route fallback (depot -> c -> depot) is always valid for a feasible
-        # single customer, so the argmin is always defined.
-        best_cost = 2.0 * _dist(locations, DEPOT, c)
-        best_u = DEPOT
-        best_v = DEPOT
-        for x in range(1, num_customers + 1):
-            if prv[x] == UNASSIGNED and nxt[x] == UNASSIGNED:
-                continue  # free customer, not a position
-            if route_demand[x] + demand_c <= capacity:
-                u = prv[x]
-                cost = _dist(locations, u, c) + _dist(locations, c, x) - _dist(locations, u, x)
-                if cost < best_cost:
-                    best_cost = cost
-                    best_u = u
-                    best_v = x
-                if nxt[x] == DEPOT:
-                    cost = (
-                        _dist(locations, x, c)
-                        + _dist(locations, c, DEPOT)
-                        - _dist(locations, x, DEPOT)
-                    )
-                    if cost < best_cost:
-                        best_cost = cost
-                        best_u = x
-                        best_v = DEPOT
-
-        prv[c] = best_u
-        nxt[c] = best_v
-        if best_u > 0:
-            nxt[best_u] = c
-        if best_v > 0:
-            prv[best_v] = c
-        nxt[DEPOT] = UNASSIGNED
-        prv[DEPOT] = UNASSIGNED
+def _pick_random_free_customer(nxt: np.ndarray, prv: np.ndarray, num_customers: int) -> int:
+    """Pick a random free customer (1..N), or -1 if none are free."""
+    chosen = -1
+    best_score = -1.0
+    for c in range(1, num_customers + 1):
+        score = np.random.random()
+        if prv[c] == UNASSIGNED and nxt[c] == UNASSIGNED and score > best_score:
+            best_score = score
+            chosen = c
+    return chosen
 
 
 @njit
-def _sample_distinct_customers(pool, out):
+def _insert_customer_at_cheapest(
+    customer: int,
+    nxt: np.ndarray,
+    prv: np.ndarray,
+    locations: np.ndarray,
+    demand: np.ndarray,
+    capacity: float,
+    num_customers: int,
+    route_demand: np.ndarray,
+) -> None:
+    """Insert free ``customer`` at its cheapest valid position. In-place."""
+    demand_c = demand[customer]
+    _compute_route_demand(
+        nxt=nxt, prv=prv, demand=demand, num_customers=num_customers, route_demand=route_demand
+    )
+
+    # New-route fallback (depot -> c -> depot) is always valid for a feasible
+    # single customer, so the argmin is always defined.
+    best_cost = 2.0 * _dist(locations, DEPOT, customer)
+    best_u = DEPOT
+    best_v = DEPOT
+    for x in range(1, num_customers + 1):
+        if prv[x] == UNASSIGNED and nxt[x] == UNASSIGNED:
+            continue  # free customer, not a position
+        if route_demand[x] + demand_c <= capacity:
+            u = prv[x]
+            cost = (
+                _dist(locations, u, customer)
+                + _dist(locations, customer, x)
+                - _dist(locations, u, x)
+            )
+            if cost < best_cost:
+                best_cost = cost
+                best_u = u
+                best_v = x
+            if nxt[x] == DEPOT:
+                cost = (
+                    _dist(locations, x, customer)
+                    + _dist(locations, customer, DEPOT)
+                    - _dist(locations, x, DEPOT)
+                )
+                if cost < best_cost:
+                    best_cost = cost
+                    best_u = x
+                    best_v = DEPOT
+
+    prv[customer] = best_u
+    nxt[customer] = best_v
+    if best_u > 0:
+        nxt[best_u] = customer
+    if best_v > 0:
+        prv[best_v] = customer
+    nxt[DEPOT] = UNASSIGNED
+    prv[DEPOT] = UNASSIGNED
+
+
+@njit
+def _greedy_insert_repair(
+    nxt: np.ndarray,
+    prv: np.ndarray,
+    locations: np.ndarray,
+    demand: np.ndarray,
+    capacity: float,
+    num_customers: int,
+    route_demand: np.ndarray,
+    order: np.ndarray | None = None,
+) -> None:
+    """Insert every free customer at its cheapest valid position. In-place.
+
+    When ``order`` is given (the model rollout removal order for this rollout),
+    free customers are inserted in that order first, mirroring the original NDS
+    behaviour where the first repair follows the model order. Any customers not
+    covered by ``order`` are then drained in random order. When ``order`` is
+    omitted all customers are inserted in random order.
+    """
+    if order is not None:
+        for k in range(order.shape[0]):
+            customer = order[k]
+            if customer < 1:
+                continue
+            if prv[customer] == UNASSIGNED and nxt[customer] == UNASSIGNED:
+                _insert_customer_at_cheapest(
+                    customer, nxt, prv, locations, demand, capacity, num_customers, route_demand
+                )
+
+    while True:
+        customer = _pick_random_free_customer(nxt, prv, num_customers)
+        if customer == -1:
+            break
+        _insert_customer_at_cheapest(
+            customer, nxt, prv, locations, demand, capacity, num_customers, route_demand
+        )
+
+
+@njit
+def _sample_distinct_customers(pool: np.ndarray, out: np.ndarray) -> None:
     """Draw ``len(out)`` distinct customers (1..N) uniformly without replacement.
 
     Partial Fisher-Yates over ``pool`` (scratch of length N): at step ``m`` it swaps
@@ -396,12 +468,12 @@ def _sample_distinct_customers(pool, out):
 @njit(parallel=True, cache=True)
 def _select_random_nodes_for_removal(
     *,
-    global_size,
-    rollout_size,
-    deconstruction_size,
-    num_customers,
-    base_seed,
-):
+    global_size: int,
+    rollout_size: int,
+    deconstruction_size: int,
+    num_customers: int,
+    base_seed: int,
+) -> np.ndarray:
     """Per (element, rollout): sample M distinct customers from 1..N (random-node destroy)."""
     nodes_to_remove = np.empty((global_size, rollout_size, deconstruction_size), np.int64)
     for global_idx in prange(global_size):

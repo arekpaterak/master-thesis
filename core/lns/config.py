@@ -32,6 +32,15 @@ class SearchParams(BaseModel):
     n_repairs: int = Field(
         default=5, title="Repair attempts", description="Repair attempts per rollout; best is kept."
     )
+    first_repair_uses_rollout_order: bool = Field(
+        default=False,
+        title="First repair uses rollout order",
+        description=(
+            "If set, the first of the n_repairs greedy insertions follows the model "
+            "rollout removal order instead of a random order. Only supported by the "
+            "numba_sequential improvement step."
+        ),
+    )
     improvement_step_type: Literal["sequential", "parallel", "numba_sequential"] = Field(
         default="parallel",
         title="Improvement step type",
