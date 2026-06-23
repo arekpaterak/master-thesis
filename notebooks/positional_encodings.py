@@ -24,11 +24,21 @@ def _():
     import numpy as np
     import torch
 
+    from core.models.embeddings.positional import circular_sinusoidal_encoding
     from core.problems.cvrp.graph_solution import CVRPGraphSolution
     from core.problems.cvrp.sampler import CVRPSampler
     from core.problems.cvrp.solve import index_sequential
 
-    return CVRPGraphSolution, CVRPSampler, index_sequential, mo, np, plt, torch
+    return (
+        CVRPGraphSolution,
+        CVRPSampler,
+        circular_sinusoidal_encoding,
+        index_sequential,
+        mo,
+        np,
+        plt,
+        torch,
+    )
 
 
 @app.cell
@@ -259,6 +269,157 @@ def _(angles, locs, np, plt):
 
     plt.tight_layout()
     fig_xpe
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Integer vs geometric: why one is reversible and the other is not
+
+    The raw signals above ($\phi$, $\theta$) are just angles on a circle. They become model
+    inputs only after `circular_sinusoidal_encoding` maps each phase to a vector. That step
+    has a `schedule` knob - **integer** or **geometric** - and this is where reversibility
+    is won or lost.
+
+    **Route reversal.** A CVRP route is a closed cycle depot $\to \dots \to$ depot. Driving
+    it backwards is the *same* route with the *same* cost, so the in-route phase of a
+    customer flips: $\phi \mapsto 2\pi - \phi$. For the cosine-only variant (the project
+    default, `direction_aware=False`) each component is $\cos(\omega_k \phi)$, and under
+    reversal:
+
+    $$\cos\!\big(\omega_k (2\pi - \phi)\big)
+      = \cos(\omega_k 2\pi)\cos(\omega_k \phi) + \sin(\omega_k 2\pi)\sin(\omega_k \phi)$$
+
+    - **integer** $\omega_k = k + 1$: $\omega_k 2\pi$ is a whole number of turns, so
+      $\cos(\omega_k 2\pi) = 1$ and $\sin(\omega_k 2\pi) = 0$. The result collapses back to
+      $\cos(\omega_k \phi)$: the encoding of a reversed route is **identical**. The harmonics
+      *close up* on the circle - $\phi = 0$ and $\phi = 2\pi$ (the same depot point) land on
+      the same value.
+    - **geometric** $\omega_k = \text{base}^{-2k/D}$ (the Vaswani line schedule): $\omega_k$
+      is not an integer, the $\sin(\omega_k 2\pi)$ term survives, and the encoding moves. The
+      basis functions do **not** close on the circle - there is a jump between $\phi = 0$ and
+      $\phi = 2\pi$, so a reversed route gets a different encoding.
+
+    (The `direction_aware=True` variant adds the $\sin$ components on purpose, to *keep*
+    travel direction; reversibility is only a desideratum for the cosine-only variant.)
+    """)
+    return
+
+
+@app.cell
+def _(circular_sinusoidal_encoding, np, plt, torch):
+    _dim = 8
+    _phi = torch.linspace(0, 2 * np.pi, 400)
+    _enc_int = circular_sinusoidal_encoding(_phi, dim=_dim, direction_aware=False).numpy()
+    _enc_geo = circular_sinusoidal_encoding(
+        _phi, dim=_dim, direction_aware=False, schedule="geometric"
+    ).numpy()
+    _phi = _phi.numpy()
+
+    fig_basis, (ax_basis_int, ax_basis_geo) = plt.subplots(1, 2, figsize=(9, 4), sharey=True)
+    _components = [0, 2, 5, 7]  # a spread of low- and high-frequency components
+    _colors = plt.cm.viridis(np.linspace(0, 0.9, len(_components)))
+
+    for _ax, _enc, _title in (
+        (ax_basis_int, _enc_int, "integer (omega_k = k + 1)"),
+        (ax_basis_geo, _enc_geo, "geometric (omega_k = base^(-2k/D))"),
+    ):
+        for _color, _k in zip(_colors, _components):
+            _ax.plot(_phi, _enc[:, _k], color=_color, lw=1.6, label=f"k={_k}")
+            # Mark where the curve starts (phi=0) vs where it ends (phi=2*pi).
+            _ax.scatter([0], [_enc[0, _k]], color=_color, s=30, zorder=3)
+            _ax.scatter([2 * np.pi], [_enc[-1, _k]], color=_color, s=30, marker="X", zorder=3)
+        _ax.axvline(0, color="gray", ls="--", lw=0.8)
+        _ax.axvline(2 * np.pi, color="gray", ls="--", lw=0.8)
+        _ax.set_xlabel("phi (radians)")
+        _ax.set_xticks([0, np.pi, 2 * np.pi])
+        _ax.set_xticklabels(["0\n(depot)", "pi", "2pi\n(depot)"])
+        _ax.set_title(_title)
+        _ax.legend(fontsize=8, loc="lower left")
+
+    ax_basis_int.set_ylabel("cos(omega_k * phi)")
+    ax_basis_int.text(
+        np.pi, 1.15, "start (o) and end (X) coincide", ha="center", fontsize=9, color="green"
+    )
+    ax_basis_geo.text(
+        np.pi, 1.15, "start (o) and end (X) jump apart", ha="center", fontsize=9, color="firebrick"
+    )
+    plt.tight_layout()
+    fig_basis
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Left: every integer-harmonic component returns to exactly where it started after one full
+    turn (the dot and cross overlap), so the circle is closed. Right: the higher-frequency
+    geometric components end somewhere else than they started - the encoding has a seam at the
+    depot. That seam is precisely what reversal exposes.
+
+    Now the direct test on the actual route phases from this instance: encode each customer
+    forward ($\phi$) and reversed ($2\pi - \phi$), and measure how far the two encodings sit
+    apart.
+    """)
+    return
+
+
+@app.cell
+def _(circular_sinusoidal_encoding, np, phase, plt, torch):
+    _dim = 16
+    _phase = torch.from_numpy(phase).float()
+    _phase_rev = (2 * np.pi - _phase) % (2 * np.pi)
+
+    _diffs = {}
+    for _schedule in ("integer", "geometric"):
+        _enc = circular_sinusoidal_encoding(
+            _phase, dim=_dim, direction_aware=False, schedule=_schedule
+        )
+        _enc_rev = circular_sinusoidal_encoding(
+            _phase_rev, dim=_dim, direction_aware=False, schedule=_schedule
+        )
+        _diffs[_schedule] = (_enc.numpy(), _enc_rev.numpy())
+
+    _N = len(_phase)
+    fig_reversal, (ax_rev_vec, ax_rev_bar) = plt.subplots(1, 2, figsize=(9, 4))
+
+    # Left: one representative customer, forward vs reversed encoding vector.
+    _c = int(np.argmax(np.abs(phase - np.pi)))  # the customer furthest from the symmetric point
+    for _schedule, _color in (("integer", "tab:blue"), ("geometric", "tab:red")):
+        _enc, _enc_rev = _diffs[_schedule]
+        ax_rev_vec.plot(_enc[_c], color=_color, lw=1.6, label=f"{_schedule} forward")
+        ax_rev_vec.plot(_enc_rev[_c], color=_color, lw=1.6, ls="--", label=f"{_schedule} reversed")
+    ax_rev_vec.set_xlabel("encoding component")
+    ax_rev_vec.set_ylabel("value")
+    ax_rev_vec.set_title(f"Customer {_c + 1}: forward (solid) vs reversed (dashed)")
+    ax_rev_vec.legend(fontsize=8)
+
+    # Right: per-customer max abs difference between forward and reversed encoding.
+    _x = np.arange(1, _N + 1)
+    _w = 0.4
+    for _offset, (_schedule, _color) in zip(
+        (-_w / 2, _w / 2), (("integer", "tab:blue"), ("geometric", "tab:red"))
+    ):
+        _enc, _enc_rev = _diffs[_schedule]
+        _max_diff = np.abs(_enc - _enc_rev).max(axis=1)
+        ax_rev_bar.bar(
+            _x + _offset,
+            _max_diff,
+            width=_w,
+            color=_color,
+            edgecolor="black",
+            linewidth=0.5,
+            label=f"{_schedule} (max={_max_diff.max():.2e})",
+        )
+    ax_rev_bar.set_xlabel("Customer")
+    ax_rev_bar.set_ylabel("max |enc - enc_reversed|")
+    ax_rev_bar.set_xticks(_x)
+    ax_rev_bar.set_title("Reversal error per customer")
+    ax_rev_bar.legend(fontsize=8)
+
+    plt.tight_layout()
+    fig_reversal
     return
 
 
