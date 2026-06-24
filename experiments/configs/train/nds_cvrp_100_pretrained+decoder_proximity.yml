@@ -1,0 +1,59 @@
+problem:
+  name: cvrp
+  size: 100
+
+model:
+  hidden_dim: 128
+  num_heads: 8
+  ff_dim: 512
+  poly_dim: 256
+  seed_dim: 10
+  decoder:
+    type: proximity
+    sigma: 0.1
+  original_pretrained_weights:
+    path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
+    load_decoder: false
+  freeze_encoder: true
+
+optimizer:
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-6
+
+trainer:
+  epochs: 10
+  instances_per_epoch: 1500
+  batch_size: 64
+  num_main_improvement_steps: 100
+
+search:
+  repair_type: greedy_insert
+  num_improvement_steps: 10
+  num_rollouts: 128
+  deconstruction_size: 15
+  improvement_step_type: numba_sequential
+
+amp:
+  enabled: true
+  dtype: float16
+
+logging:
+  wandb_project: nds
+
+validation:
+  num_instances: 100
+  batch_size: 50
+  every_n_epochs: 1
+  seed: 42
+  dataset_path: data/nds/cvrp/vrp100_valid_seed1233.pkl
+  plot_enabled: true
+  plot_every_n_improvement_steps: 5
+  plot_save_to_disk: true
+  search:
+    num_improvement_steps: 50
+    num_rollouts: 100
+    deconstruction_size: 15
+    improvement_step_type: numba_sequential
+    n_repairs: 5
+    acceptance:
+      type: greedy
