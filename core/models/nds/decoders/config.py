@@ -32,10 +32,25 @@ class ProximityDecoderConfig(BaseModel):
     sigma: float = Field(default=0.1, title="Sigma")
 
 
+class ProximityCategoricalSelectorConfig(BaseModel):
+    type: Literal["proximity_categorical"] = "proximity_categorical"
+    sigma_init: float = Field(
+        default=0.1,
+        title="Sigma init",
+        description="Initial RBF bandwidth (destroy radius); refined per rollout during training.",
+    )
+    anisotropic: bool = Field(
+        default=False,
+        title="Anisotropic sigma",
+        description="Predict a per-axis sigma (axis-aligned elliptical kernel) instead of a single radius.",
+    )
+
+
 DecoderConfig = Annotated[
     AutoregressiveDecoderConfig
     | SimpleOnePassDecoderConfig
     | SlotDecoderConfig
-    | ProximityDecoderConfig,
+    | ProximityDecoderConfig
+    | ProximityCategoricalSelectorConfig,
     Field(discriminator="type"),
 ]

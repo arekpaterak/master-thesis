@@ -4,11 +4,12 @@ from core.models.nds.config import ModelParams
 
 from .decoders.config import (
     AutoregressiveDecoderConfig,
+    ProximityCategoricalSelectorConfig,
     ProximityDecoderConfig,
     SimpleOnePassDecoderConfig,
     SlotDecoderConfig,
 )
-from .decoders.one_pass.proximity import ProximityDecoder
+from .decoders.one_pass.proximity import ProximityCategoricalDecoder, ProximityDecoder
 from .decoders.one_pass.simple import SimpleOnePassDecoder
 from .decoders.one_pass.slot import SlotDecoder
 from .models import NDSModel
@@ -67,5 +68,17 @@ def build_model(model_params: ModelParams, problem_name: str) -> NDSModel:
                     poly_dim=model_params.poly_dim,
                     num_heads=model_params.num_heads,
                     sigma=decoder_config.sigma,
+                ),
+            )
+        case ProximityCategoricalSelectorConfig():
+            return OnePassNDSModel(
+                **shared_kwargs,
+                decoder=ProximityCategoricalDecoder(
+                    hidden_dim=model_params.hidden_dim,
+                    seed_dim=model_params.seed_dim,
+                    poly_dim=model_params.poly_dim,
+                    num_heads=model_params.num_heads,
+                    sigma_init=decoder_config.sigma_init,
+                    anisotropic=decoder_config.anisotropic,
                 ),
             )

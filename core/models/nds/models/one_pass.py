@@ -6,7 +6,10 @@ import torch.nn as nn
 
 from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.decoders.one_pass.base import OnePassDestroyDecoder
-from core.models.nds.decoders.one_pass.proximity import ProximityDecoder
+from core.models.nds.decoders.one_pass.proximity import (
+    ProximityCategoricalDecoder,
+    ProximityDecoder,
+)
 from core.models.nds.encoder import NDSEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
@@ -112,7 +115,7 @@ class OnePassNDSModel(nn.Module):
         ).action_mask.squeeze(1)  # (B, N)
 
         extra_kwargs = {}
-        if isinstance(self.decoder, ProximityDecoder):
+        if isinstance(self.decoder, (ProximityDecoder, ProximityCategoricalDecoder)):
             extra_kwargs["node_coordinates"] = instance_features.locations  # (B, N, 2)
 
         rollout = self.decoder.rollout(
