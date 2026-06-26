@@ -53,6 +53,7 @@ validation:
   plot_every_n_improvement_steps: 5
   plot_save_to_disk: true
   search:
+    repair_type: greedy_insert
     num_improvement_steps: 50
     num_rollouts: 100
     deconstruction_size: 15

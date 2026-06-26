@@ -22,16 +22,17 @@ with app.setup(hide_code=True):
 
     import wandb
     from core.lns.acceptance_criterion import AcceptanceCriterionConfig
-    from core.lns.config import SearchParams
+    from core.lns.config import SearchParams, StartSolutionParams
     from core.models.nds.config import (
         AmpConfig,
         CompileConfig,
         EncoderConfig,
+        JointModelParams,
         LoggingConfig,
-        ModelParams,
         OptimizerParams,
         OriginalPretrainedConfig,
         PositionalEncodingConfig,
+        SplitModelParams,
         TrainConfig,
         TrainerParams,
         ValidationConfig,
@@ -57,8 +58,6 @@ with app.setup(hide_code=True):
     load_dotenv(".env")
 
     TRAIN_CONFIGS_DIR = Path(__file__).parent / "configs" / "train"
-
-    nds_model_holder: list = []
 
 
 @app.cell(hide_code=True)
@@ -198,18 +197,32 @@ def _(defaults):
 
 @app.cell(hide_code=True)
 def _(defaults):
+    encoder_mode_widget = mo.ui.dropdown(
+        ["joint", "split"], value=defaults.model.encoder_mode, label="Encoder mode"
+    )
+    mo.vstack([mo.md("### Encoder mode"), encoder_mode_widget])
+    return (encoder_mode_widget,)
+
+
+@app.cell(hide_code=True)
+def _(defaults, encoder_mode_widget):
+    # Joint-only structural field: the split (LNS-native) encoder always disables it.
+    _skip = {
+        "encoder_mode",
+        "positional_encoding",
+        "encoder",
+        "decoder",
+        "init_weights",
+        "original_pretrained_weights",
+        "with_route_encoding",
+        "freeze_encoder",
+    }
+    if encoder_mode_widget.value == "split":
+        _skip.add("with_neighbours_encoding")
     model_form = build_mo_ui_dict(
-        ModelParams,
-        defaults.model,
-        skip={
-            "positional",
-            "encoder",
-            "decoder",
-            "init_weights",
-            "original_pretrained_weights",
-            "with_route_encoding",
-            "freeze_encoder",
-        },
+        JointModelParams,
+        defaults.model if isinstance(defaults.model, JointModelParams) else JointModelParams(),
+        skip=_skip,
         hints={
             "hidden_dim": {"options": [64, 128, 256, 512]},
             "ff_dim": {"options": [128, 256, 512, 1024]},
@@ -223,10 +236,28 @@ def _(defaults):
 
 
 @app.cell(hide_code=True)
-def _(defaults):
-    positional_form = build_mo_ui_dict(PositionalEncodingConfig, defaults.model.positional)
-    mo.vstack([mo.md("### Positional encoding"), *positional_form.values()])
-    return (positional_form,)
+def _(defaults, encoder_mode_widget):
+    # The split (LNS-native) encoder relies on positional encoding as its only
+    # solution signal, so enabling it is mandatory and the toggle is locked on.
+    _split = encoder_mode_widget.value == "split"
+    positional_enabled_widget = mo.ui.checkbox(
+        value=True if _split else defaults.model.positional_encoding is not None,
+        label="Enable positional encoding (required for the split encoder)"
+        if _split
+        else "Enable positional encoding",
+        disabled=_split,
+    )
+    positional_form = build_mo_ui_dict(PositionalEncodingConfig, defaults.model.positional_encoding)
+    return positional_enabled_widget, positional_form
+
+
+@app.cell(hide_code=True)
+def _(positional_enabled_widget, positional_form):
+    _items = [mo.md("### Positional encoding"), positional_enabled_widget]
+    if positional_enabled_widget.value:
+        _items.extend(positional_form.values())
+    mo.vstack(_items)
+    return
 
 
 @app.cell(hide_code=True)
@@ -238,24 +269,34 @@ def _(defaults):
 
 @app.cell(hide_code=True)
 def _(defaults):
+    # Setup: create the widgets. No .value access here -- that must happen downstream.
     decoder_type, decoder_forms = build_union_selector(DecoderConfig, defaults.model.decoder)
-    mo.vstack([mo.md("### Decoder"), decoder_type])
     return decoder_forms, decoder_type
 
 
 @app.cell(hide_code=True)
 def _(decoder_forms, decoder_type):
-    decoder_forms[decoder_type.value]
+    # Display: reads decoder_type.value to show the active variant's fields. Spreading
+    # .values() renders nothing for a no-field variant (e.g. the simple decoder),
+    # matching the acceptance selectors.
+    mo.vstack(
+        [
+            mo.md("### Decoder"),
+            decoder_type,
+            *decoder_forms[decoder_type.value].values(),
+        ]
+    )
     return
 
 
 @app.cell(hide_code=True)
-def _(defaults):
+def _(defaults, encoder_mode_widget):
     _pretrained_dir = Path("experiments/pretrained/nds")
     _pretrained_options = {"(none)": ""}
     for _pt in sorted(_pretrained_dir.glob("**/*.pt")):
         _pretrained_options[f"{_pt.parent.name}/{_pt.name}"] = _pt.as_posix()
-    _pretrained = defaults.model.original_pretrained_weights
+    # Pretrained-NDS init and encoder freezing are joint-only (getattr guards a split default).
+    _pretrained = getattr(defaults.model, "original_pretrained_weights", None)
     _pretrained_path = Path(_pretrained.path).as_posix() if _pretrained else ""
     _pretrained_key = next(
         (k for k, v in _pretrained_options.items() if v == _pretrained_path), "(none)"
@@ -274,18 +315,14 @@ def _(defaults):
         label="Own checkpoint path (empty = none)",
     )
     freeze_encoder_widget = mo.ui.checkbox(
-        value=defaults.model.freeze_encoder,
+        value=getattr(defaults.model, "freeze_encoder", False),
         label="Freeze encoder",
     )
-    mo.vstack(
-        [
-            mo.md("### Weights"),
-            pretrained_path_widget,
-            pretrained_load_decoder_widget,
-            init_weights_widget,
-            freeze_encoder_widget,
-        ]
-    )
+    _items = [mo.md("### Weights"), init_weights_widget]
+    if encoder_mode_widget.value == "joint":
+        _items[1:1] = [pretrained_path_widget, pretrained_load_decoder_widget]
+        _items.append(freeze_encoder_widget)
+    mo.vstack(_items)
     return (
         freeze_encoder_widget,
         init_weights_widget,
@@ -313,24 +350,29 @@ def _(defaults):
     search_form = build_mo_ui_dict(
         SearchParams,
         defaults.search,
-        skip={"acceptance", "augmented_threshold_factor"},
+        skip={"acceptance", "augmented_threshold_factor", "start_solution_params"},
         hints={
             "num_improvement_steps": {"label": "Initial steps"},
             "deconstruction_size": {"start": 5, "stop": 25, "step": 5},
         },
     )
+    start_solution_form = build_mo_ui_dict(
+        StartSolutionParams, defaults.search.start_solution_params
+    )
     acceptance_type, acceptance_forms = build_union_selector(
         AcceptanceCriterionConfig, defaults.search.acceptance
     )
-    return acceptance_forms, acceptance_type, search_form
+    return acceptance_forms, acceptance_type, search_form, start_solution_form
 
 
 @app.cell(hide_code=True)
-def _(acceptance_forms, acceptance_type, search_form):
+def _(acceptance_forms, acceptance_type, search_form, start_solution_form):
     mo.vstack(
         [
             mo.md("### Search"),
             *search_form.values(),
+            mo.md("#### Start solution warmup"),
+            *start_solution_form.values(),
             mo.md("#### Acceptance"),
             acceptance_type,
             *acceptance_forms[acceptance_type.value].values(),
@@ -381,21 +423,36 @@ def _(defaults):
     val_search_form = build_mo_ui_dict(
         SearchParams,
         defaults.validation.search,
-        skip={"acceptance", "augmented_threshold_factor"},
+        skip={"acceptance", "augmented_threshold_factor", "start_solution_params"},
         hints={"num_rollouts": {"label": "Rollouts per improvement step"}},
+    )
+    val_start_solution_form = build_mo_ui_dict(
+        StartSolutionParams, defaults.validation.search.start_solution_params
     )
     val_acceptance_type, val_acceptance_forms = build_union_selector(
         AcceptanceCriterionConfig, defaults.validation.search.acceptance
     )
-    return val_acceptance_forms, val_acceptance_type, val_search_form
+    return (
+        val_acceptance_forms,
+        val_acceptance_type,
+        val_search_form,
+        val_start_solution_form,
+    )
 
 
 @app.cell(hide_code=True)
-def _(val_acceptance_forms, val_acceptance_type, val_search_form):
+def _(
+    val_acceptance_forms,
+    val_acceptance_type,
+    val_search_form,
+    val_start_solution_form,
+):
     mo.vstack(
         [
             mo.md("### Validation: Search"),
             *val_search_form.values(),
+            mo.md("#### Start solution warmup"),
+            *val_start_solution_form.values(),
             mo.md("#### Acceptance"),
             val_acceptance_type,
             *val_acceptance_forms[val_acceptance_type.value].values(),
@@ -420,12 +477,14 @@ def _(
     decoder_forms,
     decoder_type,
     encoder_form,
+    encoder_mode_widget,
     freeze_encoder_widget,
     init_weights_widget,
     is_script_mode,
     logging_form,
     model_form,
     optimizer_form,
+    positional_enabled_widget,
     positional_form,
     pretrained_load_decoder_widget,
     pretrained_path_widget,
@@ -433,11 +492,13 @@ def _(
     problem_size,
     run_button,
     search_form,
+    start_solution_form,
     trainer_form,
     val_acceptance_forms,
     val_acceptance_type,
     val_form,
     val_search_form,
+    val_start_solution_form,
     yaml_data,
 ):
     if is_script_mode:
@@ -447,35 +508,45 @@ def _(
             not run_button.value,
             mo.md("Click 'Start Training' to begin."),
         )
-        _pretrained_path = pretrained_path_widget.value
-        _original_pretrained = (
-            OriginalPretrainedConfig(
-                path=_pretrained_path,
-                load_decoder=pretrained_load_decoder_widget.value,
-            )
-            if _pretrained_path
-            else None
+        _pe_enabled = positional_enabled_widget.value or encoder_mode_widget.value == "split"
+        _shared_model_kwargs = dict(
+            **model_form.value,
+            positional_encoding=(
+                PositionalEncodingConfig(**positional_form.value) if _pe_enabled else None
+            ),
+            encoder=EncoderConfig(**encoder_form.value),
+            decoder=collect_union_value(DecoderConfig, decoder_type, decoder_forms),
+            init_weights=init_weights_widget.value.strip() or None,
         )
+        if encoder_mode_widget.value == "split":
+            _model = SplitModelParams(**_shared_model_kwargs)
+        else:
+            _pretrained_path = pretrained_path_widget.value
+            _model = JointModelParams(
+                **_shared_model_kwargs,
+                original_pretrained_weights=(
+                    OriginalPretrainedConfig(
+                        path=_pretrained_path,
+                        load_decoder=pretrained_load_decoder_widget.value,
+                    )
+                    if _pretrained_path
+                    else None
+                ),
+                freeze_encoder=freeze_encoder_widget.value,
+            )
         config = TrainConfig(
             problem=make_problem_config(
                 name=problem_name.value,
                 size=problem_size.value,
             ),
-            model=ModelParams(
-                **model_form.value,
-                positional=PositionalEncodingConfig(**positional_form.value),
-                encoder=EncoderConfig(**encoder_form.value),
-                decoder=collect_union_value(DecoderConfig, decoder_type, decoder_forms),
-                init_weights=init_weights_widget.value.strip() or None,
-                original_pretrained_weights=_original_pretrained,
-                freeze_encoder=freeze_encoder_widget.value,
-            ),
+            model=_model,
             optimizer=OptimizerParams(**optimizer_form.value),
             amp=AmpConfig(**amp_form.value),
             compile=CompileConfig(**compile_form.value),
             trainer=TrainerParams(**trainer_form.value),
             search=SearchParams(
                 **search_form.value,
+                start_solution_params=StartSolutionParams(**start_solution_form.value),
                 acceptance=collect_union_value(
                     AcceptanceCriterionConfig, acceptance_type, acceptance_forms
                 ),
@@ -485,6 +556,7 @@ def _(
                 **val_form.value,
                 search=SearchParams(
                     **val_search_form.value,
+                    start_solution_params=StartSolutionParams(**val_start_solution_form.value),
                     acceptance=collect_union_value(
                         AcceptanceCriterionConfig, val_acceptance_type, val_acceptance_forms
                     ),
@@ -532,16 +604,13 @@ def _():
 
 
 @app.cell
-def _(config, device):
-    if nds_model_holder:
-        del nds_model_holder[0]
-        nds_model_holder.clear()
-        gc.collect()
-        torch.cuda.empty_cache()
-
+def _(config):
     model = build_model(config.model, config.problem.name)
 
-    if config.model.original_pretrained_weights:
+    # original_pretrained_weights / freeze_encoder are joint-only; the split model
+    # cannot initialise from a pretrained NDS encoder.
+    _is_joint = isinstance(config.model, JointModelParams)
+    if _is_joint and config.model.original_pretrained_weights:
         _pretrained = config.model.original_pretrained_weights
         load_original_pretrained_encoder_weights(model.encoder, _pretrained.path)
         print(f"Loaded pretrained encoder weights from {_pretrained.path}")
@@ -553,12 +622,12 @@ def _(config, device):
         load_checkpoint(config.model.init_weights, model)
         print(f"Initiated model with weights from {config.model.init_weights}")
 
-    if config.model.freeze_encoder:
+    if _is_joint and config.model.freeze_encoder:
         model.encoder.requires_grad_(False)
         print("Frozen encoder weights")
 
-    model = model.to(device)
-    nds_model_holder.append(model)
+    # Built on CPU; the training cell moves it to the GPU for the run and back to CPU
+    # afterwards, so the GPU is only occupied while training is actually running.
     model
     return (model,)
 
@@ -620,6 +689,7 @@ def _(config, is_script_mode, model, resume_run_dir, run_button):
 @app.cell(hide_code=True)
 def _(
     config,
+    device,
     find_latest_checkpoint,
     initial_epoch,
     is_script_mode,
@@ -652,6 +722,7 @@ def _(
             it, title="Validation improvement steps", remove_on_exit=True
         )
 
+    model.to(device)
     nds_module = NDSModule(
         config=config,
         model=model,
@@ -736,8 +807,6 @@ def _(
             validation_instance_sampler=val_sampler,
         )
     except BaseException:
-        gc.collect()
-        torch.cuda.empty_cache()
         if config.logging.wandb_project:
             wandb.finish(exit_code=1)
         raise
@@ -755,6 +824,12 @@ def _(
                 plots_dir=run_dir / "plots",
             )
             wandb.finish()
+    finally:
+        # Free the GPU whether training finished or was interrupted: the trained weights
+        # are persisted in checkpoints and the in-memory model only needs to live on CPU.
+        model.to("cpu")
+        gc.collect()
+        torch.cuda.empty_cache()
 
     mo.md("**Training complete.**")
     return

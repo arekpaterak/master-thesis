@@ -22,7 +22,7 @@ class StartSolutionParams(BaseModel):
 
     num_improvement_steps: int = Field(
         default=50,
-        title="Iterations",
+        title="Warmup iterations",
         description="Warmup random-destroy/recreate iterations on the initial solution. 0 disables.",
     )
     deconstruction_size: int = Field(

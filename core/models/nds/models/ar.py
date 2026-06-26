@@ -52,8 +52,7 @@ class AutoregressiveNDSModel(nn.Module):
         if with_route_encoding is None:
             with_route_encoding = problem_name == "cvrp"
 
-        positional = positional or PositionalEncodingConfig()
-        with_positional = positional.mode != "off"
+        with_positional = positional is not None
 
         match problem_name:
             case "cvrp":

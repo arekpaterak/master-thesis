@@ -24,6 +24,7 @@ from core.models.nds.evaluation import (
 )
 from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import resolve_improvement_step
+from core.models.nds.models.lns_native import LNSNativeModel
 from core.models.nds.models.one_pass import OnePassNDSModel
 from core.models.nds.training import (
     BatchTrainSummary,
@@ -53,7 +54,7 @@ class NDSModule(Module):
         if config.compile.enabled:
             compile_kwargs = dict(mode=config.compile.mode, fullgraph=config.compile.fullgraph)
             self.model.encoder = torch.compile(self.model.encoder, **compile_kwargs)
-            if isinstance(self.model, OnePassNDSModel):
+            if isinstance(self.model, (OnePassNDSModel, LNSNativeModel)):
                 self.model.decoder = torch.compile(self.model.decoder, **compile_kwargs)
 
         amp_dtype = torch.float16 if config.amp.dtype == "float16" else torch.bfloat16
