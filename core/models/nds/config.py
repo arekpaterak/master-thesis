@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
@@ -50,52 +50,70 @@ class EncoderConfig(BaseModel):
 class PositionalEncodingConfig(BaseModel):
     """Hierarchical positional encoding (IPE + XPE) settings.
 
-    The encoding is injected at the initial embedding. ``mode="off"`` keeps the
-    projection dimensions unchanged (and is compatible with strict pretrained loading);
-    ``mode="concat"`` concatenates the sinusoidal encoding to the node content features
-    before the first projection.
+    Where the encoding is injected relative to the encoder follows from the model
+    structure, not from this config: the 'joint' encoder injects it before the encoder
+    (over its inputs), while the 'split' (LNS-native) model injects it after the encoder
+    just before the decoder. Disable positional encoding entirely by leaving the
+    surrounding field unset (``None``).
     """
 
-    mode: Literal["off", "concat"] = Field(
-        default="off",
-        description="Injection mode. 'off' disables PE; 'concat' concatenates it to input features.",
+    dim: int = Field(
+        default=16,
+        title="Per-component encoding dimension",
+        description="Per-component encoding dimension (must be even).",
     )
-    dim: int = Field(default=16, description="Per-component encoding dimension (must be even).")
     direction_aware: bool = Field(
         default=False,
+        title="Direction aware",
         description="If True, use sin/cos pairs (direction-sensitive). False = cosine-only "
-        "(reversal-invariant; CVRP, TSP).",
+        "(reversal-invariant).",
     )
     frequency_schedule: Literal["integer", "geometric"] = Field(
         default="integer",
+        title="Frequency schedule",
         description="Frequency schedule. 'integer' = Fourier harmonics (exact reversal "
-        "invariance for the cosine-only variant); 'geometric' = Vaswani lambda^(-2k/D).",
+        "invariance for the cosine-only variant); 'geometric' = lambda^(-2k/D).",
     )
 
 
-class ModelParams(BaseModel):
-    """Configuration for the model architecture and weight initialisation."""
+class _ModelParamsBase(BaseModel):
+    """Fields shared by every model variant.
+
+    ``encoder_mode`` is the discriminator selecting a concrete variant; see
+    :data:`ModelParams`.
+    """
 
     hidden_dim: int = Field(default=128, title="Hidden dim", description="Hidden dimension.")
     num_heads: int = Field(default=8, title="Num. heads", description="Number of attention heads.")
     ff_dim: int = Field(default=512, title="FF dim", description="Feed-forward hidden dimension.")
     poly_dim: int = Field(default=256, title="Poly dim", description="PolyNet hidden dimension.")
     seed_dim: int = Field(default=10, title="Seed dim", description="Seed dimension.")
+    positional_encoding: PositionalEncodingConfig | None = Field(
+        default=None, title="Positional encoding"
+    )
+    encoder: EncoderConfig = Field(default_factory=EncoderConfig)
+    decoder: DecoderConfig = Field(default_factory=AutoregressiveDecoderConfig)
+    init_weights: str | None = Field(
+        default=None,
+        title="Checkpoint path",
+        description="Path to a checkpoint to load model weights from.",
+    )
+
+
+class JointModelParams(_ModelParamsBase):
+    """NDS joint encoder: re-encodes the instance and solution at every step.
+
+    Positional encoding, if set, is injected before the encoder. This is the only
+    variant that can initialise from an original NDS pretrained checkpoint.
+    """
+
+    encoder_mode: Literal["joint"] = "joint"
     with_neighbours_encoding: bool = Field(
         default=True, title="With neighbours encoding", description="Use neighbours encoding."
     )
     with_route_encoding: bool | None = Field(
         default=None,
         description="Use route encoding. None means problem-specific default (True for CVRP, False for TSP).",
-    )
-    positional: PositionalEncodingConfig = Field(default_factory=PositionalEncodingConfig)
-    encoder: EncoderConfig = Field(default_factory=EncoderConfig)
-    decoder: DecoderConfig = Field(default_factory=AutoregressiveDecoderConfig)
-
-    init_weights: str | None = Field(
-        default=None,
-        title="Own checkpoint path (empty = none)",
-        description="Path to a checkpoint to load model weights from (new run).",
     )
     original_pretrained_weights: OriginalPretrainedConfig | None = Field(
         default=None, description="Original NDS pretrained checkpoint to initialise from."
@@ -109,6 +127,27 @@ class ModelParams(BaseModel):
         if self.init_weights is not None and self.original_pretrained_weights is not None:
             raise ValueError("init_weights and original_pretrained_weights are mutually exclusive.")
         return self
+
+
+class SplitModelParams(_ModelParamsBase):
+    """LNS-native split encoder: the instance is encoded once and the solution enters
+    via positional encodings fused before the decoder.
+
+    The solution-aware neighbours/route encoding layers are always disabled, and there
+    is no pretrained-NDS initialisation (its weights are entangled with those layers),
+    so the corresponding joint-only fields are absent here.
+    """
+
+    encoder_mode: Literal["split"] = "split"
+
+    @model_validator(mode="after")
+    def _validate_with_positional_encoding(self) -> Self:
+        if self.positional_encoding is None:
+            raise ValueError("Positional encoding is required for this model.")
+        return self
+
+
+ModelParams = Annotated[JointModelParams | SplitModelParams, Field(discriminator="encoder_mode")]
 
 
 class OptimizerParams(BaseModel):
@@ -242,7 +281,7 @@ class TrainConfig(BaseModel):
     """Complete configuration for NDS model training."""
 
     problem: ProblemConfig = Field(default_factory=CVRPConfig)
-    model: ModelParams = Field(default_factory=ModelParams)
+    model: ModelParams = Field(default_factory=JointModelParams)
     optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
     trainer: TrainerParams = Field(default_factory=TrainerParams)
     search: SearchParams = Field(
@@ -252,6 +291,16 @@ class TrainConfig(BaseModel):
     compile: CompileConfig = Field(default_factory=CompileConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_encoder_mode(cls, data):
+        """Default the model discriminator to 'joint' for configs predating encoder_mode."""
+        if isinstance(data, dict):
+            model = data.get("model")
+            if isinstance(model, dict) and "encoder_mode" not in model:
+                model["encoder_mode"] = "joint"
+        return data
 
     @computed_field
     @property

@@ -23,7 +23,7 @@ def test_cvrp_embedding_concat_grows_projection_and_shape():
     instance = CVRPSampler(CVRP.for_n(N))(B)
     solution = CVRPGraphSolution.one_customer_per_route(instance)
 
-    config = PositionalEncodingConfig(mode="concat", dim=dim)
+    config = PositionalEncodingConfig(dim=dim)
     embedding = CVRPInitialEmbedding(hidden_dim=H, positional=config)
     # 3 content features (x, y, demand) + IPE + XPE
     assert embedding.customer_projection.in_features == 3 + 2 * dim
@@ -41,7 +41,7 @@ def test_tsp_embedding_concat_grows_projection_and_shape():
     tour = torch.stack([torch.randperm(N) for _ in range(B)])
     solution = TSPGraphSolution.create_from_sequence(instance, tour)
 
-    config = PositionalEncodingConfig(mode="concat", dim=dim)
+    config = PositionalEncodingConfig(dim=dim)
     embedding = TSPInitialEmbedding(hidden_dim=H, positional=config)
     assert embedding.node_projection.in_features == 2 + dim  # IPE only, no XPE
 
@@ -58,7 +58,7 @@ def test_cvrp_model_rollout_with_positional_encoding():
 
     model = AutoregressiveNDSModel(
         problem_name="cvrp",
-        positional=PositionalEncodingConfig(mode="concat", dim=8),
+        positional=PositionalEncodingConfig(dim=8),
     )
     model.eval()
     rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=k)

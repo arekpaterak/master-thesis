@@ -33,7 +33,7 @@ with app.setup:
         RandomDestroyMethodConfig,
     )
     from core.methods.base import Method
-    from core.models.nds.config import ModelParams, TrainConfig
+    from core.models.nds.config import JointModelParams, TrainConfig
     from core.models.nds.decoders.config import AutoregressiveDecoderConfig
     from core.problems import make_problem_config
     from core.problems.solve import generate_initial_solution
@@ -475,7 +475,7 @@ def _(
         method_config = NDSPretrainedConfig(
             checkpoint_path=Path(ckpt_path),
             load_decoder=pretrained_load_decoder_widget.value,
-            model=ModelParams(
+            model=JointModelParams(
                 decoder=AutoregressiveDecoderConfig(
                     use_hidden_decoding_state=pretrained_use_hidden_widget.value
                 )

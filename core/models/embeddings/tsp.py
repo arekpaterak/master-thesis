@@ -11,9 +11,9 @@ from core.problems.tsp.features import TSPInstanceFeatures, TSPSolutionFeatures
 class TSPInitialEmbedding(nn.Module):
     """Linear projection for TSP nodes.
 
-    When positional encoding is enabled with ``mode="concat"``, the in-route (IPE)
-    sinusoidal encoding is concatenated to the node content features before projection.
-    TSP has no depot, so there is no cross-route (XPE) component.
+    When a positional encoding config is given, the in-route (IPE) sinusoidal encoding
+    is concatenated to the node content features before projection. TSP has no depot, so
+    there is no cross-route (XPE) component.
     """
 
     def __init__(
@@ -27,12 +27,12 @@ class TSPInitialEmbedding(nn.Module):
         assert node_features_dim > 0
         self.positional = positional
 
-        extra = positional.dim if self._concat_enabled else 0  # IPE only
+        extra = positional.dim if self._inject_at_input else 0  # IPE only
         self.node_projection = nn.Linear(node_features_dim + extra, hidden_dim)
 
     @property
-    def _concat_enabled(self) -> bool:
-        return self.positional is not None and self.positional.mode == "concat"
+    def _inject_at_input(self) -> bool:
+        return self.positional is not None
 
     def forward(
         self,
@@ -44,7 +44,7 @@ class TSPInitialEmbedding(nn.Module):
             (..., N, H)
         """
         nodes = instance.node_features
-        if self._concat_enabled:
+        if self._inject_at_input:
             nodes = torch.cat([nodes, self._positional_encoding(solution)], dim=-1)
         return self.node_projection(nodes)
 

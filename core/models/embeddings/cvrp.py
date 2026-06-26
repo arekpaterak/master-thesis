@@ -11,10 +11,10 @@ from core.problems.cvrp.features import CVRPInstanceFeatures, CVRPSolutionFeatur
 class CVRPInitialEmbedding(nn.Module):
     """Separate linear projections for depot and customer nodes.
 
-    When positional encoding is enabled with ``mode="concat"``, the in-route (IPE) and
-    cross-route (XPE) sinusoidal encodings are concatenated to the customer content
-    features before the customer projection. The depot is the XPE anchor and keeps its
-    own PE-free projection.
+    When a positional encoding config is given, the in-route (IPE) and cross-route
+    (XPE) sinusoidal encodings are concatenated to the customer content features before
+    the customer projection. The depot is the XPE anchor and keeps its own PE-free
+    projection.
     """
 
     def __init__(
@@ -30,13 +30,13 @@ class CVRPInitialEmbedding(nn.Module):
         assert customer_features_dim > 0
         self.positional = positional
 
-        extra = 2 * positional.dim if self._concat_enabled else 0  # IPE + XPE
+        extra = 2 * positional.dim if self._inject_at_input else 0  # IPE + XPE
         self.depot_projection = nn.Linear(depot_features_dim, hidden_dim)
         self.customer_projection = nn.Linear(customer_features_dim + extra, hidden_dim)
 
     @property
-    def _concat_enabled(self) -> bool:
-        return self.positional is not None and self.positional.mode == "concat"
+    def _inject_at_input(self) -> bool:
+        return self.positional is not None
 
     def forward(
         self,
@@ -48,7 +48,7 @@ class CVRPInitialEmbedding(nn.Module):
             (..., N+1, H)
         """
         customer = instance.customer_features
-        if self._concat_enabled:
+        if self._inject_at_input:
             customer = torch.cat([customer, self._positional_encoding(instance, solution)], dim=-1)
 
         depot_embedding = self.depot_projection(instance.depot_features)
