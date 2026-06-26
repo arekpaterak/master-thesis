@@ -35,6 +35,8 @@ search:
   start_solution_params:
     num_improvement_steps: 50
     deconstruction_size: 15
+  acceptance:
+    type: greedy
 
 amp:
   enabled: true

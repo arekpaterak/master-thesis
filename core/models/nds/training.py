@@ -14,6 +14,8 @@ from core.lns.utils import best_repair
 from core.models.module import EpochAccumulator
 from core.models.nds.apply_rollout import apply_rollout as default_apply_rollout
 from core.models.nds.factory import NDSModel
+from core.models.nds.policy_loss import PolicyLoss
+from core.models.nds.reward import Reward
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -24,8 +26,8 @@ class BatchTrainSummary(BaseModel):
 
     batch_size: int
     loss: float
-    reward: float
-    reward_baseline: float
+    best_reward: float
+    reward_mean: float
     entropy: float
     entropy_norm: float
     log_p: float
@@ -40,8 +42,8 @@ class EpochTrainSummary(BaseModel):
 
     epoch: int
     loss: float
-    reward: float
-    reward_baseline: float
+    best_reward: float
+    reward_mean: float
     entropy: float
     entropy_norm: float
     log_p: float
@@ -61,8 +63,8 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_instances = 0
         self._total_time = 0.0
         self._total_loss = 0.0
-        self._total_reward = 0.0
-        self._total_reward_baseline = 0.0
+        self._total_best_reward = 0.0
+        self._total_reward_mean = 0.0
         self._total_entropy = 0.0
         self._total_entropy_norm = 0.0
         self._total_log_p = 0.0
@@ -75,8 +77,8 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_instances += n
         self._total_time += n / summary.instances_per_sec
         self._total_loss += summary.loss * n
-        self._total_reward += summary.reward * n
-        self._total_reward_baseline += summary.reward_baseline * n
+        self._total_best_reward += summary.best_reward * n
+        self._total_reward_mean += summary.reward_mean * n
         self._total_entropy += summary.entropy * n
         self._total_entropy_norm += summary.entropy_norm * n
         self._total_log_p += summary.log_p * n
@@ -89,8 +91,8 @@ class EpochTrainAccumulator(EpochAccumulator):
         return EpochTrainSummary(
             epoch=epoch,
             loss=self._total_loss / n,
-            reward=self._total_reward / n,
-            reward_baseline=self._total_reward_baseline / n,
+            best_reward=self._total_best_reward / n,
+            reward_mean=self._total_reward_mean / n,
             entropy=self._total_entropy / n,
             entropy_norm=self._total_entropy_norm / n,
             log_p=self._total_log_p / n,
@@ -109,6 +111,8 @@ def configure_training_step(
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
     improvement_step: ImprovementStep,
     apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
+    compute_reward: Reward,
+    policy_loss: PolicyLoss,
     repair: RepairOperator,
     n_repairs: int = 1,
     rollouts_per_solution: int = 1,
@@ -143,8 +147,8 @@ def configure_training_step(
         objective_before = solution.objective().mean().item()
 
         total_loss = 0.0
-        total_reward = 0.0
-        total_reward_baseline = 0.0
+        total_best_reward = 0.0
+        total_reward_mean = 0.0
         total_entropy = 0.0
         total_entropy_norm = 0.0
         total_log_p = 0.0
@@ -164,16 +168,16 @@ def configure_training_step(
 
                 step_objective_before = solution.objective()
                 objective_after = solution_prime.objective()
-                reward = torch.clamp(
-                    step_objective_before.unsqueeze(-1) - objective_after,
-                    min=0.0,
+                reward = compute_reward(
+                    objective_before=step_objective_before,
+                    objective_after=objective_after,
                 )
-                reward_baseline = reward.mean(dim=1, keepdim=True)
+                reward_mean = reward.mean(dim=1, keepdim=True)
                 best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
 
                 best_reward = reward.gather(1, best_rollout_idx)
                 best_log_p = rollout.log_p.gather(1, best_rollout_idx)
-                loss = -((best_reward - reward_baseline) * best_log_p).mean()
+                loss = policy_loss(reward=reward, log_p=rollout.log_p)
 
             if scaler is not None:
                 scaler.scale(loss).backward()
@@ -183,8 +187,8 @@ def configure_training_step(
             solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
             total_loss += loss.item()
-            total_reward += best_reward.mean().item()
-            total_reward_baseline += reward_baseline.mean().item()
+            total_best_reward += best_reward.mean().item()
+            total_reward_mean += reward_mean.mean().item()
             total_entropy += rollout.mean_entropy
             total_entropy_norm += rollout.mean_entropy_norm
             total_log_p += best_log_p.mean().item()
@@ -206,8 +210,8 @@ def configure_training_step(
         return BatchTrainSummary(
             batch_size=batch_size,
             loss=total_loss / num_main_improvement_steps,
-            reward=total_reward / num_main_improvement_steps,
-            reward_baseline=total_reward_baseline / num_main_improvement_steps,
+            best_reward=total_best_reward / num_main_improvement_steps,
+            reward_mean=total_reward_mean / num_main_improvement_steps,
             entropy=total_entropy / num_main_improvement_steps,
             entropy_norm=total_entropy_norm / num_main_improvement_steps,
             log_p=total_log_p / num_main_improvement_steps,

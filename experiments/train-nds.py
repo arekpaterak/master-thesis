@@ -41,10 +41,12 @@ with app.setup(hide_code=True):
     from core.models.nds.evaluation import EpochValidationSummary
     from core.models.nds.factory import build_model
     from core.models.nds.module import NDSModule
+    from core.models.nds.policy_loss import PolicyLossConfig
     from core.models.nds.pretrained import (
         load_original_pretrained_decoder_weights,
         load_original_pretrained_encoder_weights,
     )
+    from core.models.nds.reward import RewardConfig
     from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
     from core.models.trainer import Trainer
     from core.models.utils import load_checkpoint
@@ -148,6 +150,20 @@ def _():
 def _(env_config_widget, is_script_mode):
     env_config_widget if not is_script_mode and not wandb.login() else None
     return
+
+
+@app.cell(hide_code=True)
+def _(defaults):
+    loss_type, loss_forms = build_union_selector(PolicyLossConfig, defaults.loss)
+    mo.vstack([mo.md("### Policy loss"), loss_type, *loss_forms[loss_type.value].values()])
+    return loss_forms, loss_type
+
+
+@app.cell(hide_code=True)
+def _(defaults):
+    reward_type, reward_forms = build_union_selector(RewardConfig, defaults.reward)
+    mo.vstack([mo.md("### Reward"), reward_type, *reward_forms[reward_type.value].values()])
+    return reward_forms, reward_type
 
 
 @app.cell(column=1, hide_code=True)
@@ -482,6 +498,8 @@ def _(
     init_weights_widget,
     is_script_mode,
     logging_form,
+    loss_forms,
+    loss_type,
     model_form,
     optimizer_form,
     positional_enabled_widget,
@@ -490,6 +508,8 @@ def _(
     pretrained_path_widget,
     problem_name,
     problem_size,
+    reward_forms,
+    reward_type,
     run_button,
     search_form,
     start_solution_form,
@@ -541,6 +561,8 @@ def _(
             ),
             model=_model,
             optimizer=OptimizerParams(**optimizer_form.value),
+            loss=collect_union_value(PolicyLossConfig, loss_type, loss_forms),
+            reward=collect_union_value(RewardConfig, reward_type, reward_forms),
             amp=AmpConfig(**amp_form.value),
             compile=CompileConfig(**compile_form.value),
             trainer=TrainerParams(**trainer_form.value),
