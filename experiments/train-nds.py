@@ -430,8 +430,18 @@ def _(defaults):
     val_form = build_mo_ui_dict(
         ValidationConfig, defaults.validation, skip={"search", "dataset_path"}
     )
-    mo.vstack([mo.md("### Validation"), *val_form.values()])
-    return (val_form,)
+    _initial_path = (
+        str(Path(defaults.validation.dataset_path).parent)
+        if defaults.validation.dataset_path
+        else str(Path(__file__).parent.parent / "data")
+    )
+    val_dataset_path_widget = mo.ui.file_browser(
+        initial_path=_initial_path,
+        multiple=False,
+        label="Validation dataset (select nothing = sample randomly)",
+    )
+    mo.vstack([mo.md("### Validation"), *val_form.values(), val_dataset_path_widget])
+    return val_dataset_path_widget, val_form
 
 
 @app.cell(hide_code=True)
@@ -516,6 +526,7 @@ def _(
     trainer_form,
     val_acceptance_forms,
     val_acceptance_type,
+    val_dataset_path_widget,
     val_form,
     val_search_form,
     val_start_solution_form,
@@ -576,6 +587,9 @@ def _(
             logging=LoggingConfig(**logging_form.value),
             validation=ValidationConfig(
                 **val_form.value,
+                dataset_path=(
+                    val_dataset_path_widget.value[0].path if val_dataset_path_widget.value else None
+                ),
                 search=SearchParams(
                     **val_search_form.value,
                     start_solution_params=StartSolutionParams(**val_start_solution_form.value),
