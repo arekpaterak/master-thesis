@@ -29,7 +29,7 @@ with app.setup:
     from core.models.nds.config import ModelParams
     from core.models.nds.decoders.config import AutoregressiveDecoderConfig
     from core.problems.cvrp.dataset import load_cvrplib_instance, load_cvrplib_solution_bks
-    from core.problems.solve import initial_solution
+    from core.problems.solve import generate_initial_solution
     from core.solve import solve
     from core.ui.forms import build_mo_ui_dict, union_variants
 
@@ -379,7 +379,7 @@ def _(
 ):
     from core.problems.cvrp.config import CVRPConfig
 
-    generate_start = initial_solution
+    generate_start = generate_initial_solution
     _cvrp_problem = CVRPConfig()  # CVRPLIB is always CVRP
 
     if method_type == "random-destroy":

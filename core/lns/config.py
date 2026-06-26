@@ -12,6 +12,31 @@ from core.lns.acceptance_criterion import (
 RepairType = Literal["greedy_reconnect", "greedy_insert", "noop"]
 
 
+class StartSolutionParams(BaseModel):
+    """Random-improvement warmup applied to the initial solution (NDS create_starting_solution).
+
+    Only the warmup-specific overrides live here; the recreate reuses the parent search's
+    ``repair_type`` and ``improvement_step_type``. The warmup itself is a single-rollout,
+    single-repair greedy insert-anywhere loop, matching the original NDS.
+    """
+
+    num_improvement_steps: int = Field(
+        default=50,
+        title="Iterations",
+        description="Warmup random-destroy/recreate iterations on the initial solution. 0 disables.",
+    )
+    deconstruction_size: int = Field(
+        default=15,
+        title="Warmup deconstruction size",
+        description="Number of customers removed per warmup iteration.",
+    )
+    destroy_type: Literal["random_node"] = Field(
+        default="random_node",
+        title="Warmup destroy",
+        description="Destroy operator used for the warmup.",
+    )
+
+
 class SearchParams(BaseModel):
     """
     Configuration for an LNS-style search (destroy / repair / accept loop).
@@ -58,6 +83,10 @@ class SearchParams(BaseModel):
     acceptance: AcceptanceCriterionConfig = Field(
         default_factory=SimulatedAnnealingAcceptanceConfig,
         description="Acceptance criterion (greedy or simulated annealing).",
+    )
+    start_solution_params: StartSolutionParams = Field(
+        default_factory=StartSolutionParams,
+        description="Random-improvement warmup applied to the initial solution before search.",
     )
     n_augmentations: int = Field(
         default=1,

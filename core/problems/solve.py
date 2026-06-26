@@ -7,7 +7,7 @@ from core.problems.solution import BaseSolution
 
 
 @singledispatch
-def initial_solution(instance: BaseProblemInstance) -> BaseSolution:
+def generate_initial_solution(instance: BaseProblemInstance) -> BaseSolution:
     """Build the default start solution for a problem instance.
 
     Each problem registers its default via ``@initial_solution.register`` (see the

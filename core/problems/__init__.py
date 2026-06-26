@@ -5,7 +5,7 @@ from pydantic import Field, TypeAdapter
 # Import samplers so they register themselves with Sampler._registry.
 from core.problems.cvrp.config import CVRP, CVRPConfig
 from core.problems.cvrp.sampler import CVRPSampler
-from core.problems.solve import initial_solution
+from core.problems.solve import generate_initial_solution
 from core.problems.tsp.config import TSP, TSPConfig
 from core.problems.tsp.sampler import TSPSampler
 
@@ -27,6 +27,6 @@ __all__ = [
     "ProblemConfig",
     "TSPConfig",
     "TSPSampler",
-    "initial_solution",
+    "generate_initial_solution",
     "make_problem_config",
 ]

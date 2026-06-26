@@ -10,6 +10,7 @@ import torch.optim as optim
 from core.lns.acceptance_criterion import build_criterion
 from core.lns.config import SearchParams
 from core.lns.operators.repair import RepairOperator
+from core.lns.start_solution import with_warmup
 from core.models.module import Module
 from core.models.nds.apply_rollout import (
     apply_rollout,
@@ -30,7 +31,7 @@ from core.models.nds.training import (
     configure_training_step,
 )
 from core.problems.instance import BaseProblemInstance
-from core.problems.solve import initial_solution
+from core.problems.solve import generate_initial_solution
 
 
 class NDSModule(Module):
@@ -65,7 +66,14 @@ class NDSModule(Module):
             else None
         )
 
-        generate_start_solution = initial_solution
+        generate_training_start_solution = with_warmup(
+            generate_initial_solution, problem_name=config.problem.name, search=config.search
+        )
+        generate_validation_start_solution = with_warmup(
+            generate_initial_solution,
+            problem_name=config.problem.name,
+            search=config.validation.search,
+        )
         repair = RepairOperator.create(
             config.problem.name,
             config.search.repair_type,
@@ -88,7 +96,7 @@ class NDSModule(Module):
             rollouts_per_solution=config.search.num_rollouts,
             num_initial_improvement_steps=config.search.num_improvement_steps,
             deconstruction_size=config.search.deconstruction_size,
-            generate_start_solution=generate_start_solution,
+            generate_start_solution=generate_training_start_solution,
             improvement_step=training_improvement_step,
             apply_rollout=apply_rollout_fn,
             repair=repair,
@@ -108,7 +116,7 @@ class NDSModule(Module):
         )
 
         self._validation_step_fn = configure_validation_step(
-            generate_start_solution=generate_start_solution,
+            generate_start_solution=generate_validation_start_solution,
             improvement_step=validation_improvement_step,
             criterion=validation_criterion,
             num_improvement_steps=config.validation.search.num_improvement_steps,

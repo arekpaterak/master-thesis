@@ -32,6 +32,9 @@ search:
   deconstruction_size: 15
   improvement_step_type: numba_sequential
   insert_in_new_routes_only: true
+  start_solution_params:
+    num_improvement_steps: 50
+    deconstruction_size: 15
 
 amp:
   enabled: true
@@ -55,6 +58,9 @@ validation:
     deconstruction_size: 15
     improvement_step_type: numba_sequential
     insert_in_new_routes_only: true
+    start_solution_params:
+      num_improvement_steps: 50
+      deconstruction_size: 15
     n_repairs: 5
     acceptance:
       type: greedy

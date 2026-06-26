@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from core.constants import EPS
 from core.problems.solution import BaseSolution
@@ -13,6 +14,9 @@ from .acceptance_criterion import (
 from .operators.destroy.base import DestroyOperator
 from .operators.repair.base import RepairOperator
 from .utils import best_repair, select_solution
+
+if TYPE_CHECKING:
+    from .config import SearchParams
 
 
 class ImprovementStep(ABC):
@@ -145,6 +149,54 @@ class NumbaSequentialImprovementStep(ImprovementStep):
             batch_size=solution.batch_size,
             device=solution.device,
         )
+
+
+def build_random_destroy_step(
+    search: SearchParams, *, problem_name: str, seed: int | None
+) -> ImprovementStep:
+    """Build a random-node-destroy improvement step from a search config.
+
+    All knobs (``repair_type``, ``improvement_step_type``, ``deconstruction_size``,
+    ``num_rollouts``, ``n_repairs``) are read from ``search``; callers that need different
+    knobs (e.g. the start-solution warmup) pass a modified copy of the search config.
+    """
+    # Lazy import: top-level would create a cycle (random_node -> problems -> ... -> lns).
+    from .operators.destroy.random_node import RandomNodeDestroy
+
+    repair = RepairOperator.create(
+        problem_name, search.repair_type, deconstruction_size=search.deconstruction_size
+    )
+    destroy = RandomNodeDestroy(
+        destruction_size=search.deconstruction_size,
+        seed=seed,
+        stitch=repair.requires_stitch,
+    )
+
+    match search.improvement_step_type:
+        case "numba_sequential":
+            return NumbaSequentialImprovementStep(
+                destroy=destroy,
+                repair=repair,
+                num_rollouts=search.num_rollouts,
+                n_repairs=search.n_repairs,
+                seed=seed or 0,
+            )
+        case "sequential":
+            return SequentialImprovementStep(
+                destroy=destroy,
+                repair=repair,
+                num_rollouts=search.num_rollouts,
+                n_repairs=search.n_repairs,
+            )
+        case "parallel":
+            return ParallelImprovementStep(
+                destroy=destroy,
+                repair=repair,
+                num_rollouts=search.num_rollouts,
+                n_repairs=search.n_repairs,
+            )
+        case _:
+            raise NotImplementedError("Unknown improvement step type.")
 
 
 def _acceptance_to_kernel(accept: AcceptanceCriterion) -> tuple[int, float]:

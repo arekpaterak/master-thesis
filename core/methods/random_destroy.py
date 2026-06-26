@@ -3,13 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from core.lns.config import SearchParams
-from core.lns.improvement_step import (
-    NumbaSequentialImprovementStep,
-    ParallelImprovementStep,
-    SequentialImprovementStep,
-)
-from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair import RepairOperator
+from core.lns.improvement_step import build_random_destroy_step
 from core.methods.base import Method
 from core.problems import ProblemConfig
 
@@ -28,42 +22,9 @@ class RandomDestroyMethod:
         problem: ProblemConfig,
         generate_start_solution,
     ) -> Method:
-        repair = RepairOperator.create(
-            problem.name,
-            config.search.repair_type,
-            deconstruction_size=config.search.deconstruction_size,
+        improvement_step = build_random_destroy_step(
+            config.search, problem_name=problem.name, seed=config.seed
         )
-        destroy = RandomNodeDestroy(
-            destruction_size=config.search.deconstruction_size,
-            seed=config.seed,
-            stitch=repair.requires_stitch,
-        )
-
-        match config.search.improvement_step_type:
-            case "numba_sequential":
-                improvement_step = NumbaSequentialImprovementStep(
-                    destroy=destroy,
-                    repair=repair,
-                    num_rollouts=config.search.num_rollouts,
-                    n_repairs=config.search.n_repairs,
-                    seed=config.seed or 0,
-                )
-            case "sequential":
-                improvement_step = SequentialImprovementStep(
-                    destroy=destroy,
-                    repair=repair,
-                    num_rollouts=config.search.num_rollouts,
-                    n_repairs=config.search.n_repairs,
-                )
-            case "parallel":
-                improvement_step = ParallelImprovementStep(
-                    destroy=destroy,
-                    repair=repair,
-                    num_rollouts=config.search.num_rollouts,
-                    n_repairs=config.search.n_repairs,
-                )
-            case _:
-                raise NotImplementedError("Unknown improvement step type.")
 
         name = _build_name(config.search)
 
