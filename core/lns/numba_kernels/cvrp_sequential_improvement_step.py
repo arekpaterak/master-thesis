@@ -48,11 +48,16 @@ def run_with_removals(
     eps: float,
     base_seed: int,
     first_repair_uses_order: bool = False,
+    insert_in_new_routes_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sequential step with externally supplied nodes to remove (e.g. model rollouts).
 
     When ``first_repair_uses_order`` is set, the first of the ``n_repairs`` greedy
     insertions follows the provided removal order instead of a random order.
+
+    When ``insert_in_new_routes_only`` is set, removed customers may only be reinserted
+    into routes the destroy touched (their remnants) or routes created during this repair,
+    never an untouched route.
 
     Returns:
         (next_out, prev_out) both (G, N+1) int64.
@@ -70,6 +75,7 @@ def run_with_removals(
         eps=float(eps),
         base_seed=int(base_seed),
         first_repair_uses_order=bool(first_repair_uses_order),
+        insert_in_new_routes_only=bool(insert_in_new_routes_only),
     )
 
 
@@ -87,6 +93,7 @@ def run_with_random(
     temperature: float,
     eps: float,
     base_seed: int,
+    insert_in_new_routes_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sequential step with in-kernel random-node destroy (no model)."""
     next = np.ascontiguousarray(next, dtype=np.int64)
@@ -113,6 +120,7 @@ def run_with_random(
         eps=float(eps),
         base_seed=int(base_seed),
         first_repair_uses_order=False,
+        insert_in_new_routes_only=bool(insert_in_new_routes_only),
     )
 
 
@@ -144,6 +152,7 @@ def _run_for_batch(
     eps: float,
     base_seed: int,
     first_repair_uses_order: bool,
+    insert_in_new_routes_only: bool,
 ) -> tuple[np.ndarray, np.ndarray]:
     global_size = next.shape[0]
     next_out = next.copy()
@@ -162,6 +171,7 @@ def _run_for_batch(
             temperature=temperature,
             eps=eps,
             first_repair_uses_order=first_repair_uses_order,
+            insert_in_new_routes_only=insert_in_new_routes_only,
         )
     return next_out, prev_out
 
@@ -179,6 +189,7 @@ def _run_for_single(
     temperature: float,
     eps: float,
     first_repair_uses_order: bool,
+    insert_in_new_routes_only: bool,
 ) -> None:
     """Run the full sequential rollout loop for one batch element.
 
@@ -196,12 +207,30 @@ def _run_for_single(
     best_repaired_next = np.empty(num_nodes, np.int64)
     best_repaired_prev = np.empty(num_nodes, np.int64)
     route_demand = np.empty(num_nodes, np.float64)
+    # base_insertable is the destroy-determined mask (same across the n_repairs tries);
+    # insertable is the per-repair working copy that _insert_customer_at_cheapest mutates.
+    base_insertable = np.empty(num_nodes, np.bool_)
+    insertable = np.empty(num_nodes, np.bool_)
 
     current_objective = _objective(
         nxt=next_out, prv=prev_out, locations=locations, num_customers=num_customers
     )
 
     for r in range(num_rollouts):
+        # Mark insertable routes before stitching, while next_out/prev_out (the current
+        # solution this rollout destroys) is still intact.
+        if insert_in_new_routes_only:
+            base_insertable[:] = False
+            for m in range(deconstruction_size):
+                c = nodes_to_remove[r, m]
+                if c < 1:
+                    continue
+                if prev_out[c] == UNASSIGNED and next_out[c] == UNASSIGNED:
+                    continue
+                _mark_route(next_out, prev_out, c, base_insertable)
+        else:
+            base_insertable[:] = True
+
         deconstructed_next[:] = next_out
         deconstructed_prev[:] = prev_out
         for m in range(deconstruction_size):
@@ -216,6 +245,7 @@ def _run_for_single(
         for i in range(n_repairs):
             repaired_next[:] = deconstructed_next
             repaired_prev[:] = deconstructed_prev
+            insertable[:] = base_insertable
             if first_repair_uses_order and i == 0:
                 _greedy_insert_repair(
                     nxt=repaired_next,
@@ -225,6 +255,7 @@ def _run_for_single(
                     capacity=capacity,
                     num_customers=num_customers,
                     route_demand=route_demand,
+                    insertable=insertable,
                     order=nodes_to_remove[r],
                 )
             else:
@@ -236,6 +267,7 @@ def _run_for_single(
                     capacity=capacity,
                     num_customers=num_customers,
                     route_demand=route_demand,
+                    insertable=insertable,
                 )
             objective = _objective(
                 nxt=repaired_next,
@@ -286,6 +318,20 @@ def _remove_customer_and_stitch(nxt: np.ndarray, prv: np.ndarray, customer: int)
     nxt[customer] = UNASSIGNED
     nxt[DEPOT] = UNASSIGNED
     prv[DEPOT] = UNASSIGNED
+
+
+@njit
+def _mark_route(nxt: np.ndarray, prv: np.ndarray, member: int, insertable: np.ndarray) -> None:
+    """Mark every customer in member's route as insertable. Route must be intact."""
+    head = member
+    while prv[head] != DEPOT:
+        head = prv[head]
+    node = head
+    while True:
+        insertable[node] = True
+        node = nxt[node]
+        if node == DEPOT:
+            break
 
 
 @njit
@@ -360,8 +406,14 @@ def _insert_customer_at_cheapest(
     capacity: float,
     num_customers: int,
     route_demand: np.ndarray,
+    insertable: np.ndarray,
 ) -> None:
-    """Insert free ``customer`` at its cheapest valid position. In-place."""
+    """Insert free ``customer`` at its cheapest valid position. In-place.
+
+    Only positions ``x`` with ``insertable[x]`` set are considered (everything is
+    insertable unless the caller restricts to new routes). The just-placed customer is
+    marked insertable so it can host later customers in the same repair.
+    """
     demand_c = demand[customer]
     _compute_route_demand(
         nxt=nxt, prv=prv, demand=demand, num_customers=num_customers, route_demand=route_demand
@@ -375,6 +427,8 @@ def _insert_customer_at_cheapest(
     for x in range(1, num_customers + 1):
         if prv[x] == UNASSIGNED and nxt[x] == UNASSIGNED:
             continue  # free customer, not a position
+        if not insertable[x]:
+            continue  # untouched route, off-limits when inserting in new routes only
         if route_demand[x] + demand_c <= capacity:
             u = prv[x]
             cost = (
@@ -405,6 +459,8 @@ def _insert_customer_at_cheapest(
         prv[best_v] = customer
     nxt[DEPOT] = UNASSIGNED
     prv[DEPOT] = UNASSIGNED
+    # The customer now sits in an affected/new route, so later customers may join it.
+    insertable[customer] = True
 
 
 @njit
@@ -416,6 +472,7 @@ def _greedy_insert_repair(
     capacity: float,
     num_customers: int,
     route_demand: np.ndarray,
+    insertable: np.ndarray,
     order: np.ndarray | None = None,
 ) -> None:
     """Insert every free customer at its cheapest valid position. In-place.
@@ -425,6 +482,8 @@ def _greedy_insert_repair(
     behaviour where the first repair follows the model order. Any customers not
     covered by ``order`` are then drained in random order. When ``order`` is
     omitted all customers are inserted in random order.
+
+    ``insertable`` is the per-repair position mask forwarded to each insertion.
     """
     if order is not None:
         for k in range(order.shape[0]):
@@ -433,7 +492,15 @@ def _greedy_insert_repair(
                 continue
             if prv[customer] == UNASSIGNED and nxt[customer] == UNASSIGNED:
                 _insert_customer_at_cheapest(
-                    customer, nxt, prv, locations, demand, capacity, num_customers, route_demand
+                    customer,
+                    nxt,
+                    prv,
+                    locations,
+                    demand,
+                    capacity,
+                    num_customers,
+                    route_demand,
+                    insertable,
                 )
 
     while True:
@@ -441,7 +508,15 @@ def _greedy_insert_repair(
         if customer == -1:
             break
         _insert_customer_at_cheapest(
-            customer, nxt, prv, locations, demand, capacity, num_customers, route_demand
+            customer,
+            nxt,
+            prv,
+            locations,
+            demand,
+            capacity,
+            num_customers,
+            route_demand,
+            insertable,
         )
 
 

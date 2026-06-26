@@ -73,3 +73,22 @@ class TestNumbaModelSequentialImprovementStep:
 
         assert improved.is_complete.all()
         assert improved.is_feasible.all()
+
+    def test_insert_in_new_routes_only_stays_complete_and_feasible(
+        self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution
+    ) -> None:
+        step = NumbaModelSequentialImprovementStep(
+            model=model,
+            repair=CVRPGreedyInsertRepair(),
+            num_rollouts=4,
+            deconstruction_size=10,
+            n_repairs=2,
+            seed=7,
+            insert_in_new_routes_only=True,
+        )
+
+        improved = step(solution, GreedyAcceptance())
+
+        assert improved.is_complete.all()
+        assert improved.is_feasible.all()
+        assert (improved.node_degree() == 2).all()

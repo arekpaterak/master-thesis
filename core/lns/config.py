@@ -46,6 +46,15 @@ class SearchParams(BaseModel):
         title="Improvement step type",
         description="Improvement step variant.",
     )
+    insert_in_new_routes_only: bool = Field(
+        default=False,
+        title="Insert in new routes only",
+        description=(
+            "If set, removed customers may only be reinserted into routes the destroy "
+            "touched (their remnants) or routes created during this repair, never an "
+            "untouched route. Only supported by the numba_sequential improvement step."
+        ),
+    )
     acceptance: AcceptanceCriterionConfig = Field(
         default_factory=SimulatedAnnealingAcceptanceConfig,
         description="Acceptance criterion (greedy or simulated annealing).",
