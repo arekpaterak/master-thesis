@@ -36,7 +36,7 @@ with app.setup:
     from core.models.nds.config import ModelParams, TrainConfig
     from core.models.nds.decoders.config import AutoregressiveDecoderConfig
     from core.problems import make_problem_config
-    from core.problems.solve import initial_solution
+    from core.problems.solve import generate_initial_solution
     from core.results.plots import plot_lns_progress
     from core.results.wandb_artifacts import upload_eval_plots, upload_eval_results
     from core.results.writer import write_eval_results
@@ -452,7 +452,7 @@ def _(
     run_dir,
     search_params,
 ):
-    generate_start = initial_solution
+    generate_start = generate_initial_solution
 
     if method_type == "random-destroy":
         method_config = RandomDestroyMethodConfig(

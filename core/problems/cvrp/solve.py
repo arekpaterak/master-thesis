@@ -7,7 +7,7 @@ import torch
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
 from core.problems.cvrp.solution import CVRPSolution
-from core.problems.solve import initial_solution
+from core.problems.solve import generate_initial_solution
 
 __all__ = [
     "STRATEGIES",
@@ -126,7 +126,7 @@ def one_customer_per_route_graph(instance: CVRPInstance) -> CVRPGraphSolution:
     return CVRPGraphSolution.one_customer_per_route(instance=instance)
 
 
-@initial_solution.register
+@generate_initial_solution.register
 def _(instance: CVRPInstance) -> CVRPGraphSolution:
     return one_customer_per_route_graph(instance)
 

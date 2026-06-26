@@ -1,6 +1,6 @@
 import torch
 
-from core.lns.config import SearchParams
+from core.lns.config import SearchParams, StartSolutionParams
 from core.models.nds.config import AmpConfig, TrainConfig, TrainerParams
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.models.nds.module import NDSModule
@@ -23,6 +23,7 @@ def test_train():
                 num_improvement_steps=0,
                 num_rollouts=R,
                 deconstruction_size=15,
+                start_solution_params=StartSolutionParams(num_improvement_steps=0),
             ),
         ),
         model=model,
@@ -55,6 +56,7 @@ def test_train_with_amp_enabled():
                 num_improvement_steps=0,
                 num_rollouts=R,
                 deconstruction_size=15,
+                start_solution_params=StartSolutionParams(num_improvement_steps=0),
             ),
             amp=AmpConfig(enabled=True, dtype="bfloat16"),
         ),

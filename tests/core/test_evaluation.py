@@ -11,7 +11,7 @@ from core.methods.random_destroy import RANDOM_DESTROY_PRESETS, RandomDestroyMet
 from core.problems import CVRPConfig, ProblemConfig
 from core.problems.cvrp import CVRPSampler
 from core.problems.cvrp.config import CVRP
-from core.problems.solve import initial_solution
+from core.problems.solve import generate_initial_solution
 from core.solve import solve
 
 
@@ -29,7 +29,7 @@ def _build(
     return RandomDestroyMethod.build(
         config,
         problem=problem,
-        generate_start_solution=initial_solution,
+        generate_start_solution=generate_initial_solution,
     )
 
 

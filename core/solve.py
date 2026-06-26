@@ -32,7 +32,7 @@ def solve(
         instance = instance.augment(method.search.n_augmentations)
     solution = method.generate_start_solution(instance)
 
-    # Reduce a (B, A) augmented solution to (B,); identity for the plain (B,) path.
+    # Reduce a (B, A) augmented solution to (B,). Identity for the plain (B,) path.
     reduce_augmentations = _best_augmentation if augmented else lambda solution: solution
 
     step_callback: Callable[[int, BaseSolution], None] | None = None
