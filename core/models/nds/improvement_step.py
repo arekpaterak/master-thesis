@@ -50,11 +50,16 @@ class ModelSequentialImprovementStep(ImprovementStep):
         deconstruction_size: int,
         n_repairs: int,
         first_repair_uses_rollout_order: bool = False,
+        insert_in_new_routes_only: bool = False,
     ) -> None:
         if first_repair_uses_rollout_order:
             raise NotImplementedError(
                 "first_repair_uses_rollout_order is only supported by "
                 "NumbaModelSequentialImprovementStep."
+            )
+        if insert_in_new_routes_only:
+            raise NotImplementedError(
+                "insert_in_new_routes_only is only supported by NumbaModelSequentialImprovementStep."
             )
         self._model = model
         self._apply_rollout_fn = (
@@ -97,11 +102,16 @@ class ModelParallelImprovementStep(ImprovementStep):
         deconstruction_size: int,
         n_repairs: int,
         first_repair_uses_rollout_order: bool = False,
+        insert_in_new_routes_only: bool = False,
     ) -> None:
         if first_repair_uses_rollout_order:
             raise NotImplementedError(
                 "first_repair_uses_rollout_order is only supported by "
                 "NumbaModelSequentialImprovementStep."
+            )
+        if insert_in_new_routes_only:
+            raise NotImplementedError(
+                "insert_in_new_routes_only is only supported by NumbaModelSequentialImprovementStep."
             )
         self._model = model
         self._apply_rollout_fn = (
@@ -159,6 +169,7 @@ class NumbaModelSequentialImprovementStep(ImprovementStep):
         n_repairs: int,
         seed: int = 0,
         first_repair_uses_rollout_order: bool = False,
+        insert_in_new_routes_only: bool = False,
     ) -> None:
         if getattr(repair, "problem_name", None) != "cvrp" or not repair.requires_stitch:
             raise NotImplementedError(
@@ -171,6 +182,7 @@ class NumbaModelSequentialImprovementStep(ImprovementStep):
         self._n_repairs = n_repairs
         self._seed = seed
         self._first_repair_uses_rollout_order = first_repair_uses_rollout_order
+        self._insert_in_new_routes_only = insert_in_new_routes_only
 
     @torch.no_grad()
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
@@ -213,6 +225,7 @@ class NumbaModelSequentialImprovementStep(ImprovementStep):
             eps=EPS,
             base_seed=self._seed,
             first_repair_uses_order=self._first_repair_uses_rollout_order,
+            insert_in_new_routes_only=self._insert_in_new_routes_only,
         )
         return CVRPGraphSolution.from_numpy_arrays(
             instance=solution.instance,

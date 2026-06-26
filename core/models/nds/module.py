@@ -153,4 +153,5 @@ class NDSModule(Module):
             deconstruction_size=search.deconstruction_size,
             n_repairs=search.n_repairs,
             first_repair_uses_rollout_order=search.first_repair_uses_rollout_order,
+            insert_in_new_routes_only=search.insert_in_new_routes_only,
         )

@@ -32,6 +32,7 @@ search:
   num_rollouts: 128
   deconstruction_size: 15
   improvement_step_type: numba_sequential
+  insert_in_new_routes_only: true
 
 amp:
   enabled: true
@@ -54,6 +55,7 @@ validation:
     num_rollouts: 100
     deconstruction_size: 15
     improvement_step_type: numba_sequential
+    insert_in_new_routes_only: true
     n_repairs: 5
     acceptance:
       type: greedy

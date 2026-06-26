@@ -94,6 +94,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         num_rollouts: int = 1,
         n_repairs: int = 1,
         seed: int = 0,
+        insert_in_new_routes_only: bool = False,
     ) -> None:
         from .operators.destroy.random_node import RandomNodeDestroy
 
@@ -109,6 +110,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         self._num_rollouts = num_rollouts
         self._n_repairs = n_repairs
         self._seed = seed
+        self._insert_in_new_routes_only = insert_in_new_routes_only
 
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
         from core.lns.numba_kernels.cvrp_sequential_improvement_step import run_with_random
@@ -134,6 +136,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
             temperature=temperature,
             eps=EPS,
             base_seed=self._seed,
+            insert_in_new_routes_only=self._insert_in_new_routes_only,
         )
         return CVRPGraphSolution.from_numpy_arrays(
             instance=solution.instance,
