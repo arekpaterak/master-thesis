@@ -26,6 +26,8 @@ from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import resolve_improvement_step
 from core.models.nds.models.lns_native import LNSNativeModel
 from core.models.nds.models.one_pass import OnePassNDSModel
+from core.models.nds.policy_loss import build_policy_loss
+from core.models.nds.reward import build_reward
 from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,
@@ -100,6 +102,8 @@ class NDSModule(Module):
             generate_start_solution=generate_training_start_solution,
             improvement_step=training_improvement_step,
             apply_rollout=apply_rollout_fn,
+            compute_reward=build_reward(config.reward),
+            policy_loss=build_policy_loss(config.loss),
             repair=repair,
             n_repairs=config.search.n_repairs,
             amp_enabled=amp_enabled,

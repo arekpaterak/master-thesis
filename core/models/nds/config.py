@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 from core.lns.acceptance_criterion import GreedyAcceptanceConfig
 from core.lns.config import SearchParams
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
+from core.models.nds.policy_loss import BestRolloutLossConfig, PolicyLossConfig
+from core.models.nds.reward import RelativeRewardConfig, RewardConfig
 from core.problems import CVRPConfig, ProblemConfig
 
 
@@ -139,12 +141,6 @@ class SplitModelParams(_ModelParamsBase):
     """
 
     encoder_mode: Literal["split"] = "split"
-
-    @model_validator(mode="after")
-    def _validate_with_positional_encoding(self) -> Self:
-        if self.positional_encoding is None:
-            raise ValueError("Positional encoding is required for this model.")
-        return self
 
 
 ModelParams = Annotated[JointModelParams | SplitModelParams, Field(discriminator="encoder_mode")]
@@ -283,9 +279,11 @@ class TrainConfig(BaseModel):
     problem: ProblemConfig = Field(default_factory=CVRPConfig)
     model: ModelParams = Field(default_factory=JointModelParams)
     optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
+    loss: PolicyLossConfig = Field(default_factory=BestRolloutLossConfig)
+    reward: RewardConfig = Field(default_factory=RelativeRewardConfig)
     trainer: TrainerParams = Field(default_factory=TrainerParams)
     search: SearchParams = Field(
-        default_factory=SearchParams,
+        default_factory=lambda: SearchParams(acceptance=GreedyAcceptanceConfig()),
     )
     amp: AmpConfig = Field(default_factory=AmpConfig)
     compile: CompileConfig = Field(default_factory=CompileConfig)
