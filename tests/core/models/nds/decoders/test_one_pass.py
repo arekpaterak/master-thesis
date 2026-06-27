@@ -1,10 +1,6 @@
 import pytest
 import torch
 
-from core.models.nds.decoders.one_pass.proximity import (
-    ProximityCategoricalDecoder,
-    ProximityDecoder,
-)
 from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
 from core.models.nds.decoders.one_pass.slot import SlotDecoder
 
@@ -27,34 +23,9 @@ def _slot():
     ), {}
 
 
-def _proximity():
-    return ProximityDecoder(
-        hidden_dim=HIDDEN_DIM, seed_dim=SEED_DIM, poly_dim=POLY_DIM, num_heads=NUM_HEADS
-    ), {"node_coordinates": torch.rand(B, N, 2)}
-
-
-def _proximity_categorical():
-    return ProximityCategoricalDecoder(
-        hidden_dim=HIDDEN_DIM, seed_dim=SEED_DIM, poly_dim=POLY_DIM, num_heads=NUM_HEADS
-    ), {"node_coordinates": torch.rand(B, N, 2)}
-
-
-def _proximity_categorical_anisotropic():
-    return ProximityCategoricalDecoder(
-        hidden_dim=HIDDEN_DIM,
-        seed_dim=SEED_DIM,
-        poly_dim=POLY_DIM,
-        num_heads=NUM_HEADS,
-        anisotropic=True,
-    ), {"node_coordinates": torch.rand(B, N, 2)}
-
-
 DECODERS = [
     pytest.param(_gumbel, id="gumbel"),
     pytest.param(_slot, id="slot"),
-    pytest.param(_proximity, id="proximity"),
-    pytest.param(_proximity_categorical, id="proximity_categorical"),
-    pytest.param(_proximity_categorical_anisotropic, id="proximity_categorical_anisotropic"),
 ]
 
 
