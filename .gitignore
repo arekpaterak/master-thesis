@@ -17,7 +17,7 @@ wheels/
 .run/
 
 # Project related
-experiments/results/*
+experiments/results/eval/*
 experiments/runs/*
 !experiments/runs/NOTES.md
 experiments/pretrained/*
