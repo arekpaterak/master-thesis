@@ -26,7 +26,7 @@ class BatchTrainSummary(BaseModel):
 
     batch_size: int
     loss: float
-    best_reward: float
+    reward_best: float
     reward_mean: float
     entropy: float
     entropy_norm: float
@@ -77,7 +77,7 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_instances += n
         self._total_time += n / summary.instances_per_sec
         self._total_loss += summary.loss * n
-        self._total_best_reward += summary.best_reward * n
+        self._total_best_reward += summary.reward_best * n
         self._total_reward_mean += summary.reward_mean * n
         self._total_entropy += summary.entropy * n
         self._total_entropy_norm += summary.entropy_norm * n
@@ -147,7 +147,7 @@ def configure_training_step(
         objective_before = solution.objective().mean().item()
 
         total_loss = 0.0
-        total_best_reward = 0.0
+        total_reward_best = 0.0
         total_reward_mean = 0.0
         total_entropy = 0.0
         total_entropy_norm = 0.0
@@ -187,7 +187,7 @@ def configure_training_step(
             solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
             total_loss += loss.item()
-            total_best_reward += best_reward.mean().item()
+            total_reward_best += best_reward.mean().item()
             total_reward_mean += reward_mean.mean().item()
             total_entropy += rollout.mean_entropy
             total_entropy_norm += rollout.mean_entropy_norm
@@ -210,7 +210,7 @@ def configure_training_step(
         return BatchTrainSummary(
             batch_size=batch_size,
             loss=total_loss / num_main_improvement_steps,
-            best_reward=total_best_reward / num_main_improvement_steps,
+            reward_best=total_reward_best / num_main_improvement_steps,
             reward_mean=total_reward_mean / num_main_improvement_steps,
             entropy=total_entropy / num_main_improvement_steps,
             entropy_norm=total_entropy_norm / num_main_improvement_steps,

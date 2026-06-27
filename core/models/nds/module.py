@@ -17,11 +17,6 @@ from core.models.nds.apply_rollout import (
     only_expanding_apply_rollout,
 )
 from core.models.nds.config import TrainConfig
-from core.models.nds.evaluation import (
-    BatchValidationSummary,
-    EpochValidationAccumulator,
-    configure_validation_step,
-)
 from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import resolve_improvement_step
 from core.models.nds.models.lns_native import LNSNativeModel
@@ -32,6 +27,11 @@ from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,
     configure_training_step,
+)
+from core.models.nds.validation import (
+    BatchValidationSummary,
+    EpochValidationAccumulator,
+    configure_validation_step,
 )
 from core.problems.instance import BaseProblemInstance
 from core.problems.solve import generate_initial_solution

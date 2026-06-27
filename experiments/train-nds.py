@@ -38,7 +38,6 @@ with app.setup(hide_code=True):
         ValidationConfig,
     )
     from core.models.nds.decoders.config import DecoderConfig
-    from core.models.nds.evaluation import EpochValidationSummary
     from core.models.nds.factory import build_model
     from core.models.nds.module import NDSModule
     from core.models.nds.policy_loss import PolicyLossConfig
@@ -48,6 +47,7 @@ with app.setup(hide_code=True):
     )
     from core.models.nds.reward import RewardConfig
     from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
+    from core.models.nds.validation import EpochValidationSummary
     from core.models.trainer import Trainer
     from core.models.utils import load_checkpoint
     from core.problems import make_problem_config
@@ -155,14 +155,12 @@ def _(env_config_widget, is_script_mode):
 @app.cell(hide_code=True)
 def _(defaults):
     loss_type, loss_forms = build_union_selector(PolicyLossConfig, defaults.loss)
-    mo.vstack([mo.md("### Policy loss"), loss_type, *loss_forms[loss_type.value].values()])
     return loss_forms, loss_type
 
 
 @app.cell(hide_code=True)
 def _(defaults):
     reward_type, reward_forms = build_union_selector(RewardConfig, defaults.reward)
-    mo.vstack([mo.md("### Reward"), reward_type, *reward_forms[reward_type.value].values()])
     return reward_forms, reward_type
 
 
@@ -361,6 +359,18 @@ def _(defaults):
     return (trainer_form,)
 
 
+@app.cell
+def _(loss_forms, loss_type):
+    mo.vstack([mo.md("### Policy loss"), loss_type, *loss_forms[loss_type.value].values()])
+    return
+
+
+@app.cell
+def _(reward_forms, reward_type):
+    mo.vstack([mo.md("### Reward"), reward_type, *reward_forms[reward_type.value].values()])
+    return
+
+
 @app.cell(hide_code=True)
 def _(defaults):
     search_form = build_mo_ui_dict(
@@ -438,9 +448,17 @@ def _(defaults):
     val_dataset_path_widget = mo.ui.file_browser(
         initial_path=_initial_path,
         multiple=False,
-        label="Validation dataset (select nothing = sample randomly)",
+        label="Validation dataset (override; preset default used if none selected)",
     )
-    mo.vstack([mo.md("### Validation"), *val_form.values(), val_dataset_path_widget])
+    _active = defaults.validation.dataset_path or "(none -> sample randomly)"
+    mo.vstack(
+        [
+            mo.md("### Validation"),
+            *val_form.values(),
+            mo.md(f"Current validation dataset: `{_active}`"),
+            val_dataset_path_widget,
+        ]
+    )
     return val_dataset_path_widget, val_form
 
 
@@ -502,6 +520,7 @@ def _(
     compile_form,
     decoder_forms,
     decoder_type,
+    defaults,
     encoder_form,
     encoder_mode_widget,
     freeze_encoder_widget,
@@ -588,7 +607,9 @@ def _(
             validation=ValidationConfig(
                 **val_form.value,
                 dataset_path=(
-                    val_dataset_path_widget.value[0].path if val_dataset_path_widget.value else None
+                    val_dataset_path_widget.value[0].path
+                    if val_dataset_path_widget.value
+                    else defaults.validation.dataset_path
                 ),
                 search=SearchParams(
                     **val_search_form.value,
@@ -600,6 +621,30 @@ def _(
             ),
         )
     return (config,)
+
+
+@app.cell(hide_code=True)
+def _(encoder_form, is_script_mode):
+    if not is_script_mode:
+        _enc = encoder_form.value
+        mo.vstack(
+            [
+                mo.md("### Encoder config (live preview)"),
+                mo.md(
+                    f"norm=**`{_enc.get('norm_type', '?')}`** &nbsp; "
+                    f"pre_norm=**`{_enc.get('pre_norm', '?')}`** &nbsp; "
+                    f"ff=**`{_enc.get('ff_activation', '?')}`**"
+                ),
+            ]
+        )
+    return
+
+
+@app.cell(hide_code=True)
+def _(config):
+    _config_yaml = yaml.safe_dump(config.model_dump(exclude={"run_name"}), sort_keys=False)
+    print(_config_yaml)
+    return
 
 
 @app.cell(column=2, hide_code=True)
@@ -771,9 +816,6 @@ def _(
             wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
 
     def on_epoch_train_end(summary: EpochTrainSummary):
-        mo.output.append(
-            mo.md(f"**Epoch {summary.epoch + 1}** - Obj: {summary.objective_after:.4f}")
-        )
         is_last = summary.epoch == config.trainer.epochs - 1
         is_checkpoint = (summary.epoch + 1) % config.trainer.checkpoint_every_n_epochs == 0
         if is_last or is_checkpoint:
@@ -845,7 +887,6 @@ def _(
     except BaseException:
         if config.logging.wandb_project:
             wandb.finish(exit_code=1)
-        raise
     else:
         if config.logging.wandb_project:
             _final_checkpoint, _final_epoch = find_latest_checkpoint(run_dir)

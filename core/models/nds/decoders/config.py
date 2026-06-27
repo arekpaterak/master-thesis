@@ -22,7 +22,7 @@ class SlotDecoderConfig(BaseModel):
     type: Literal["slot"] = "slot"
     k: int = Field(
         default=15,
-        title="Slot queries (k)",
+        title="Slot queries",
         description="Number of slot queries (should match deconstruction_size).",
     )
 
