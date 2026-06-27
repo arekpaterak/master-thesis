@@ -36,26 +36,26 @@ def test_factory_builds_split_model() -> None:
 
 
 def test_cvrp_rollout_shape_and_distinctness() -> None:
-    R, k = 10, 15
+    R, M = 10, 15
     model = _cvrp_model().eval()
     solution = _cvrp_solution(B=4, N=20)
 
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=k)
+    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
 
-    assert rollout.actions.shape == (4, R, k)
+    assert rollout.actions.shape == (4, R, M)
     assert rollout.log_p.shape == (4, R)
-    for action_sequence in rollout.actions.reshape(-1, k):
-        assert len(set(action_sequence.tolist())) == k
+    for action_sequence in rollout.actions.reshape(-1, M):
+        assert len(set(action_sequence.tolist())) == M
 
 
 def test_tsp_rollout_shape() -> None:
-    R, k = 4, 5
+    R, M = 4, 5
     model = build_model(SplitModelParams(decoder=SimpleOnePassDecoderConfig()), "tsp").eval()
     solution = _tsp_solution(B=3, N=20)
 
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=k)
+    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
 
-    assert rollout.actions.shape == (3, R, k)
+    assert rollout.actions.shape == (3, R, M)
 
 
 def test_cache_reused_in_eval_and_bypassed_in_train() -> None:

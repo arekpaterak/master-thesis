@@ -14,23 +14,23 @@ def log_prob_of_sequence_without_replacement(
 
     Args:
         logits: Logits for all nodes from the decoder. Shape: (..., N).
-        selected: Indices of selected nodes. Shape: (..., k).
+        selected: Indices of selected nodes. Shape: (..., M).
 
     Returns:
         Joint log-probability of the selected sequence. Shape: (...).
     """
-    k = selected.shape[-1]
+    M = selected.shape[-1]
 
     log_p = torch.zeros(*logits.shape[:-1], device=logits.device)
     mask = torch.zeros_like(logits, dtype=torch.bool, device=logits.device)
 
-    for k_idx in range(k):
+    for m_idx in range(M):
         masked_logits = logits.masked_fill(mask, float("-inf"))
         log_p += (
             F.log_softmax(masked_logits, dim=-1)
-            .gather(-1, selected[..., k_idx : k_idx + 1])
+            .gather(-1, selected[..., m_idx : m_idx + 1])
             .squeeze(-1)
         )
-        mask = mask.scatter(-1, selected[..., k_idx : k_idx + 1], True)
+        mask = mask.scatter(-1, selected[..., m_idx : m_idx + 1], True)
 
     return log_p

@@ -22,7 +22,7 @@ class SlotDecoder(OnePassDestroyDecoder):
 
     Slots attend to all nodes independently and each samples one node (Categorical),
     so selections are with replacement and duplicates can occur. The joint
-    log-probability is the sum of k independent per-slot log-probabilities.
+    log-probability is the sum of M independent per-slot log-probabilities.
     """
 
     def __init__(
@@ -73,31 +73,33 @@ class SlotDecoder(OnePassDestroyDecoder):
         # h_nodes: (B, N, hidden_dim), seed: (B, R, seed_dim), action_mask: (B, N)
         B, N, hidden_dim = h_nodes.shape
         R = seed.shape[1]
-        h_nodes = h_nodes.unsqueeze(1).expand(B, R, N, hidden_dim)  # (B, R, N, D)
-        action_mask = action_mask.unsqueeze(1).expand(B, R, N)  # (B, R, N)
 
-        queries = self.slot_queries.expand(B, R, self.num_slots, hidden_dim)
+        # MHA and slot self-attention do not depend on the rollout dimension R,
+        # so compute them once at (B, num_slots, hidden_dim) and expand to R only
+        # before poly_net, where the per-rollout seed first enters.
+        queries = self.slot_queries.expand(B, self.num_slots, hidden_dim)  # (B, M, D)
         if self.slot_self_attention == "pre":
             assert self.slot_self_attn is not None
             queries = queries + self.slot_self_attn(queries, queries, queries)
 
         mha_out = self.MHA(
             queries, h_nodes, h_nodes, attention_mask=~action_mask
-        )  # (B, R, M, hidden_dim)
+        )  # (B, M, hidden_dim)
 
         if self.slot_self_attention == "post":
             assert self.slot_self_attn is not None
             mha_out = mha_out + self.slot_self_attn(mha_out, mha_out, mha_out)
 
+        mha_out = mha_out.unsqueeze(1).expand(B, R, self.num_slots, hidden_dim)  # (B, R, M, D)
         seed_expanded = seed.unsqueeze(-2).expand(B, R, self.num_slots, self.seed_dim)
         context = mha_out + self.poly_net(
             torch.cat([mha_out, seed_expanded], dim=-1)
-        )  # (B, R, k, hidden_dim)
+        )  # (B, R, M, hidden_dim)
 
-        # Expand h_nodes and mask over the M slot dimension so scorer
+        # Expand h_nodes and mask over R and the M slot dimension so scorer
         # sees matching batch dims: (B, R, M, N, D) and (B, R, M, N)
-        h_nodes_per_slot = h_nodes.unsqueeze(-3).expand(B, R, self.num_slots, N, hidden_dim)
-        mask_per_slot = action_mask.unsqueeze(-2).expand(B, R, self.num_slots, N)
+        h_nodes_per_slot = h_nodes[:, None, None].expand(B, R, self.num_slots, N, hidden_dim)
+        mask_per_slot = action_mask[:, None, None].expand(B, R, self.num_slots, N)
         return self.scorer(
             h_c=context, h_nodes=h_nodes_per_slot, mask=mask_per_slot
         )  # (B, R, M, N)
@@ -117,7 +119,7 @@ class SlotDecoder(OnePassDestroyDecoder):
 
         logits_per_slot = self.forward(
             h_nodes=h_nodes, seed=seed, action_mask=action_mask
-        )  # (B, R, k, N)
+        )  # (B, R, M, N)
 
         if greedy:
             selected = logits_per_slot.argmax(dim=-1)  # (B, R, M)

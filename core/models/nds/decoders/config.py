@@ -20,7 +20,7 @@ class SimpleOnePassDecoderConfig(BaseModel):
 
 class SlotDecoderConfig(BaseModel):
     type: Literal["slot"] = "slot"
-    k: int = Field(
+    num_slots: int = Field(
         default=15,
         title="Slot queries",
         description="Number of slot queries (should match deconstruction_size).",

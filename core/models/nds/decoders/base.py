@@ -42,11 +42,11 @@ class DestroyDecoder(nn.Module, ABC):
             action_mask: Boolean mask where True marks forbidden nodes, shape (B, N).
                 Autoregressive decoders rebuild the (problem-specific, transitionable)
                 initial state internally and may ignore this argument.
-            deconstruction_size: Number of nodes to select (k).
+            deconstruction_size: Number of nodes to select (M).
             greedy: If True, select deterministically; otherwise sample stochastically.
             **kwargs: Decoder-specific additional inputs.
 
         Returns:
-            Rollout with actions (B, R, k) and log_p (B, R).
+            Rollout with actions (B, R, M) and log_p (B, R).
         """
         ...

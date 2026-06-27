@@ -114,10 +114,13 @@ def _method_specs(deconstruction_size: int) -> list[MethodSpec]:
             JointModelParams(decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=False)),
         ),
         MethodSpec("nds-simple", JointModelParams(decoder=SimpleOnePassDecoderConfig())),
-        MethodSpec("nds-slot", JointModelParams(decoder=SlotDecoderConfig(k=deconstruction_size))),
+        MethodSpec(
+            "nds-slot", JointModelParams(decoder=SlotDecoderConfig(num_slots=deconstruction_size))
+        ),
         MethodSpec("lns-native-simple", SplitModelParams(decoder=SimpleOnePassDecoderConfig())),
         MethodSpec(
-            "lns-native-slot", SplitModelParams(decoder=SlotDecoderConfig(k=deconstruction_size))
+            "lns-native-slot",
+            SplitModelParams(decoder=SlotDecoderConfig(num_slots=deconstruction_size)),
         ),
         MethodSpec("lns-native-ar", SplitModelParams(decoder=AutoregressiveDecoderConfig())),
     ]

@@ -32,7 +32,7 @@ def build_decoder(
         case SlotDecoderConfig():
             return SlotDecoder(
                 **shared,
-                num_slots=decoder_config.k,
+                num_slots=decoder_config.num_slots,
                 slot_self_attention=decoder_config.slot_self_attention,
             )
         case _:

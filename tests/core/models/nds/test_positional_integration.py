@@ -52,7 +52,7 @@ def test_tsp_embedding_concat_grows_projection_and_shape():
 
 
 def test_cvrp_model_rollout_with_positional_encoding():
-    B, R, N, k = 2, 4, 20, 5
+    B, R, N, M = 2, 4, 20, 5
     instance = CVRPSampler(CVRP.for_n(N))(B)
     solution = CVRPGraphSolution.one_customer_per_route(instance)
 
@@ -61,5 +61,5 @@ def test_cvrp_model_rollout_with_positional_encoding():
         positional=PositionalEncodingConfig(dim=8),
     )
     model.eval()
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=k)
-    assert rollout.actions.shape == (B, R, k)
+    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
+    assert rollout.actions.shape == (B, R, M)

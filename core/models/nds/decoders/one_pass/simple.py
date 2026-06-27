@@ -70,14 +70,14 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
 
         log_p_detached = logits.detach()
         if greedy:
-            selected = log_p_detached.topk(deconstruction_size, dim=-1).indices  # (B, R, k)
+            selected = log_p_detached.topk(deconstruction_size, dim=-1).indices  # (B, R, M)
         else:
             gumbel = torch.distributions.Gumbel(
                 torch.zeros_like(log_p_detached), torch.ones_like(log_p_detached)
             ).sample()
             selected = (
                 (log_p_detached + gumbel).topk(deconstruction_size, dim=-1).indices
-            )  # (B, R, k)
+            )  # (B, R, M)
 
         _entropy = entropy(logits)
         log_p_of_selected = log_prob_of_sequence_without_replacement(logits, selected)  # (B, R)
