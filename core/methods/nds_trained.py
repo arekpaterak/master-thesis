@@ -11,7 +11,7 @@ from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
 from core.models.nds.config import TrainConfig
 from core.models.nds.factory import build_model
-from core.models.nds.improvement_step import resolve_improvement_step
+from core.models.nds.improvement_step import build_nds_improvement_step
 
 
 class NDSTrainedConfig(BaseModel):
@@ -50,15 +50,7 @@ class NDSTrainedMethod:
             config.search.repair_type,
             deconstruction_size=config.search.deconstruction_size,
         )
-        step_cls = resolve_improvement_step(config.search.improvement_step_type)
-        improvement_step = step_cls(
-            model=model,
-            repair=repair,
-            num_rollouts=config.search.num_rollouts,
-            deconstruction_size=config.search.deconstruction_size,
-            n_repairs=config.search.n_repairs,
-            first_repair_uses_rollout_order=config.search.first_repair_uses_rollout_order,
-        )
+        improvement_step = build_nds_improvement_step(config.search, model=model, repair=repair)
         name = (
             f"nds-{train_config.model.decoder.type}"
             f"-d{config.search.deconstruction_size}-r{config.search.n_repairs}"

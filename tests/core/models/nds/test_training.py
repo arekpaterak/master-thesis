@@ -19,7 +19,7 @@ def test_train():
                 num_main_improvement_steps=3,
             ),
             search=SearchParams(
-                repair_type="noop",
+                repair_type="greedy_insert",
                 num_improvement_steps=0,
                 num_rollouts=R,
                 deconstruction_size=15,
@@ -52,7 +52,7 @@ def test_train_with_amp_enabled():
                 num_main_improvement_steps=2,
             ),
             search=SearchParams(
-                repair_type="noop",
+                repair_type="greedy_insert",
                 num_improvement_steps=0,
                 num_rollouts=R,
                 deconstruction_size=15,

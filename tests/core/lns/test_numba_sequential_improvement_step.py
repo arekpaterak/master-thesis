@@ -92,13 +92,6 @@ class TestNumbaSequentialImprovementStep:
 
         assert torch.equal(first.next_nodes, second.next_nodes)
 
-    def test_rejects_non_random_node_destroy(self) -> None:
-        class _Dummy:
-            pass
-
-        with pytest.raises(NotImplementedError):
-            NumbaSequentialImprovementStep(destroy=_Dummy(), repair=CVRPGreedyInsertRepair())
-
 
 def _two_route_problem() -> dict:
     """Single element, two routes A=[1,2], B=[3,4]. Customer 1 sits right next to

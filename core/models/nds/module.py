@@ -8,17 +8,13 @@ import torch.nn as nn
 import torch.optim as optim
 
 from core.lns.acceptance_criterion import build_criterion
-from core.lns.config import SearchParams
 from core.lns.operators.repair import RepairOperator
 from core.lns.start_solution import with_warmup
 from core.models.module import Module
-from core.models.nds.apply_rollout import (
-    apply_rollout,
-    only_expanding_apply_rollout,
-)
+from core.models.nds.apply_rollout import apply_rollout
 from core.models.nds.config import TrainConfig
 from core.models.nds.factory import NDSModel
-from core.models.nds.improvement_step import resolve_improvement_step
+from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.models.lns_native import LNSNativeModel
 from core.models.nds.models.one_pass import OnePassNDSModel
 from core.models.nds.policy_loss import build_policy_loss
@@ -85,14 +81,15 @@ class NDSModule(Module):
                 config.validation.search.deconstruction_size,
             ),
         )
-        if config.search.repair_type == "noop":
-            apply_rollout_fn = only_expanding_apply_rollout
-        elif repair.requires_stitch:
-            apply_rollout_fn = functools.partial(apply_rollout, stitch=True)
-        else:
-            apply_rollout_fn = apply_rollout
+        apply_rollout_fn = (
+            functools.partial(apply_rollout, stitch=True)
+            if repair.requires_stitch
+            else apply_rollout
+        )
 
-        training_improvement_step = self._build_improvement_step(model, repair, config.search)
+        training_improvement_step = build_nds_improvement_step(
+            config.search, model=model, repair=repair
+        )
 
         self._training_step_fn = configure_training_step(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
@@ -112,8 +109,8 @@ class NDSModule(Module):
             improvement_step_progress=improvement_step_progress,
         )
 
-        validation_improvement_step = self._build_improvement_step(
-            model, repair, config.validation.search
+        validation_improvement_step = build_nds_improvement_step(
+            config.validation.search, model=model, repair=repair
         )
         validation_criterion = build_criterion(
             config.validation.search.acceptance,
@@ -151,20 +148,3 @@ class NDSModule(Module):
         epoch: int,
     ) -> BatchValidationSummary:
         return self._validation_step_fn(self.model, instance, epoch)
-
-    @staticmethod
-    def _build_improvement_step(
-        model: NDSModel,
-        repair: RepairOperator,
-        search: SearchParams,
-    ):
-        step_cls = resolve_improvement_step(search.improvement_step_type)
-        return step_cls(
-            model=model,
-            repair=repair,
-            num_rollouts=search.num_rollouts,
-            deconstruction_size=search.deconstruction_size,
-            n_repairs=search.n_repairs,
-            first_repair_uses_rollout_order=search.first_repair_uses_rollout_order,
-            insert_in_new_routes_only=search.insert_in_new_routes_only,
-        )

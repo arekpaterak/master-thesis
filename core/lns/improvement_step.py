@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from core.constants import EPS
 from core.problems.solution import BaseSolution
 
@@ -11,9 +13,9 @@ from .acceptance_criterion import (
     GreedyAcceptance,
     SimulatedAnnealingAcceptance,
 )
-from .operators.destroy.base import DestroyOperator
+from .operators.destroy.base import NodeDestroyOperator
 from .operators.repair.base import RepairOperator
-from .utils import best_repair, select_solution
+from .utils import apply_nodes, best_repair, select_solution
 
 if TYPE_CHECKING:
     from .config import SearchParams
@@ -33,7 +35,7 @@ class SequentialImprovementStep(ImprovementStep):
     def __init__(
         self,
         *,
-        destroy: DestroyOperator,
+        destroy: NodeDestroyOperator,
         repair: RepairOperator,
         num_rollouts: int = 1,
         n_repairs: int = 1,
@@ -44,9 +46,10 @@ class SequentialImprovementStep(ImprovementStep):
         self._n_repairs = n_repairs
 
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
+        nodes = self._destroy.select_nodes(solution, self._num_rollouts)  # [*B, R, M]
         current = solution
-        for _ in range(self._num_rollouts):
-            deconstructed = self._destroy(current)
+        for r in range(self._num_rollouts):
+            deconstructed = apply_nodes(current, nodes[..., r, :], stitch=self._destroy.stitch)
             candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)
             current = select_solution(mask, candidate, current)
@@ -57,7 +60,7 @@ class ParallelImprovementStep(ImprovementStep):
     def __init__(
         self,
         *,
-        destroy: DestroyOperator,
+        destroy: NodeDestroyOperator,
         repair: RepairOperator,
         num_rollouts: int = 1,
         n_repairs: int = 1,
@@ -68,10 +71,8 @@ class ParallelImprovementStep(ImprovementStep):
         self._n_repairs = n_repairs
 
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
-        R = self._num_rollouts
-        expanded = solution.unsqueeze(-1).expand(*solution.batch_size, R)
-
-        deconstructed = self._destroy(expanded)
+        nodes = self._destroy.select_nodes(solution, self._num_rollouts)  # [*B, R, M]
+        deconstructed = apply_nodes(solution, nodes, stitch=self._destroy.stitch)
         candidate = best_repair(self._repair, deconstructed, self._n_repairs)
         best_idx = candidate.objective().argmin(dim=-1, keepdim=True)
         best_from_candidate = candidate.gather(-1, best_idx).squeeze(-1)
@@ -80,44 +81,41 @@ class ParallelImprovementStep(ImprovementStep):
 
 
 class NumbaSequentialImprovementStep(ImprovementStep):
-    """CPU/numba sequential step for CVRP with in-kernel random-node destroy.
+    """CPU/numba sequential step for CVRP.
 
-    Folds the whole rollout loop (random-node destroy, best-of-n greedy
-    cheapest-insertion and acceptance) into a single numba pass over the batch,
-    avoiding the per-iteration GPU kernel launches of ``SequentialImprovementStep``.
-    Only supports a stitched CVRP greedy-insert repair (the kernel reimplements the
-    repair, so the ``repair`` argument is validated and otherwise unused) paired
-    with ``RandomNodeDestroy``.
+    Accepts any :class:`NodeDestroyOperator`. Calls ``select_nodes`` to obtain
+    all rollout node sets upfront, then folds the whole rollout loop (stitch-destroy,
+    best-of-n greedy cheapest-insertion and acceptance) into a single numba pass,
+    avoiding per-iteration GPU kernel launches.
+
+    Only the stitched CVRP greedy-insert repair is supported (the kernel reimplements
+    the repair, so the ``repair`` argument is validated and otherwise unused).
     """
 
     def __init__(
         self,
         *,
-        destroy: DestroyOperator,
+        destroy: NodeDestroyOperator,
         repair: RepairOperator,
         num_rollouts: int = 1,
         n_repairs: int = 1,
         seed: int = 0,
+        first_repair_uses_rollout_order: bool = False,
         insert_in_new_routes_only: bool = False,
     ) -> None:
-        from .operators.destroy.random_node import RandomNodeDestroy
-
-        if not isinstance(destroy, RandomNodeDestroy):
-            raise NotImplementedError(
-                "NumbaSequentialImprovementStep only supports RandomNodeDestroy."
-            )
         if getattr(repair, "problem_name", None) != "cvrp" or not repair.requires_stitch:
             raise NotImplementedError(
                 "NumbaSequentialImprovementStep only supports the stitched CVRP greedy-insert repair."
             )
-        self._destruction_size = destroy.destruction_size
+        self._destroy = destroy
         self._num_rollouts = num_rollouts
         self._n_repairs = n_repairs
         self._seed = seed
+        self._first_repair_uses_rollout_order = first_repair_uses_rollout_order
         self._insert_in_new_routes_only = insert_in_new_routes_only
 
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
-        from core.lns.numba_kernels.cvrp_sequential_improvement_step import run_with_random
+        from core.lns.numba_kernels.cvrp_sequential_improvement_step import run_with_removals
         from core.problems.cvrp.graph_solution import CVRPGraphSolution
 
         if not isinstance(solution, CVRPGraphSolution):
@@ -125,21 +123,30 @@ class NumbaSequentialImprovementStep(ImprovementStep):
                 f"NumbaSequentialImprovementStep not implemented for {type(solution)}"
             )
 
+        nodes = self._destroy.select_nodes(solution, self._num_rollouts)  # [*B, R, M]
         accept_kind, temperature = _acceptance_to_kernel(accept)
         next_np, prev_np, locations, demand, capacity = solution.to_numpy_arrays()
-        next_out, prev_out = run_with_random(
+        nodes_to_remove = (
+            nodes.reshape(-1, nodes.shape[-2], nodes.shape[-1])
+            .detach()
+            .cpu()
+            .contiguous()
+            .numpy()
+            .astype(np.int64, copy=False)
+        )
+        next_out, prev_out = run_with_removals(
             next=next_np,
             prev=prev_np,
+            nodes_to_remove=nodes_to_remove,
             locations=locations,
             demand=demand,
             capacity=capacity,
-            num_rollouts=self._num_rollouts,
-            destruction_size=self._destruction_size,
             n_repairs=self._n_repairs,
             accept_kind=accept_kind,
             temperature=temperature,
             eps=EPS,
             base_seed=self._seed,
+            first_repair_uses_order=self._first_repair_uses_rollout_order,
             insert_in_new_routes_only=self._insert_in_new_routes_only,
         )
         return CVRPGraphSolution.from_numpy_arrays(
@@ -154,13 +161,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
 def build_random_destroy_step(
     search: SearchParams, *, problem_name: str, seed: int | None
 ) -> ImprovementStep:
-    """Build a random-node-destroy improvement step from a search config.
-
-    All knobs (``repair_type``, ``improvement_step_type``, ``deconstruction_size``,
-    ``num_rollouts``, ``n_repairs``) are read from ``search``; callers that need different
-    knobs (e.g. the start-solution warmup) pass a modified copy of the search config.
-    """
-    # Lazy import: top-level would create a cycle (random_node -> problems -> ... -> lns).
+    """Build a random-node-destroy improvement step from a search config."""
     from .operators.destroy.random_node import RandomNodeDestroy
 
     repair = RepairOperator.create(
@@ -200,10 +201,7 @@ def build_random_destroy_step(
 
 
 def _acceptance_to_kernel(accept: AcceptanceCriterion) -> tuple[int, float]:
-    """Map an acceptance criterion to the (kind, temperature) the numba kernel expects.
-
-    ``kind`` is 0 for greedy (strict improvement) and 1 for simulated annealing.
-    """
+    """Map an acceptance criterion to the (kind, temperature) the numba kernel expects."""
     if isinstance(accept, GreedyAcceptance):
         return 0, 0.0
     if isinstance(accept, SimulatedAnnealingAcceptance):
