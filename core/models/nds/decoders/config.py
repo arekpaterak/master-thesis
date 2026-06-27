@@ -25,6 +25,14 @@ class SlotDecoderConfig(BaseModel):
         title="Slot queries",
         description="Number of slot queries (should match deconstruction_size).",
     )
+    slot_self_attention: Literal["none", "pre", "post"] = Field(
+        default="post",
+        title="Slot self-attention",
+        description=(
+            "Where to apply self-attention among slot queries: disabled, before node "
+            "cross-attention, or after node cross-attention."
+        ),
+    )
 
 
 DecoderConfig = Annotated[

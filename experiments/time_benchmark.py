@@ -30,6 +30,7 @@ from time import perf_counter
 
 import torch
 import typer
+from tqdm import tqdm
 
 from core.lns.acceptance_criterion import (
     AcceptanceCriterion,
@@ -60,6 +61,8 @@ CSV_FIELDS = [
     "method",
     "step_type",
     "step",
+    "objective",
+    "objective_std",
     "cumulative_time_ms",
     "cumulative_time_std_ms",
     "mean_step_ms",
@@ -67,6 +70,7 @@ CSV_FIELDS = [
     "problem",
     "problem_size",
     "batch_size",
+    "num_parameters",
     "deconstruction_size",
     "num_rollouts",
     "n_repairs",
@@ -79,7 +83,15 @@ CSV_FIELDS = [
 ]
 
 # Columns identifying a unique measurement; re-running overwrites the matching row.
-KEY_FIELDS = ("method", "step_type", "step", "problem", "problem_size", "deconstruction_size")
+KEY_FIELDS = (
+    "method",
+    "step_type",
+    "step",
+    "problem",
+    "problem_size",
+    "batch_size",
+    "deconstruction_size",
+)
 
 
 @dataclass(frozen=True)
@@ -132,6 +144,12 @@ def _build_step(
     return build_nds_improvement_step(search, model=model, repair=repair, seed=seed)
 
 
+def _count_parameters(spec: MethodSpec, problem_name: str) -> int:
+    if spec.model_params is None:
+        return 0
+    return sum(p.numel() for p in build_model(spec.model_params, problem_name).parameters())
+
+
 def _make_search(
     *,
     step_type: str,
@@ -166,21 +184,23 @@ def _run_search(
     num_steps: int,
     checkpoints: list[int],
     device: torch.device,
-) -> dict[int, float]:
-    """Run the full search once, returning cumulative seconds at each checkpoint."""
+) -> tuple[dict[int, float], dict[int, float]]:
+    """Run the full search once, returning cumulative seconds and objective at checkpoints."""
     checkpoint_set = set(checkpoints)
     criterion.reset()
     cumulative: dict[int, float] = {}
+    objective: dict[int, float] = {}
     with torch.no_grad():
         _sync(device)
         start = perf_counter()
-        for s in range(1, num_steps + 1):
+        for s in tqdm(range(1, num_steps + 1), desc="search", leave=False):
             solution = step(solution, criterion)
             criterion.step()
             if s in checkpoint_set:
                 _sync(device)
                 cumulative[s] = perf_counter() - start
-    return cumulative
+                objective[s] = solution.objective().mean().item()
+    return cumulative, objective
 
 
 def _warmup(
@@ -307,6 +327,7 @@ def main(
     )
 
     for spec in all_specs:
+        num_parameters = _count_parameters(spec, problem_name)
         for step_type in step_types:
             search = _make_search(
                 step_type=step_type,
@@ -318,14 +339,15 @@ def main(
                 acceptance=acceptance_config,
             )
 
-            samples_per_checkpoint: dict[int, list[float]] = {c: [] for c in checkpoints}
+            time_samples_per_checkpoint: dict[int, list[float]] = {c: [] for c in checkpoints}
+            objective_samples_per_checkpoint: dict[int, list[float]] = {c: [] for c in checkpoints}
             for _ in range(repeats):
                 step = _build_step(
                     spec, search, problem_name=problem_name, device=torch_device, seed=seed
                 )
                 solution = generate_initial_solution(instance)
                 criterion = build_criterion(search.acceptance, n_steps=num_steps)
-                cumulative = _run_search(
+                cumulative, objective = _run_search(
                     step,
                     solution,
                     criterion,
@@ -334,18 +356,26 @@ def main(
                     device=torch_device,
                 )
                 for c in checkpoints:
-                    samples_per_checkpoint[c].append(cumulative[c])
+                    time_samples_per_checkpoint[c].append(cumulative[c])
+                    objective_samples_per_checkpoint[c].append(objective[c])
 
             new_rows: list[dict[str, object]] = []
             for c in checkpoints:
-                samples = samples_per_checkpoint[c]
-                mean_ms = statistics.mean(samples) * 1e3
-                std_ms = statistics.stdev(samples) * 1e3 if len(samples) > 1 else 0.0
+                time_samples = time_samples_per_checkpoint[c]
+                objective_samples = objective_samples_per_checkpoint[c]
+                mean_ms = statistics.mean(time_samples) * 1e3
+                std_ms = statistics.stdev(time_samples) * 1e3 if len(time_samples) > 1 else 0.0
+                mean_objective = statistics.mean(objective_samples)
+                std_objective = (
+                    statistics.stdev(objective_samples) if len(objective_samples) > 1 else 0.0
+                )
                 new_rows.append(
                     {
                         "method": spec.name,
                         "step_type": step_type,
                         "step": c,
+                        "objective": round(mean_objective, 6),
+                        "objective_std": round(std_objective, 6),
                         "cumulative_time_ms": round(mean_ms, 4),
                         "cumulative_time_std_ms": round(std_ms, 4),
                         "mean_step_ms": round(mean_ms / c, 4),
@@ -353,6 +383,7 @@ def main(
                         "problem": problem_name,
                         "problem_size": size,
                         "batch_size": batch_size,
+                        "num_parameters": num_parameters,
                         "deconstruction_size": deconstruction_size,
                         "num_rollouts": num_rollouts,
                         "n_repairs": n_repairs,

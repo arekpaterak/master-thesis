@@ -30,6 +30,10 @@ def build_decoder(
         case SimpleOnePassDecoderConfig():
             return SimpleOnePassDecoder(**shared)
         case SlotDecoderConfig():
-            return SlotDecoder(**shared, k=decoder_config.k)
+            return SlotDecoder(
+                **shared,
+                num_slots=decoder_config.k,
+                slot_self_attention=decoder_config.slot_self_attention,
+            )
         case _:
             raise ValueError(f"Unknown decoder config: {type(decoder_config).__name__}")

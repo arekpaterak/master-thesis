@@ -10,7 +10,7 @@ model:
   seed_dim: 10
   decoder:
     type: slot
-    k: 15
+    num_slots: 15
   original_pretrained_weights:
     path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
     load_decoder: false

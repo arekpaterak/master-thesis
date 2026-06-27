@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 import torch
 import torch.nn as nn
 
@@ -12,7 +14,7 @@ from .base import OnePassDestroyDecoder
 
 
 class SlotDecoder(OnePassDestroyDecoder):
-    """Destroy decoder using k independent learned slot queries conditioned on the seed.
+    """Destroy decoder using M independent learned slot queries conditioned on the seed.
 
     Each slot has a dedicated learned query vector (nn.Parameter) that specialises
     during training. The seed is incorporated via poly_net as a residual after MHA,
@@ -30,17 +32,25 @@ class SlotDecoder(OnePassDestroyDecoder):
         seed_dim: int,
         poly_dim: int,
         num_heads: int,
-        k: int,
+        num_slots: int,
+        slot_self_attention: Literal["none", "pre", "post"] = "post",
         C: float = 10.0,
     ):
         super().__init__()
+        if slot_self_attention not in {"none", "pre", "post"}:
+            raise ValueError(f"Unknown slot_self_attention: {slot_self_attention!r}")
         self._seed_dim = seed_dim
-        self.k = k
+        self.num_slots = num_slots
+        self.slot_self_attention = slot_self_attention
 
-        self.slot_queries = nn.Parameter(torch.empty(k, hidden_dim))
+        self.slot_queries = nn.Parameter(torch.empty(num_slots, hidden_dim))
         nn.init.xavier_uniform_(self.slot_queries.unsqueeze(0))
 
-        self.slot_self_attn = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
+        self.slot_self_attn = (
+            MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
+            if slot_self_attention != "none"
+            else None
+        )
         self.MHA = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
         self.poly_net = nn.Sequential(
             nn.Linear(hidden_dim + seed_dim, poly_dim),
@@ -66,27 +76,31 @@ class SlotDecoder(OnePassDestroyDecoder):
         h_nodes = h_nodes.unsqueeze(1).expand(B, R, N, hidden_dim)  # (B, R, N, D)
         action_mask = action_mask.unsqueeze(1).expand(B, R, N)  # (B, R, N)
 
-        queries = self.slot_queries.expand(B, R, self.k, hidden_dim)
-        # Self-attention among slots so they become aware of each other before attending to nodes
-        slot_context = self.slot_self_attn(queries, queries, queries)
-        queries = queries + slot_context
+        queries = self.slot_queries.expand(B, R, self.num_slots, hidden_dim)
+        if self.slot_self_attention == "pre":
+            assert self.slot_self_attn is not None
+            queries = queries + self.slot_self_attn(queries, queries, queries)
 
         mha_out = self.MHA(
             queries, h_nodes, h_nodes, attention_mask=~action_mask
-        )  # (B, R, k, hidden_dim)
+        )  # (B, R, M, hidden_dim)
 
-        seed_expanded = seed.unsqueeze(-2).expand(B, R, self.k, self.seed_dim)
+        if self.slot_self_attention == "post":
+            assert self.slot_self_attn is not None
+            mha_out = mha_out + self.slot_self_attn(mha_out, mha_out, mha_out)
+
+        seed_expanded = seed.unsqueeze(-2).expand(B, R, self.num_slots, self.seed_dim)
         context = mha_out + self.poly_net(
             torch.cat([mha_out, seed_expanded], dim=-1)
         )  # (B, R, k, hidden_dim)
 
-        # Expand h_nodes and mask over the k slot dimension so scorer
-        # sees matching batch dims: (B, R, k, N, D) and (B, R, k, N)
-        h_nodes_per_slot = h_nodes.unsqueeze(-3).expand(B, R, self.k, N, hidden_dim)
-        mask_per_slot = action_mask.unsqueeze(-2).expand(B, R, self.k, N)
+        # Expand h_nodes and mask over the M slot dimension so scorer
+        # sees matching batch dims: (B, R, M, N, D) and (B, R, M, N)
+        h_nodes_per_slot = h_nodes.unsqueeze(-3).expand(B, R, self.num_slots, N, hidden_dim)
+        mask_per_slot = action_mask.unsqueeze(-2).expand(B, R, self.num_slots, N)
         return self.scorer(
             h_c=context, h_nodes=h_nodes_per_slot, mask=mask_per_slot
-        )  # (B, R, k, N)
+        )  # (B, R, M, N)
 
     def rollout(
         self,
@@ -99,26 +113,26 @@ class SlotDecoder(OnePassDestroyDecoder):
         **kwargs,
     ) -> Rollout:
         # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
-        assert deconstruction_size == self.k
+        assert deconstruction_size == self.num_slots
 
         logits_per_slot = self.forward(
             h_nodes=h_nodes, seed=seed, action_mask=action_mask
         )  # (B, R, k, N)
 
         if greedy:
-            selected = logits_per_slot.argmax(dim=-1)  # (B, R, k)
+            selected = logits_per_slot.argmax(dim=-1)  # (B, R, M)
         else:
             # Sample one node per slot (independent Categorical, with possible duplicates)
             selected = torch.distributions.Categorical(
                 logits=logits_per_slot.detach()
-            ).sample()  # (B, R, k)
+            ).sample()  # (B, R, M)
 
         log_p_of_selected = logits_per_slot.gather(-1, selected.unsqueeze(-1)).squeeze(
             -1
-        )  # (B, R, k)
+        )  # (B, R, M)
 
         # Mean entropy across slots, each slot has an independent distribution over N nodes
-        per_slot_entropy = entropy(logits_per_slot)  # (B, R, k)
+        per_slot_entropy = entropy(logits_per_slot)  # (B, R, M)
 
         return Rollout.create(
             actions=selected,
