@@ -5,13 +5,10 @@ from core.models.nds.config import ModelParams, SplitModelParams
 from .decoders.config import (
     AutoregressiveDecoderConfig,
     DecoderConfig,
-    ProximityCategoricalSelectorConfig,
-    ProximityDecoderConfig,
     SimpleOnePassDecoderConfig,
     SlotDecoderConfig,
 )
 from .decoders.one_pass.base import OnePassDestroyDecoder
-from .decoders.one_pass.proximity import ProximityCategoricalDecoder, ProximityDecoder
 from .decoders.one_pass.simple import SimpleOnePassDecoder
 from .decoders.one_pass.slot import SlotDecoder
 from .models import NDSModel
@@ -72,13 +69,5 @@ def _build_one_pass_decoder(
             return SimpleOnePassDecoder(**shared)
         case SlotDecoderConfig():
             return SlotDecoder(**shared, k=decoder_config.k)
-        case ProximityDecoderConfig():
-            return ProximityDecoder(**shared, sigma=decoder_config.sigma)
-        case ProximityCategoricalSelectorConfig():
-            return ProximityCategoricalDecoder(
-                **shared,
-                sigma_init=decoder_config.sigma_init,
-                anisotropic=decoder_config.anisotropic,
-            )
         case _:
             raise ValueError(f"Not a one-pass decoder config: {type(decoder_config).__name__}")

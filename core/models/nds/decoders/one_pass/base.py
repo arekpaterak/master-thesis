@@ -41,7 +41,7 @@ class OnePassDestroyDecoder(nn.Module, ABC):
             action_mask: Boolean mask where True marks forbidden nodes. Shape: (B, N).
             deconstruction_size: Number of nodes to select (k).
             greedy: If True, select deterministically; otherwise sample stochastically.
-            **kwargs: Decoder-specific additional inputs (e.g., node_coords).
+            **kwargs: Decoder-specific additional inputs.
 
         Returns:
             Rollout with actions (B, R, k) and log_p (B, R).

@@ -8,10 +8,6 @@ import torch.nn as nn
 from core.models.embeddings.positional import circular_sinusoidal_encoding
 from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.decoders.one_pass.base import OnePassDestroyDecoder
-from core.models.nds.decoders.one_pass.proximity import (
-    ProximityCategoricalDecoder,
-    ProximityDecoder,
-)
 from core.models.nds.encoder import NDSEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
@@ -60,14 +56,12 @@ class SolutionPositionalFusion(nn.Module):
 class InstanceCache(NamedTuple):
     """Static per-instance encoder products reused across LNS iterations.
 
-    Holds the instance embeddings, the cross-route positional encoding (XPE, ``None``
-    for TSP) and the node coordinates needed by proximity decoders -- all independent
-    of the current solution.
+    Holds the instance embeddings and the cross-route positional encoding (XPE, ``None``
+    for TSP) -- all independent of the current solution.
     """
 
     instance_node_embeddings: torch.Tensor
     xpe: torch.Tensor | None
-    node_coordinates: torch.Tensor
 
 
 class LNSNativeModel(nn.Module):
@@ -166,17 +160,12 @@ class LNSNativeModel(nn.Module):
             batch_size=B, rollout_size=1, num_nodes=N, device=device
         ).action_mask.squeeze(1)  # (B, N)
 
-        extra_kwargs = {}
-        if isinstance(self.decoder, (ProximityDecoder, ProximityCategoricalDecoder)):
-            extra_kwargs["node_coordinates"] = cache.node_coordinates  # (B, N, 2)
-
         rollout = self.decoder.rollout(
             h_nodes=h_nodes,
             seed=seed,
             action_mask=action_mask,
             deconstruction_size=deconstruction_size,
             greedy=greedy,
-            **extra_kwargs,
         )
         return unflatten_rollout(rollout, batch_dims)
 
@@ -209,7 +198,6 @@ class LNSNativeModel(nn.Module):
         return InstanceCache(
             instance_node_embeddings=instance_node_embeddings,
             xpe=xpe,
-            node_coordinates=instance_features.locations,
         )
 
     def _cross_route_encoding(self, instance_features) -> torch.Tensor | None:
