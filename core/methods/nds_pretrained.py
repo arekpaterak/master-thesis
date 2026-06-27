@@ -9,9 +9,9 @@ from core.lns.config import SearchParams
 from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
 from core.models.nds.config import ModelParams
+from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
-from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.problems import ProblemConfig
 
 
@@ -43,9 +43,9 @@ class NDSPretrainedMethod:
         )
 
         model = build_model(config.model, problem.name).to(device)
-        if not isinstance(model, AutoregressiveNDSModel):
+        if not isinstance(getattr(model, "decoder", None), AutoregressiveNDSDecoder):
             raise ValueError(
-                "Expected the original NDS checkpoint to be used with an autoregressive model."
+                "Expected the original NDS checkpoint to be used with an autoregressive decoder."
             )
 
         load_original_pretrained_encoder_weights(model.encoder, config.checkpoint_path)

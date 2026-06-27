@@ -5,14 +5,14 @@ from core.models.nds.decoders.config import (
     SimpleOnePassDecoderConfig,
 )
 from core.models.nds.factory import build_model
-from core.models.nds.models.lns_native import LNSNativeModel
+from core.models.nds.models.split import SplitNDSModel
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.tsp import TSP, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
 
 
-def _cvrp_model() -> LNSNativeModel:
+def _cvrp_model() -> SplitNDSModel:
     return build_model(SplitModelParams(decoder=SimpleOnePassDecoderConfig()), "cvrp")
 
 
@@ -27,9 +27,9 @@ def _tsp_solution(B: int = 3, N: int = 20) -> TSPGraphSolution:
     return TSPGraphSolution.create_from_sequence(instance, tour)
 
 
-def test_factory_builds_lns_native() -> None:
+def test_factory_builds_split_model() -> None:
     model = _cvrp_model()
-    assert isinstance(model, LNSNativeModel)
+    assert isinstance(model, SplitNDSModel)
 
     # Cache state must not leak into the persisted weights.
     assert all("instance_cache" not in k and "cached" not in k for k in model.state_dict())

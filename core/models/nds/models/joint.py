@@ -5,7 +5,8 @@ from typing import Literal
 import torch.nn as nn
 
 from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
-from core.models.nds.decoders.one_pass.base import OnePassDestroyDecoder
+from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
+from core.models.nds.decoders.factory import build_decoder
 from core.models.nds.encoder import NDSEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
@@ -20,10 +21,18 @@ from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
     TSPSolutionFeatureExtractor,
 )
-from core.states.destroy import CVRPDestroyState, TSPDestroyState
+from core.states.destroy import initial_action_mask
 
 
-class OnePassNDSModel(nn.Module):
+class JointNDSModel(nn.Module):
+    """NDS joint-encoder model: re-encodes the instance and solution every step, then
+    runs a destroy decoder selected by ``decoder``.
+
+    Any :class:`DestroyDecoder` (autoregressive or one-pass) plugs in; the decoder is
+    built from its config in ``__init__``, so the model stays agnostic to the selection
+    strategy. Positional encoding, if set, is injected before the encoder.
+    """
+
     def __init__(
         self,
         *,
@@ -31,11 +40,13 @@ class OnePassNDSModel(nn.Module):
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
+        poly_dim: int = 256,
+        seed_dim: int = 10,
         encoder_config: EncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
         with_neighbours_encoding: bool = True,
         with_route_encoding: bool | None = None,
-        decoder: OnePassDestroyDecoder,
+        decoder: DecoderConfig | None = None,
     ) -> None:
         super().__init__()
 
@@ -60,7 +71,7 @@ class OnePassNDSModel(nn.Module):
                     with_positional=with_positional
                 )
             case _:
-                raise ValueError(f"Unsupported problem_name: {self.problem_name}")
+                raise ValueError(f"Unsupported problem_name: {problem_name}")
 
         self.encoder = NDSEncoder(
             problem_name=problem_name,
@@ -72,7 +83,13 @@ class OnePassNDSModel(nn.Module):
             with_neighbours_encoding=with_neighbours_encoding,
             with_route_encoding=with_route_encoding,
         )
-        self.decoder = decoder
+        self.decoder = build_decoder(
+            decoder or AutoregressiveDecoderConfig(),
+            hidden_dim=hidden_dim,
+            seed_dim=seed_dim,
+            poly_dim=poly_dim,
+            num_heads=num_heads,
+        )
 
     def rollout(
         self,
@@ -96,21 +113,13 @@ class OnePassNDSModel(nn.Module):
         instance_features = self.instance_feature_extractor(instance).to(device)
         solution_features = self.solution_feature_extractor(solution).to(device)
 
-        encoded_nodes = self.encoder(instance_features, solution_features)  # (B, N, D)
-        N = encoded_nodes.shape[1]
-
-        match self.problem_name:
-            case "cvrp":
-                destroy_state_cls = CVRPDestroyState
-            case "tsp":
-                destroy_state_cls = TSPDestroyState
-
-        action_mask = destroy_state_cls.build_initial(
-            batch_size=B, rollout_size=1, num_nodes=N, device=device
-        ).action_mask.squeeze(1)  # (B, N)
+        h_nodes = self.encoder(instance_features, solution_features)  # (B, N, D)
+        action_mask = initial_action_mask(
+            self.problem_name, batch_size=B, num_nodes=h_nodes.shape[1], device=device
+        )  # (B, N)
 
         rollout = self.decoder.rollout(
-            h_nodes=encoded_nodes,
+            h_nodes=h_nodes,
             seed=seed,
             action_mask=action_mask,
             deconstruction_size=deconstruction_size,

@@ -32,14 +32,14 @@ def _():
         CVRPGreedyReconnectRepair,
     )
     from core.lns.operators.repair.reconnect.tsp import TSPGreedyReconnectRepair
-    from core.models.nds.models.ar import AutoregressiveNDSModel
+    from core.models.nds.models.joint import JointNDSModel
     from core.problems.cvrp import CVRP, CVRPSampler
     from core.problems.cvrp.solve import one_customer_per_route, one_customer_per_route_graph
     from core.problems.tsp import TSP, TSPSampler
     from core.problems.tsp.solve import random_permutation, random_permutation_graph
 
     return (
-        AutoregressiveNDSModel,
+        JointNDSModel,
         CVRP,
         CVRPGreedyInsertRepair,
         CVRPGreedyReconnectRepair,
@@ -512,7 +512,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(
-    AutoregressiveNDSModel,
+    JointNDSModel,
     CVRP,
     CVRPGreedyInsertRepair,
     CVRPGreedyReconnectRepair,
@@ -627,7 +627,7 @@ def _(
 
         results = {}
         for device in devices:
-            model = AutoregressiveNDSModel(problem_name=problem_name).to(device).eval()
+            model = JointNDSModel(problem_name=problem_name).to(device).eval()
             for destroy_name, repair_name in combos:
                 step_ms = []
                 candidates_per_s = []

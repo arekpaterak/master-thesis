@@ -7,7 +7,7 @@ import torch.nn as nn
 
 from core.models.embeddings.positional import circular_sinusoidal_encoding
 from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
-from core.models.nds.decoders.one_pass.base import OnePassDestroyDecoder
+from core.models.nds.decoders.base import DestroyDecoder
 from core.models.nds.encoder import NDSEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
@@ -23,7 +23,7 @@ from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
     TSPSolutionFeatureExtractor,
 )
-from core.states.destroy import CVRPDestroyState, TSPDestroyState
+from core.states.destroy import initial_action_mask
 
 
 class SolutionPositionalFusion(nn.Module):
@@ -64,8 +64,8 @@ class InstanceCache(NamedTuple):
     xpe: torch.Tensor | None
 
 
-class LNSNativeModel(nn.Module):
-    """Destroy model with a split-frequency encoder for designed specifically for LNS search.
+class SplitNDSModel(nn.Module):
+    """Destroy model with a split-frequency encoder designed specifically for LNS search.
 
     The static instance is encoded once by an attention-only ``NDSEncoder``
     (the solution-aware neighbours/route layers are disabled).
@@ -84,7 +84,7 @@ class LNSNativeModel(nn.Module):
         ff_dim: int = 512,
         encoder_config: EncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
-        decoder: OnePassDestroyDecoder,
+        decoder: DestroyDecoder,
     ) -> None:
         super().__init__()
 
@@ -155,10 +155,9 @@ class LNSNativeModel(nn.Module):
         h_nodes = self.fusion(cache.instance_node_embeddings, positional)
 
         N = h_nodes.shape[1]
-        destroy_state_cls = CVRPDestroyState if self.problem_name == "cvrp" else TSPDestroyState
-        action_mask = destroy_state_cls.build_initial(
-            batch_size=B, rollout_size=1, num_nodes=N, device=device
-        ).action_mask.squeeze(1)  # (B, N)
+        action_mask = initial_action_mask(
+            self.problem_name, batch_size=B, num_nodes=N, device=device
+        )  # (B, N)
 
         rollout = self.decoder.rollout(
             h_nodes=h_nodes,

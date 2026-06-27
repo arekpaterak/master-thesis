@@ -5,8 +5,11 @@ from typing import NamedTuple
 import torch
 import torch.nn as nn
 
+from core.models.entropy import entropy
 from core.models.layers.cached_multihead_attention import CachedMultiheadAttention
 from core.models.layers.compatibility_scorer import CompatibilityScorer
+from core.models.nds.decoders.base import DestroyDecoder
+from core.models.rollout import Rollout
 from core.states.destroy import DestroyState
 
 
@@ -51,7 +54,7 @@ class DecoderOutput(NamedTuple):
     gru_hidden: torch.Tensor
 
 
-class AutoregressiveNDSDecoder(nn.Module):
+class AutoregressiveNDSDecoder(DestroyDecoder):
     """Autoregressive decoder for sequential customer selection in NDS.
 
     At each step, a GRU updates the query based on the previously selected
@@ -82,6 +85,7 @@ class AutoregressiveNDSDecoder(nn.Module):
 
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
+        self._seed_dim = seed_dim
 
         self.start_token = nn.Parameter(torch.zeros(hidden_dim), requires_grad=True)
 
@@ -99,6 +103,66 @@ class AutoregressiveNDSDecoder(nn.Module):
         )
 
         self.final_scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
+
+    @property
+    def seed_dim(self) -> int:
+        return self._seed_dim
+
+    def rollout(
+        self,
+        *,
+        h_nodes: torch.Tensor,
+        seed: torch.Tensor,
+        action_mask: torch.Tensor | None,
+        deconstruction_size: int,
+        greedy: bool,
+        **kwargs,
+    ) -> Rollout:
+        """Autoregressively select ``deconstruction_size`` nodes from ``h_nodes``.
+
+        ``action_mask`` (B, N) is the initial forbidden-node mask (e.g. the CVRP depot);
+        it seeds the transitionable problem state stepped through the decoding loop.
+        """
+        if action_mask is None:
+            raise ValueError("AutoregressiveNDSDecoder.rollout requires an action_mask.")
+
+        B, N, _ = h_nodes.shape
+        R = seed.shape[1]
+
+        cache = self.build_cache(h_nodes=h_nodes, seed=seed)
+        problem_state = DestroyState.from_mask(action_mask.unsqueeze(1).expand(B, R, N))
+        decoder_state = self.build_initial_state(
+            batch_size=B, rollout_size=R, device=h_nodes.device
+        )
+
+        selected = []
+        log_prob_of_selected = []
+        entropies = []
+        entropies_norm = []
+
+        for _ in range(deconstruction_size):
+            logits, gru_hidden = self.forward(
+                problem_state=problem_state, decoder_state=decoder_state, cache=cache
+            )
+
+            distribution = torch.distributions.Categorical(logits=logits)
+            idx = logits.argmax(dim=-1) if greedy else distribution.sample()
+            selected.append(idx)
+            log_prob_of_selected.append(distribution.log_prob(idx))
+
+            step_entropy = entropy(logits)
+            entropies.append(step_entropy.entropy.detach())
+            entropies_norm.append(step_entropy.entropy_norm.detach())
+
+            problem_state = problem_state.transition(action=idx.unsqueeze(-1))
+            decoder_state = decoder_state.transition(gru_hidden)
+
+        return Rollout.create(
+            actions=torch.stack(selected, dim=-1).detach(),
+            log_prob=torch.stack(log_prob_of_selected, dim=-1).sum(dim=-1),
+            entropy=torch.stack(entropies, dim=-1).mean(dim=-1),
+            entropy_norm=torch.stack(entropies_norm, dim=-1).mean(dim=-1),
+        )
 
     def build_initial_state(
         self,

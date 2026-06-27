@@ -2,19 +2,10 @@ from __future__ import annotations
 
 from core.models.nds.config import ModelParams, SplitModelParams
 
-from .decoders.config import (
-    AutoregressiveDecoderConfig,
-    DecoderConfig,
-    SimpleOnePassDecoderConfig,
-    SlotDecoderConfig,
-)
-from .decoders.one_pass.base import OnePassDestroyDecoder
-from .decoders.one_pass.simple import SimpleOnePassDecoder
-from .decoders.one_pass.slot import SlotDecoder
+from .decoders.factory import build_decoder
 from .models import NDSModel
-from .models.ar import AutoregressiveNDSModel
-from .models.lns_native import LNSNativeModel
-from .models.one_pass import OnePassNDSModel
+from .models.joint import JointNDSModel
+from .models.split import SplitNDSModel
 
 
 def build_model(model_params: ModelParams, problem_name: str) -> NDSModel:
@@ -29,45 +20,22 @@ def build_model(model_params: ModelParams, problem_name: str) -> NDSModel:
     )
 
     if isinstance(model_params, SplitModelParams):
-        if isinstance(decoder_config, AutoregressiveDecoderConfig):
-            raise NotImplementedError(
-                "The split-encoder (LNS-native) model does not support the autoregressive "
-                "decoder yet; use a one-pass decoder."
-            )
-        return LNSNativeModel(
-            **shared_kwargs, decoder=_build_one_pass_decoder(decoder_config, model_params)
+        return SplitNDSModel(
+            **shared_kwargs,
+            decoder=build_decoder(
+                decoder_config,
+                hidden_dim=model_params.hidden_dim,
+                seed_dim=model_params.seed_dim,
+                poly_dim=model_params.poly_dim,
+                num_heads=model_params.num_heads,
+            ),
         )
 
-    joint_kwargs = dict(
+    return JointNDSModel(
         **shared_kwargs,
         with_neighbours_encoding=model_params.with_neighbours_encoding,
         with_route_encoding=model_params.with_route_encoding,
-    )
-    if isinstance(decoder_config, AutoregressiveDecoderConfig):
-        return AutoregressiveNDSModel(
-            **joint_kwargs,
-            poly_dim=model_params.poly_dim,
-            seed_dim=model_params.seed_dim,
-            use_hidden_decoding_state=decoder_config.use_hidden_decoding_state,
-        )
-    return OnePassNDSModel(
-        **joint_kwargs, decoder=_build_one_pass_decoder(decoder_config, model_params)
-    )
-
-
-def _build_one_pass_decoder(
-    decoder_config: DecoderConfig, model_params: ModelParams
-) -> OnePassDestroyDecoder:
-    shared = dict(
-        hidden_dim=model_params.hidden_dim,
-        seed_dim=model_params.seed_dim,
         poly_dim=model_params.poly_dim,
-        num_heads=model_params.num_heads,
+        seed_dim=model_params.seed_dim,
+        decoder=decoder_config,
     )
-    match decoder_config:
-        case SimpleOnePassDecoderConfig():
-            return SimpleOnePassDecoder(**shared)
-        case SlotDecoderConfig():
-            return SlotDecoder(**shared, k=decoder_config.k)
-        case _:
-            raise ValueError(f"Not a one-pass decoder config: {type(decoder_config).__name__}")

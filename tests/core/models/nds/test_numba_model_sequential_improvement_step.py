@@ -5,16 +5,16 @@ from core.lns.acceptance_criterion import GreedyAcceptance, SimulatedAnnealingAc
 from core.lns.improvement_step import NumbaSequentialImprovementStep
 from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
 from core.models.nds.destroy import ModelNodeDestroy
-from core.models.nds.models.ar import AutoregressiveNDSModel
+from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.solve import one_customer_per_route_graph
 
 
 @pytest.fixture
-def model() -> AutoregressiveNDSModel:
+def model() -> JointNDSModel:
     torch.manual_seed(0)
-    return AutoregressiveNDSModel(problem_name="cvrp")
+    return JointNDSModel(problem_name="cvrp")
 
 
 @pytest.fixture(params=[1, 4])
@@ -23,7 +23,7 @@ def solution(request) -> CVRPGraphSolution:
     return one_customer_per_route_graph(instance)
 
 
-def _make_improvement_step(model: AutoregressiveNDSModel) -> NumbaSequentialImprovementStep:
+def _make_improvement_step(model: JointNDSModel) -> NumbaSequentialImprovementStep:
     destroy = ModelNodeDestroy(model=model, deconstruction_size=10, stitch=True)
     return NumbaSequentialImprovementStep(
         destroy=destroy,
@@ -36,7 +36,7 @@ def _make_improvement_step(model: AutoregressiveNDSModel) -> NumbaSequentialImpr
 
 class TestNumbaModelSequentialImprovementStep:
     def test_if_complete_and_feasible(
-        self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution
+        self, model: JointNDSModel, solution: CVRPGraphSolution
     ) -> None:
         improved = _make_improvement_step(model)(solution, GreedyAcceptance())
 
@@ -45,14 +45,14 @@ class TestNumbaModelSequentialImprovementStep:
         assert improved.is_feasible.all()
 
     def test_objective_is_monotonic_with_greedy_acceptance(
-        self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution
+        self, model: JointNDSModel, solution: CVRPGraphSolution
     ) -> None:
         improved = _make_improvement_step(model)(solution, GreedyAcceptance())
 
         assert (improved.objective() <= solution.objective() + 1e-4).all()
 
     def test_depot_invariant_and_degrees(
-        self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution
+        self, model: JointNDSModel, solution: CVRPGraphSolution
     ) -> None:
         improved = _make_improvement_step(model)(solution, GreedyAcceptance())
 
@@ -61,7 +61,7 @@ class TestNumbaModelSequentialImprovementStep:
         assert (improved.node_degree() == 2).all()
 
     def test_with_simulated_annealing(
-        self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution
+        self, model: JointNDSModel, solution: CVRPGraphSolution
     ) -> None:
         criterion = SimulatedAnnealingAcceptance(temperature=0.1, decay=0.9)
         improved = _make_improvement_step(model)(solution, criterion)
@@ -70,7 +70,7 @@ class TestNumbaModelSequentialImprovementStep:
         assert improved.is_feasible.all()
 
     def test_insert_in_new_routes_only_stays_complete_and_feasible(
-        self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution
+        self, model: JointNDSModel, solution: CVRPGraphSolution
     ) -> None:
         destroy = ModelNodeDestroy(model=model, deconstruction_size=10, stitch=True)
         step = NumbaSequentialImprovementStep(

@@ -5,12 +5,11 @@ import torch
 
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.encoder import NDSEncoder
-from core.models.nds.models.ar import AutoregressiveNDSModel
+from core.models.nds.models.joint import JointNDSModel
 from core.models.nds.pretrained import (
     load_original_pretrained_decoder_weights,
     load_original_pretrained_encoder_weights,
 )
-from core.models.nds.seed_sampler import sample_seed
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
@@ -83,28 +82,16 @@ def test_load_pretrained_fails_on_incompatible_architecture() -> None:
 
 
 def test_load_pretrained_model_forward() -> None:
-    B, R, N = 2, 4, 100
+    B, R, N, k = 2, 4, 100, 15
     sampler = CVRPSampler(CVRP.for_n(N))
     instance = sampler(B)
     solution = one_customer_per_route(instance)
 
-    model = AutoregressiveNDSModel(problem_name="cvrp")
+    model = JointNDSModel(problem_name="cvrp")
     load_original_pretrained_encoder_weights(model.encoder, CHECKPOINT)
     model.eval()
 
-    seed = sample_seed(batch_size=B, rollout_size=R, seed_dim=10)
-    instance_features = CVRPInstanceFeatureExtractor()(instance)
-    solution_features = CVRPSolutionFeatureExtractor()(solution)
-
     with torch.no_grad():
-        problem_state, decoder_state, cache = model.pre_forward(
-            seed=seed,
-            rollout_size=R,
-            instance_features=instance_features,
-            solution_features=solution_features,
-        )
-        log_p, _ = model.forward(
-            problem_state=problem_state, decoder_state=decoder_state, cache=cache
-        )
+        rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=k)
 
-    assert log_p.shape == (B, R, N + 1)
+    assert rollout.actions.shape == (B, R, k)
