@@ -107,6 +107,7 @@ def _method_specs(deconstruction_size: int) -> list[MethodSpec]:
         MethodSpec(
             "lns-native-slot", SplitModelParams(decoder=SlotDecoderConfig(k=deconstruction_size))
         ),
+        MethodSpec("lns-native-ar", SplitModelParams(decoder=AutoregressiveDecoderConfig())),
     ]
 
 

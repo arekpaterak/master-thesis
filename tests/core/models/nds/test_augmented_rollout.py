@@ -8,7 +8,7 @@ from core.lns.improvement_step import SequentialImprovementStep
 from core.lns.operators.repair import RepairOperator
 from core.lns.search import augmented_search
 from core.models.nds.destroy import ModelNodeDestroy
-from core.models.nds.models.ar import AutoregressiveNDSModel
+from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
 
@@ -27,11 +27,11 @@ def _make_solution(*, augment: int | None) -> CVRPGraphSolution:
 
 
 @pytest.fixture(scope="module")
-def model() -> AutoregressiveNDSModel:
-    return AutoregressiveNDSModel(problem_name="cvrp")
+def model() -> JointNDSModel:
+    return JointNDSModel(problem_name="cvrp")
 
 
-def test_rollout_on_augmented_solution_keeps_augmentation_dim(model: AutoregressiveNDSModel):
+def test_rollout_on_augmented_solution_keeps_augmentation_dim(model: JointNDSModel):
     solution = _make_solution(augment=A)
 
     rollout = model.rollout(
@@ -46,7 +46,7 @@ def test_rollout_on_augmented_solution_keeps_augmentation_dim(model: Autoregress
     assert rollout.log_p.shape == (B, A, R)
 
 
-def test_rollout_plain_path_is_unchanged(model: AutoregressiveNDSModel):
+def test_rollout_plain_path_is_unchanged(model: JointNDSModel):
     solution = _make_solution(augment=None)
 
     rollout = model.rollout(
@@ -60,7 +60,7 @@ def test_rollout_plain_path_is_unchanged(model: AutoregressiveNDSModel):
     assert rollout.actions.shape == (B, R, DECONSTRUCTION_SIZE)
 
 
-def test_augmented_search_with_model_reduces_to_batch_augmentation(model: AutoregressiveNDSModel):
+def test_augmented_search_with_model_reduces_to_batch_augmentation(model: JointNDSModel):
     solution = _make_solution(augment=A)
     repair = RepairOperator.create(
         "cvrp", "greedy_reconnect", deconstruction_size=DECONSTRUCTION_SIZE

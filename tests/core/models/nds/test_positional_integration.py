@@ -3,7 +3,7 @@ import torch
 from core.models.embeddings.cvrp import CVRPInitialEmbedding
 from core.models.embeddings.tsp import TSPInitialEmbedding
 from core.models.nds.config import PositionalEncodingConfig
-from core.models.nds.models.ar import AutoregressiveNDSModel
+from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
@@ -56,7 +56,7 @@ def test_cvrp_model_rollout_with_positional_encoding():
     instance = CVRPSampler(CVRP.for_n(N))(B)
     solution = CVRPGraphSolution.one_customer_per_route(instance)
 
-    model = AutoregressiveNDSModel(
+    model = JointNDSModel(
         problem_name="cvrp",
         positional=PositionalEncodingConfig(dim=8),
     )

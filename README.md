@@ -7,10 +7,11 @@ The project is organised with the following structure:
 │   │   ├── attention_model/       # Attention Model (Kool et al., 2019)
 │   │   ├── nds/                   # Neural Deconstruction Search (Hottung et al., 2025)
 │   │   │   ├── models/
-│   │   │   │   ├── ar.py          # AutoregressiveNDSModel
-│   │   │   │   └── one_pass.py    # OnePassNDSModel
+│   │   │   │   ├── joint.py       # JointNDSModel (re-encodes each step; any decoder)
+│   │   │   │   └── split.py       # SplitNDSModel (split encoder, cached instance)
 │   │   │   ├── decoders/          # Destroy decoders
 │   │   │   │   ├── config.py      # Decoder config classes
+│   │   │   │   ├── factory.py     # build_decoder from a decoder config
 │   │   │   │   ├── ar.py          # Autoregressive decoder
 │   │   │   │   └── one_pass/      # One-pass decoder variants (simple, slot)
 │   │   │   ├── encoder.py         # NDSEncoder (shared by all models)

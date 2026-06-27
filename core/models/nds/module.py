@@ -13,10 +13,9 @@ from core.lns.start_solution import with_warmup
 from core.models.module import Module
 from core.models.nds.apply_rollout import apply_rollout
 from core.models.nds.config import TrainConfig
+from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import build_nds_improvement_step
-from core.models.nds.models.lns_native import LNSNativeModel
-from core.models.nds.models.one_pass import OnePassNDSModel
 from core.models.nds.policy_loss import build_policy_loss
 from core.models.nds.reward import build_reward
 from core.models.nds.training import (
@@ -52,7 +51,9 @@ class NDSModule(Module):
         if config.compile.enabled:
             compile_kwargs = dict(mode=config.compile.mode, fullgraph=config.compile.fullgraph)
             self.model.encoder = torch.compile(self.model.encoder, **compile_kwargs)
-            if isinstance(self.model, (OnePassNDSModel, LNSNativeModel)):
+            # The autoregressive decoder has a Python decoding loop that does not compile
+            # cleanly; only the one-pass decoders are compiled.
+            if not isinstance(self.model.decoder, AutoregressiveNDSDecoder):
                 self.model.decoder = torch.compile(self.model.decoder, **compile_kwargs)
 
         amp_dtype = torch.float16 if config.amp.dtype == "float16" else torch.bfloat16
