@@ -27,12 +27,6 @@ from numba import njit, prange
 DEPOT = 0
 UNASSIGNED = -1
 
-# Independent RNG streams: random-destroy and repair/accept must not draw from the
-# same reseeded sequence, so they use different channels.
-_NUM_SEED_CHANNELS = 2
-_REMOVAL_CHANNEL = 0
-_REPAIR_CHANNEL = 1
-
 
 def run_with_removals(
     *,
@@ -50,7 +44,7 @@ def run_with_removals(
     first_repair_uses_order: bool = False,
     insert_in_new_routes_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Sequential step with externally supplied nodes to remove (e.g. model rollouts).
+    """Sequential step with externally supplied nodes to remove.
 
     When ``first_repair_uses_order`` is set, the first of the ``n_repairs`` greedy
     insertions follows the provided removal order instead of a random order.
@@ -79,62 +73,15 @@ def run_with_removals(
     )
 
 
-def run_with_random(
-    *,
-    next: np.ndarray,
-    prev: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: np.ndarray,
-    num_rollouts: int,
-    destruction_size: int,
-    n_repairs: int,
-    accept_kind: int,
-    temperature: float,
-    eps: float,
-    base_seed: int,
-    insert_in_new_routes_only: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Sequential step with in-kernel random-node destroy (no model)."""
-    next = np.ascontiguousarray(next, dtype=np.int64)
-    prev = np.ascontiguousarray(prev, dtype=np.int64)
-    global_size = next.shape[0]
-    num_customers = next.shape[1] - 1
-    nodes_to_remove = _select_random_nodes_for_removal(
-        global_size=global_size,
-        rollout_size=int(num_rollouts),
-        deconstruction_size=int(destruction_size),
-        num_customers=num_customers,
-        base_seed=int(base_seed),
-    )
-    return _run_for_batch(
-        next=next,
-        prev=prev,
-        nodes_to_remove=nodes_to_remove,
-        locations=np.ascontiguousarray(locations, dtype=np.float64),
-        demand=np.ascontiguousarray(demand, dtype=np.float64),
-        capacity=np.ascontiguousarray(capacity, dtype=np.float64),
-        n_repairs=int(n_repairs),
-        accept_kind=int(accept_kind),
-        temperature=float(temperature),
-        eps=float(eps),
-        base_seed=int(base_seed),
-        first_repair_uses_order=False,
-        insert_in_new_routes_only=bool(insert_in_new_routes_only),
-    )
-
-
 @njit(inline="always")
-def _seed_for(base_seed: int, channel: int, index: int, count: int) -> int:
-    """Distinct 32-bit RNG seed for one (base_seed, channel, index) triple.
+def _seed_for(base_seed: int, index: int, count: int) -> int:
+    """Distinct 32-bit RNG seed for one (base_seed, index) pair.
 
-    numpy's legacy seeding (which numba mirrors) already disperses nearby integer
-    seeds, so this only needs to be injective, not a hash. ``channel`` puts the
-    random-destroy and repair draws on independent streams; ``count`` is the number
-    of indices per channel (the batch size) so the channels never overlap. Masked
-    to 32 bits because ``np.random.seed`` takes a 32-bit seed.
+    ``count`` is the number of indices (the batch size) so distinct ``base_seed``
+    values never overlap. Masked to 32 bits because ``np.random.seed`` takes a
+    32-bit seed.
     """
-    return ((base_seed * _NUM_SEED_CHANNELS + channel) * count + index) & 0xFFFFFFFF
+    return (base_seed * count + index) & 0xFFFFFFFF
 
 
 @njit(parallel=True, cache=True)
@@ -158,7 +105,7 @@ def _run_for_batch(
     next_out = next.copy()
     prev_out = prev.copy()
     for global_idx in prange(global_size):
-        np.random.seed(_seed_for(base_seed, _REPAIR_CHANNEL, global_idx, global_size))
+        np.random.seed(_seed_for(base_seed, global_idx, global_size))
         _run_for_single(
             next_out=next_out[global_idx],
             prev_out=prev_out[global_idx],
@@ -518,42 +465,3 @@ def _greedy_insert_repair(
             route_demand,
             insertable,
         )
-
-
-@njit
-def _sample_distinct_customers(pool: np.ndarray, out: np.ndarray) -> None:
-    """Draw ``len(out)`` distinct customers (1..N) uniformly without replacement.
-
-    Partial Fisher-Yates over ``pool`` (scratch of length N): at step ``m`` it swaps
-    a uniformly chosen element from the not-yet-drawn suffix ``[m, N)`` into position
-    ``m``, so every emitted customer is distinct. ``pool`` is (re)initialised here, so
-    the same buffer can be reused across calls.
-    """
-    num_customers = pool.shape[0]
-    for i in range(num_customers):
-        pool[i] = i + 1
-    for m in range(out.shape[0]):
-        j = np.random.randint(m, num_customers)
-        chosen = pool[j]
-        pool[j] = pool[m]
-        pool[m] = chosen
-        out[m] = chosen
-
-
-@njit(parallel=True, cache=True)
-def _select_random_nodes_for_removal(
-    *,
-    global_size: int,
-    rollout_size: int,
-    deconstruction_size: int,
-    num_customers: int,
-    base_seed: int,
-) -> np.ndarray:
-    """Per (element, rollout): sample M distinct customers from 1..N (random-node destroy)."""
-    nodes_to_remove = np.empty((global_size, rollout_size, deconstruction_size), np.int64)
-    for global_idx in prange(global_size):
-        pool = np.empty(num_customers, np.int64)
-        np.random.seed(_seed_for(base_seed, _REMOVAL_CHANNEL, global_idx, global_size))
-        for r in range(rollout_size):
-            _sample_distinct_customers(pool, nodes_to_remove[global_idx, r])
-    return nodes_to_remove

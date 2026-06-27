@@ -4,9 +4,10 @@ import pytest
 import torch
 
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
+from core.lns.improvement_step import SequentialImprovementStep
 from core.lns.operators.repair import RepairOperator
 from core.lns.search import augmented_search
-from core.models.nds.improvement_step import ModelSequentialImprovementStep
+from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
@@ -64,11 +65,11 @@ def test_augmented_search_with_model_reduces_to_batch_augmentation(model: Autore
     repair = RepairOperator.create(
         "cvrp", "greedy_reconnect", deconstruction_size=DECONSTRUCTION_SIZE
     )
-    improvement_step = ModelSequentialImprovementStep(
-        model=model,
+    destroy = ModelNodeDestroy(model=model, deconstruction_size=DECONSTRUCTION_SIZE)
+    improvement_step = SequentialImprovementStep(
+        destroy=destroy,
         repair=repair,
         num_rollouts=R,
-        deconstruction_size=DECONSTRUCTION_SIZE,
         n_repairs=1,
     )
     criterion = SimulatedAnnealingAcceptance.from_range(

@@ -10,6 +10,25 @@ from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solution import TSPSolution
 
 
+def apply_nodes(
+    solution: BaseSolution, nodes: torch.Tensor, *, stitch: bool = False
+) -> BaseSolution:
+    """Remove ``nodes`` from ``solution``.
+
+    ``nodes`` is [*B, M] for a single set or [*B, R, M] for R parallel sets,
+    where *B matches the leading dims of ``solution.batch_size``.
+    """
+    match solution:
+        case CVRPSolution() as s:
+            return s.remove_nodes(nodes)
+        case CVRPGraphSolution() as s:
+            return s.remove_nodes(nodes, stitch=stitch)
+        case TSPGraphSolution() as s:
+            return s.remove_nodes(nodes)
+        case _:
+            raise NotImplementedError(f"apply_nodes not implemented for {type(solution)}")
+
+
 def best_repair(repair: RepairOperator, deconstructed: BaseSolution, n: int) -> BaseSolution:
     """Repair ``deconstructed`` solution ``n`` times and return the best by objective."""
     best = repair(deconstructed)

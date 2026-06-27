@@ -2,11 +2,9 @@ import pytest
 import torch
 
 from core.lns.acceptance_criterion import GreedyAcceptance, SimulatedAnnealingAcceptance
+from core.lns.improvement_step import NumbaSequentialImprovementStep
 from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
-from core.models.nds.improvement_step import (
-    NumbaModelSequentialImprovementStep,
-    resolve_improvement_step,
-)
+from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
@@ -25,21 +23,18 @@ def solution(request) -> CVRPGraphSolution:
     return one_customer_per_route_graph(instance)
 
 
-def _make_improvement_step(model: AutoregressiveNDSModel) -> NumbaModelSequentialImprovementStep:
-    return NumbaModelSequentialImprovementStep(
-        model=model,
+def _make_improvement_step(model: AutoregressiveNDSModel) -> NumbaSequentialImprovementStep:
+    destroy = ModelNodeDestroy(model=model, deconstruction_size=10, stitch=True)
+    return NumbaSequentialImprovementStep(
+        destroy=destroy,
         repair=CVRPGreedyInsertRepair(),
         num_rollouts=4,
-        deconstruction_size=10,
         n_repairs=2,
         seed=7,
     )
 
 
 class TestNumbaModelSequentialImprovementStep:
-    def test_resolves_via_config_literal(self) -> None:
-        assert resolve_improvement_step("numba_sequential") is NumbaModelSequentialImprovementStep
-
     def test_if_complete_and_feasible(
         self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution
     ) -> None:
@@ -77,11 +72,11 @@ class TestNumbaModelSequentialImprovementStep:
     def test_insert_in_new_routes_only_stays_complete_and_feasible(
         self, model: AutoregressiveNDSModel, solution: CVRPGraphSolution
     ) -> None:
-        step = NumbaModelSequentialImprovementStep(
-            model=model,
+        destroy = ModelNodeDestroy(model=model, deconstruction_size=10, stitch=True)
+        step = NumbaSequentialImprovementStep(
+            destroy=destroy,
             repair=CVRPGreedyInsertRepair(),
             num_rollouts=4,
-            deconstruction_size=10,
             n_repairs=2,
             seed=7,
             insert_in_new_routes_only=True,

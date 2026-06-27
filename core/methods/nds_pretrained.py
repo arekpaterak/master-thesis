@@ -10,7 +10,7 @@ from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
 from core.models.nds.config import ModelParams
 from core.models.nds.factory import build_model
-from core.models.nds.improvement_step import resolve_improvement_step
+from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.models.ar import AutoregressiveNDSModel
 from core.problems import ProblemConfig
 
@@ -59,15 +59,7 @@ class NDSPretrainedMethod:
             config.search.repair_type,
             deconstruction_size=config.search.deconstruction_size,
         )
-        step_cls = resolve_improvement_step(config.search.improvement_step_type)
-        improvement_step = step_cls(
-            model=model,
-            repair=repair,
-            num_rollouts=config.search.num_rollouts,
-            deconstruction_size=config.search.deconstruction_size,
-            n_repairs=config.search.n_repairs,
-            first_repair_uses_rollout_order=config.search.first_repair_uses_rollout_order,
-        )
+        improvement_step = build_nds_improvement_step(config.search, model=model, repair=repair)
         decoder_type = config.model.decoder.type
         assert decoder_type in ["ar"], "Expected the original decoder"
         hidden_tag = (

@@ -9,7 +9,7 @@ from core.lns.acceptance_criterion import (
     SimulatedAnnealingAcceptanceConfig,
 )
 
-RepairType = Literal["greedy_reconnect", "greedy_insert", "noop"]
+RepairType = Literal["greedy_reconnect", "greedy_insert"]
 
 
 class StartSolutionParams(BaseModel):

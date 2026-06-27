@@ -49,15 +49,3 @@ class RepairOperator[S: BaseSolution](ABC):
                 f"Repair type {repair_type!r} is not implemented for problem {problem_name!r}."
             )
         return subclass.build(deconstruction_size=deconstruction_size)
-
-
-# TODO: Remove as this might not produce complete solution
-class NoopRepair[S: BaseSolution](RepairOperator[S]):
-    repair_type = "noop"
-
-    def __call__(self, deconstructed_solution: S) -> S:
-        return deconstructed_solution
-
-    @classmethod
-    def build(cls, *, deconstruction_size: int | None = None) -> NoopRepair:
-        return cls()
