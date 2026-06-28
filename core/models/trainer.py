@@ -32,6 +32,7 @@ class Trainer[BatchSummaryT]:
         batch_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
         validation_batch_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
         strict_number_of_instances: bool = False,
+        validate_before_training: bool = False,
     ) -> None:
         """Initialise the trainer.
 
@@ -67,8 +68,9 @@ class Trainer[BatchSummaryT]:
         self.batch_progress = batch_progress
         self.validation_batch_progress = validation_batch_progress
         self.strict_number_of_instances = strict_number_of_instances
+        self.validate_before_training = validate_before_training
 
-    def _epoch_batch_sizes(self) -> list[int]:
+    def _train_batch_sizes(self) -> list[int]:
         if self.instances_per_epoch is not None:
             return _split_into_batches(
                 total=self.instances_per_epoch,
@@ -107,8 +109,11 @@ class Trainer[BatchSummaryT]:
                 "validation_instances and validation_batch_size are required when validation_instance_sampler is provided."
             )
 
+        if with_validation and self.validate_before_training and self.initial_epoch == 0:
+            self._run_validation(module, validation_instance_sampler, epoch=self.initial_epoch - 1)
+
         for epoch in self.epoch_progress(range(self.initial_epoch, self.max_epochs)):
-            train_batch_sizes = self._epoch_batch_sizes()
+            train_batch_sizes = self._train_batch_sizes()
             if train_batch_sizes:
                 if self.on_epoch_train_start:
                     self.on_epoch_train_start(epoch)
@@ -131,22 +136,31 @@ class Trainer[BatchSummaryT]:
                     callback(epoch_train_summary)
 
             if with_validation and epoch % self.validate_every_n_epochs == 0:
-                val_batch_sizes = self._validation_batch_sizes()
-                validation_instance_sampler.reset()
-                if self.on_epoch_validation_start:
-                    self.on_epoch_validation_start(epoch, len(val_batch_sizes))
-                val_accumulator = module.validation_accumulator_cls()
-                for size in self.validation_batch_progress(val_batch_sizes):
-                    validation_instance = validation_instance_sampler(size)
-                    batch_validation_summary = module.validation_step(validation_instance, epoch)
-                    val_accumulator.update(batch_validation_summary)
-                    if self.on_batch_validation_end:
-                        self.on_batch_validation_end(batch_validation_summary)
-                epoch_validation_summary = val_accumulator.complete(epoch=epoch)
+                self._run_validation(module, validation_instance_sampler, epoch=epoch)
 
-                module.on_epoch_validation_end(epoch_validation_summary)
-                for callback in self.on_epoch_validation_end:
-                    callback(epoch_validation_summary)
+    def _run_validation(
+        self,
+        module: Module,
+        validation_instance_sampler: Sampler,
+        *,
+        epoch: int,
+    ) -> None:
+        val_batch_sizes = self._validation_batch_sizes()
+        validation_instance_sampler.reset()
+        if self.on_epoch_validation_start:
+            self.on_epoch_validation_start(epoch, len(val_batch_sizes))
+        val_accumulator = module.validation_accumulator_cls()
+        for size in self.validation_batch_progress(val_batch_sizes):
+            validation_instance = validation_instance_sampler(size)
+            batch_validation_summary = module.validation_step(validation_instance, epoch)
+            val_accumulator.update(batch_validation_summary)
+            if self.on_batch_validation_end:
+                self.on_batch_validation_end(batch_validation_summary)
+        epoch_validation_summary = val_accumulator.complete(epoch=epoch)
+
+        module.on_epoch_validation_end(epoch_validation_summary)
+        for callback in self.on_epoch_validation_end:
+            callback(epoch_validation_summary)
 
 
 def _split_into_batches(*, total: int, batch_size: int, strict: bool) -> list[int]:

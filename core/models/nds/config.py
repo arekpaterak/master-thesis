@@ -146,6 +146,13 @@ class SplitModelParams(_ModelParamsBase):
     """
 
     encoder_mode: Literal["split"] = "split"
+    encode_once_in_training: bool = Field(
+        default=False,
+        title="Encode once in training",
+        description="Run the instance encoder once per training step and reuse the "
+        "embeddings across all improvement steps (exact, with bounded memory). "
+        "False recomputes the encoder every step (current behavior).",
+    )
 
 
 ModelParams = Annotated[JointModelParams | SplitModelParams, Field(discriminator="encoder_mode")]
@@ -233,6 +240,11 @@ class ValidationConfig(BaseModel):
         description="Capture solution snapshot every N main search iterations.",
     )
     plot_save_to_disk: bool = Field(default=True, title="Save to disk", description="Save plots.")
+    validate_before_training: bool = Field(
+        default=False,
+        title="Validate before training",
+        description="Run a validation pass before the first training epoch.",
+    )
     search: SearchParams = Field(
         default_factory=lambda: SearchParams(
             num_improvement_steps=50,

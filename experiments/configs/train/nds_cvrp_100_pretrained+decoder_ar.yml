@@ -21,9 +21,9 @@ optimizer:
   weight_decay: 1.0e-6
 
 trainer:
-  epochs: 10
+  epochs: 20
   instances_per_epoch: 1500
-  batch_size: 8
+  batch_size: 16
   num_main_improvement_steps: 100
 
 search:
@@ -33,6 +33,7 @@ search:
   deconstruction_size: 15
   improvement_step_type: numba_sequential
   insert_in_new_routes_only: true
+  first_repair_uses_rollout_order: true
   start_solution_params:
     num_improvement_steps: 50
     deconstruction_size: 15
@@ -47,6 +48,7 @@ logging:
   wandb_project: nds
 
 validation:
+  validate_before_training: true
   num_instances: 100
   batch_size: 50
   every_n_epochs: 1

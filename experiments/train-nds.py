@@ -102,10 +102,18 @@ def _():
     if is_script_mode:
         _cli_args = mo.cli_args()
 
-        if not _cli_args or "help" in _cli_args or "h" in _cli_args:
+        # marimo's CLI parser only keeps --flag args, so a bare config path passed
+        # without --config is read from sys.argv. Only the first argument is treated
+        # as positional, so it is not confused with a flag's value.
+        _positional_config = (
+            sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else None
+        )
+
+        if (not _cli_args and not _positional_config) or "help" in _cli_args or "h" in _cli_args:
             _usage = Table(title="NDS Training — CLI Usage")
             _usage.add_column("Flag", style="cyan")
             _usage.add_column("Description")
+            _usage.add_row("<path>", "Path to YAML config file (positional)")
             _usage.add_row("--config <path>", "Path to YAML config file")
             _usage.add_row(
                 "--<section>.<field> <value>",
@@ -127,7 +135,8 @@ def _():
         _resume_path = _cli_args.get("resume")
         resume_run_dir = Path(str(_resume_path)) if _resume_path is not None else None
 
-        _config_path = str(_cli_args.get("config")) or (
+        _config_arg = _cli_args.get("config")
+        _config_path = (str(_config_arg) if _config_arg is not None else _positional_config) or (
             str(resume_run_dir / "config.yml") if resume_run_dir else None
         )
         if _config_path:
@@ -898,6 +907,7 @@ def _(
             batch_progress=batch_progress,
             validation_batch_progress=val_batch_progress,
             strict_number_of_instances=config.trainer.strict_number_of_instances,
+            validate_before_training=config.validation.validate_before_training,
         ).fit(
             module=nds_module,
             optimizer=optimizer,

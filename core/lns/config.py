@@ -43,7 +43,7 @@ class SearchParams(BaseModel):
     """
 
     repair_type: RepairType = Field(
-        default="greedy_reconnect", title="Repair type", description="Repair type."
+        default="greedy_insert", title="Repair type", description="Repair type."
     )
     num_improvement_steps: int = Field(
         default=10, title="Improvement steps", description="Number of search iterations."

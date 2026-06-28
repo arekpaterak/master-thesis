@@ -88,7 +88,7 @@ def test_trainer_default_uses_stable_batch_sizes():
         training_instances=1500,
         batch_size=64,
     )
-    assert trainer._epoch_batch_sizes() == [64] * 24
+    assert trainer._train_batch_sizes() == [64] * 24
 
 
 def test_trainer_strict_keeps_exact_instance_count():
@@ -98,4 +98,4 @@ def test_trainer_strict_keeps_exact_instance_count():
         batch_size=64,
         strict_number_of_instances=True,
     )
-    assert trainer._epoch_batch_sizes() == [64] * 23 + [28]
+    assert trainer._train_batch_sizes() == [64] * 23 + [28]

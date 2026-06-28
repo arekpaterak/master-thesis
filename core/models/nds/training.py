@@ -121,6 +121,7 @@ def configure_training_step(
     amp_enabled: bool = False,
     amp_dtype: torch.dtype = torch.float16,
     scaler: torch.amp.GradScaler | None = None,
+    encode_once: bool = False,
     improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> Callable[[NDSModel, optim.Optimizer, BaseProblemInstance], BatchTrainSummary]:
     _apply_rollout = default_apply_rollout if apply_rollout is None else apply_rollout
@@ -155,14 +156,39 @@ def configure_training_step(
         total_entropy_norm = 0.0
         total_log_p = 0.0
 
+        # Encode the static instance once and reuse it across improvement steps. The
+        # encoder output is detached into a leaf so each step's backward stays bounded;
+        # its gradient is accumulated and pushed through the encoder once after the loop.
+        # This is exact: the split encoder is a deterministic function of the instance.
+        step_cache = None
+        instance_node_embeddings = None
+        instance_node_embeddings_leaf = None
+        accumulated_encoder_gradient = None
+        if encode_once:
+            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
+                base_cache = model.encode_for_training(solution)
+            instance_node_embeddings = base_cache.instance_node_embeddings
+            instance_node_embeddings_leaf = instance_node_embeddings.detach().requires_grad_(True)
+            step_cache = base_cache._replace(instance_node_embeddings=instance_node_embeddings_leaf)
+            accumulated_encoder_gradient = torch.zeros_like(instance_node_embeddings)
+
         for _step in improvement_step_progress(range(num_main_improvement_steps)):
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
-                rollout = model.rollout(
-                    solution,
-                    rollouts_per_solution=rollouts_per_solution,
-                    deconstruction_size=deconstruction_size,
-                    greedy=False,
-                )
+                if encode_once:
+                    rollout = model.rollout_from_cache(
+                        solution,
+                        step_cache,
+                        rollouts_per_solution=rollouts_per_solution,
+                        deconstruction_size=deconstruction_size,
+                        greedy=False,
+                    )
+                else:
+                    rollout = model.rollout(
+                        solution,
+                        rollouts_per_solution=rollouts_per_solution,
+                        deconstruction_size=deconstruction_size,
+                        greedy=False,
+                    )
 
                 solution_deconstructed = _apply_rollout(solution, rollout)
                 assert solution_deconstructed.batch_dims == 2
@@ -187,6 +213,10 @@ def configure_training_step(
             else:
                 loss.backward()
 
+            if encode_once:
+                accumulated_encoder_gradient += instance_node_embeddings_leaf.grad
+                instance_node_embeddings_leaf.grad = None
+
             solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
             total_loss += loss.item()
@@ -195,6 +225,12 @@ def configure_training_step(
             total_entropy += rollout.mean_entropy
             total_entropy_norm += rollout.mean_entropy_norm
             total_log_p += best_log_p.mean().item()
+
+        # One encoder backward with the summed boundary gradient. The accumulated
+        # gradient carries the scaler factor from each step's scaled backward (constant
+        # within a step), so scaler.unscale_ below unscales it together with the rest.
+        if encode_once:
+            instance_node_embeddings.backward(gradient=accumulated_encoder_gradient)
 
         if scaler is not None:
             scaler.unscale_(optimizer)

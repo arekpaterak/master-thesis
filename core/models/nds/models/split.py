@@ -137,6 +137,58 @@ class SplitNDSModel(nn.Module):
         instance_anchor = solution.instance
 
         solution, batch_dims = flatten_instance_batch(solution)
+        cache = self._instance_cache_for(instance_anchor, solution.instance)
+
+        return self._rollout_from_cache(
+            solution,
+            batch_dims,
+            cache,
+            rollouts_per_solution=rollouts_per_solution,
+            deconstruction_size=deconstruction_size,
+            greedy=greedy,
+        )
+
+    def encode_for_training(self, solution: BaseSolution) -> InstanceCache:
+        """Encode the static instance once (with grad) for encode-once training.
+
+        The returned cache is reused across every improvement step of a training step;
+        only the solution-dependent positional fusion is recomputed per step. Pair this
+        with ``rollout_from_cache`` and accumulate the boundary gradient so a single
+        encoder backward suffices. See ``encode_once_in_training``.
+        """
+        solution, _ = flatten_instance_batch(solution)
+        return self._encode_instance(solution.instance)
+
+    def rollout_from_cache(
+        self,
+        solution: BaseSolution,
+        cache: InstanceCache,
+        *,
+        rollouts_per_solution: int,
+        deconstruction_size: int,
+        greedy: bool = False,
+    ) -> Rollout:
+        """Roll out from a precomputed instance cache (see ``encode_for_training``)."""
+        solution, batch_dims = flatten_instance_batch(solution)
+        return self._rollout_from_cache(
+            solution,
+            batch_dims,
+            cache,
+            rollouts_per_solution=rollouts_per_solution,
+            deconstruction_size=deconstruction_size,
+            greedy=greedy,
+        )
+
+    def _rollout_from_cache(
+        self,
+        solution: BaseSolution,
+        batch_dims: int,
+        cache: InstanceCache,
+        *,
+        rollouts_per_solution: int,
+        deconstruction_size: int,
+        greedy: bool,
+    ) -> Rollout:
         instance = solution.instance
 
         B = instance.batch_size[0]
@@ -146,8 +198,6 @@ class SplitNDSModel(nn.Module):
         seed = sample_seed(
             batch_size=B, rollout_size=R, seed_dim=self.decoder.seed_dim, device=device
         )
-
-        cache = self._instance_cache_for(instance_anchor, instance)
 
         solution_features = self.solution_feature_extractor(solution).to(device)
         ipe = self._in_route_positional_encoding(solution_features)

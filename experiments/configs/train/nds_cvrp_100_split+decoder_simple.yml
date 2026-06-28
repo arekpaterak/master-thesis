@@ -50,7 +50,8 @@ logging:
   wandb_project: nds
 
 validation:
-  num_instances: 1000
+  validate_before_training: true
+  num_instances: 100
   batch_size: 100
   every_n_epochs: 1
   seed: 42

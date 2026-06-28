@@ -108,6 +108,7 @@ class NDSModule(Module):
             amp_enabled=amp_enabled,
             amp_dtype=amp_dtype,
             scaler=self._scaler,
+            encode_once=getattr(config.model, "encode_once_in_training", False),
             improvement_step_progress=improvement_step_progress,
         )
 
