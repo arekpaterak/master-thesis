@@ -48,6 +48,20 @@ class EpochValidationSummary(BaseModel):
             return 0.0
         return self.improvement / self.objective_initial
 
+    @computed_field
+    @property
+    def steps_to_best(self) -> int:
+        best_idx = min(range(len(self.objective_curve)), key=lambda i: self.objective_curve[i])
+        return self.step_labels[best_idx]
+
+    @computed_field
+    @property
+    def steps_with_improvement(self) -> float:
+        improvements = sum(b < a for a, b in zip(self.objective_curve, self.objective_curve[1:]))
+        return (
+            improvements / (len(self.objective_curve) - 1) if len(self.objective_curve) > 1 else 0.0
+        )
+
 
 class EpochValidationAccumulator(EpochAccumulator):
     def __init__(self) -> None:

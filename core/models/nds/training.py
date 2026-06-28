@@ -32,6 +32,9 @@ class BatchTrainSummary(BaseModel):
     entropy: float
     entropy_norm: float
     log_p: float
+    reward_std: float
+    acceptance_rate: float
+    mean_unique_actions: float
     objective_before: float
     objective_after: float
     grad_norm: float
@@ -48,6 +51,9 @@ class EpochTrainSummary(BaseModel):
     entropy: float
     entropy_norm: float
     log_p: float
+    reward_std: float
+    acceptance_rate: float
+    mean_unique_actions: float
     objective_before: float
     objective_after: float
     grad_norm: float
@@ -69,6 +75,9 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_entropy = 0.0
         self._total_entropy_norm = 0.0
         self._total_log_p = 0.0
+        self._total_reward_std = 0.0
+        self._total_acceptance_rate = 0.0
+        self._total_mean_unique_actions = 0.0
         self._total_objective_before = 0.0
         self._total_objective_after = 0.0
         self._total_grad_norm = 0.0
@@ -83,6 +92,9 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_entropy += summary.entropy * n
         self._total_entropy_norm += summary.entropy_norm * n
         self._total_log_p += summary.log_p * n
+        self._total_reward_std += summary.reward_std * n
+        self._total_acceptance_rate += summary.acceptance_rate * n
+        self._total_mean_unique_actions += summary.mean_unique_actions * n
         self._total_objective_before += summary.objective_before * n
         self._total_objective_after += summary.objective_after * n
         self._total_grad_norm += summary.grad_norm * n
@@ -97,6 +109,9 @@ class EpochTrainAccumulator(EpochAccumulator):
             entropy=self._total_entropy / n,
             entropy_norm=self._total_entropy_norm / n,
             log_p=self._total_log_p / n,
+            reward_std=self._total_reward_std / n,
+            acceptance_rate=self._total_acceptance_rate / n,
+            mean_unique_actions=self._total_mean_unique_actions / n,
             objective_before=self._total_objective_before / n,
             objective_after=self._total_objective_after / n,
             grad_norm=self._total_grad_norm / n,
@@ -155,6 +170,9 @@ def configure_training_step(
         total_entropy = 0.0
         total_entropy_norm = 0.0
         total_log_p = 0.0
+        total_reward_std = 0.0
+        total_acceptance_rate = 0.0
+        total_mean_unique_actions = 0.0
 
         # Encode the static instance once and reuse it across improvement steps. The
         # encoder output is detached into a leaf so each step's backward stays bounded;
@@ -219,12 +237,31 @@ def configure_training_step(
 
             solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
+            sorted_actions = rollout.actions.sort(dim=-1).values
+            is_unique = torch.cat(
+                [
+                    torch.ones(
+                        *sorted_actions.shape[:-1],
+                        1,
+                        dtype=torch.bool,
+                        device=sorted_actions.device,
+                    ),
+                    sorted_actions[..., 1:] != sorted_actions[..., :-1],
+                ],
+                dim=-1,
+            )
+
             total_loss += loss.item()
             total_reward_best += best_reward.mean().item()
             total_reward_mean += reward_mean.mean().item()
             total_entropy += rollout.mean_entropy
             total_entropy_norm += rollout.mean_entropy_norm
             total_log_p += best_log_p.mean().item()
+            total_reward_std += reward.std(dim=1).mean().item()
+            total_acceptance_rate += (best_reward > 0).float().mean().item()
+            total_mean_unique_actions += (
+                is_unique.float().sum(dim=-1).mean().item() / deconstruction_size
+            )
 
         # One encoder backward with the summed boundary gradient. The accumulated
         # gradient carries the scaler factor from each step's scaled backward (constant
@@ -254,6 +291,9 @@ def configure_training_step(
             entropy=total_entropy / num_main_improvement_steps,
             entropy_norm=total_entropy_norm / num_main_improvement_steps,
             log_p=total_log_p / num_main_improvement_steps,
+            reward_std=total_reward_std / num_main_improvement_steps,
+            acceptance_rate=total_acceptance_rate / num_main_improvement_steps,
+            mean_unique_actions=total_mean_unique_actions / num_main_improvement_steps,
             objective_before=objective_before,
             objective_after=objective_after,
             grad_norm=grad_norm.item(),

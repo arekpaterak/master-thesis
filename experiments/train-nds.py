@@ -862,6 +862,15 @@ def _(
                     "val/objective_final": val_summary.objective_final,
                     "val/improvement": val_summary.improvement,
                     "val/relative_improvement": val_summary.relative_improvement,
+                    "val/steps_to_best": val_summary.steps_to_best,
+                    "val/steps_with_improvement": val_summary.steps_with_improvement,
+                    "val/objective_curve": wandb.plot.line_series(
+                        xs=val_summary.step_labels,
+                        ys=[val_summary.objective_curve],
+                        keys=["objective"],
+                        title=f"Validation objective (epoch {val_summary.epoch})",
+                        xname="LNS step",
+                    ),
                     "epoch": val_summary.epoch,
                 }
             )
