@@ -34,6 +34,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         num_heads: int,
         num_slots: int,
         slot_self_attention: Literal["none", "pre", "post"] = "post",
+        with_poly: bool = True,
         C: float = 10.0,
     ):
         super().__init__()
@@ -42,6 +43,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         self._seed_dim = seed_dim
         self.num_slots = num_slots
         self.slot_self_attention = slot_self_attention
+        self.with_poly = with_poly
 
         self.slot_queries = nn.Parameter(torch.empty(num_slots, hidden_dim))
         nn.init.xavier_uniform_(self.slot_queries.unsqueeze(0))
@@ -52,10 +54,14 @@ class SlotDecoder(OnePassDestroyDecoder):
             else None
         )
         self.MHA = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
-        self.poly_net = nn.Sequential(
-            nn.Linear(hidden_dim + seed_dim, poly_dim),
-            nn.ReLU(),
-            nn.Linear(poly_dim, hidden_dim),
+        self.poly_net = (
+            nn.Sequential(
+                nn.Linear(hidden_dim + seed_dim, poly_dim),
+                nn.ReLU(),
+                nn.Linear(poly_dim, hidden_dim),
+            )
+            if with_poly
+            else None
         )
         self.scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
 
@@ -91,10 +97,13 @@ class SlotDecoder(OnePassDestroyDecoder):
             mha_out = mha_out + self.slot_self_attn(mha_out, mha_out, mha_out)
 
         mha_out = mha_out.unsqueeze(1).expand(B, R, self.num_slots, hidden_dim)  # (B, R, M, D)
-        seed_expanded = seed.unsqueeze(-2).expand(B, R, self.num_slots, self.seed_dim)
-        context = mha_out + self.poly_net(
-            torch.cat([mha_out, seed_expanded], dim=-1)
-        )  # (B, R, M, hidden_dim)
+        if self.poly_net is None:
+            context = mha_out  # (B, R, M, hidden_dim)
+        else:
+            seed_expanded = seed.unsqueeze(-2).expand(B, R, self.num_slots, self.seed_dim)
+            context = mha_out + self.poly_net(
+                torch.cat([mha_out, seed_expanded], dim=-1)
+            )  # (B, R, M, hidden_dim)
 
         # Expand h_nodes and mask over R and the M slot dimension so scorer
         # sees matching batch dims: (B, R, M, N, D) and (B, R, M, N)

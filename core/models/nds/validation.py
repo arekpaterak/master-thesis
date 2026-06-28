@@ -5,13 +5,14 @@ from collections.abc import Callable, Iterable
 import torch
 from pydantic import BaseModel, computed_field
 
-from core.lns.acceptance_criterion import AcceptanceCriterion, SimulatedAnnealingAcceptance
+from core.lns.config import SearchParams
 from core.lns.improvement_step import ImprovementStep
-from core.lns.search import augmented_search, search
+from core.methods.base import Method
 from core.models.module import EpochAccumulator
 from core.models.nds.models import NDSModel
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
+from core.solve import solve
 
 
 class BatchValidationSummary(BaseModel):
@@ -86,21 +87,12 @@ def configure_validation_step(
     *,
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
     improvement_step: ImprovementStep,
-    criterion: AcceptanceCriterion,
-    num_improvement_steps: int,
-    n_augmentations: int = 1,
-    augmented_threshold_factor: float = 15.0,
+    search_params: SearchParams,
     capture_snapshots_every_n_improvement_steps: int | None = 1,
     amp_enabled: bool = False,
     amp_dtype: torch.dtype = torch.float16,
     step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
-    if n_augmentations > 1 and not isinstance(criterion, SimulatedAnnealingAcceptance):
-        raise ValueError(
-            "Augmented search (n_augmentations > 1) requires a simulated_annealing "
-            "acceptance criterion -- the cross-augmentation threshold depends on "
-            "the SA temperature. Set validation.search.acceptance.type to 'sa'."
-        )
     snapshot_step_set = {0}
     if capture_snapshots_every_n_improvement_steps is not None:
         assert capture_snapshots_every_n_improvement_steps > 0, (
@@ -109,10 +101,16 @@ def configure_validation_step(
         snapshot_step_set |= set(
             range(
                 capture_snapshots_every_n_improvement_steps,
-                num_improvement_steps + 1,
+                search_params.num_improvement_steps + 1,
                 capture_snapshots_every_n_improvement_steps,
             )
         )
+
+    method = Method(
+        search=search_params,
+        generate_start_solution=generate_start_solution,
+        improvement_step=improvement_step,
+    )
 
     def validation_step(
         model: NDSModel,
@@ -125,50 +123,24 @@ def configure_validation_step(
         instance = instance.to(device)
         batch_size = instance.batch_size[0]
 
+        snapshots: list[BaseSolution] = []
+        objective_curve: list[float] = []
+
+        def on_step(step: int, solution: BaseSolution) -> None:
+            if step in snapshot_step_set:
+                snapshots.append(_unbatch_first(solution))
+                objective_curve.append(solution.objective().mean().item())
+
         with (
             torch.no_grad(),
             torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled),
         ):
-            if n_augmentations > 1:
-                instance = instance.augment(n_augmentations)
-            solution = generate_start_solution(instance)
-            objective_initial = _aggregate_objective(solution).mean().item()
-
-            snapshots: list[BaseSolution] = [_unbatch_first(_best_per_instance(solution))]
-            objective_curve: list[float] = [objective_initial]
-
-            def on_step(step: int, solution: BaseSolution) -> None:
-                if step in snapshot_step_set:
-                    snapshots.append(_unbatch_first(_best_per_instance(solution)))
-                    objective_curve.append(_aggregate_objective(solution).mean().item())
-
-            if n_augmentations > 1:
-                assert isinstance(criterion, SimulatedAnnealingAcceptance)
-                result = augmented_search(
-                    solution,
-                    improvement_step=improvement_step,
-                    criterion=criterion,
-                    n_iterations=num_improvement_steps,
-                    threshold_factor=augmented_threshold_factor,
-                    on_step=on_step,
-                    step_progress=step_progress,
-                )
-            else:
-                result = search(
-                    solution,
-                    improvement_step=improvement_step,
-                    criterion=criterion,
-                    n_iterations=num_improvement_steps,
-                    on_step=on_step,
-                    step_progress=step_progress,
-                )
-
-            objective_final = _aggregate_objective(result.solution).mean().item()
+            final = solve(method, instance, on_step=on_step, step_progress=step_progress)
 
         return BatchValidationSummary(
             batch_size=batch_size,
-            objective_initial=objective_initial,
-            objective_final=objective_final,
+            objective_initial=objective_curve[0],
+            objective_final=final.objective().mean().item(),
             objective_curve=objective_curve,
             step_labels=sorted(snapshot_step_set),
             snapshots=snapshots,
@@ -179,23 +151,3 @@ def configure_validation_step(
 
 def _unbatch_first(solution: BaseSolution) -> BaseSolution:
     return solution[0] if solution.batch_size else solution  # type: ignore
-
-
-def _aggregate_objective(solution: BaseSolution) -> torch.Tensor:
-    """For augmented solutions (B, A) return min over A; otherwise the objective as-is.
-
-    Treats a 2D batch_size as ``(B, A)`` -- the augmented case. A 1D batch_size
-    is the plain (B,) case and returns the objective unchanged.
-    """
-    objective = solution.objective()
-    if len(solution.batch_size) == 2:
-        return objective.min(dim=-1).values
-    return objective
-
-
-def _best_per_instance(solution: BaseSolution) -> BaseSolution:
-    """For augmented solutions, gather the best across the A dim; otherwise unchanged."""
-    if len(solution.batch_size) != 2:
-        return solution
-    best_idx = solution.objective().argmin(dim=-1, keepdim=True)  # (B, 1)
-    return solution.gather(-1, best_idx).squeeze(-1)

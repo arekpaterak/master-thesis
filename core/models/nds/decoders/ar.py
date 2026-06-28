@@ -77,6 +77,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         seed_dim: int = 10,
         poly_dim: int = 512,
         num_heads: int = 8,
+        with_poly: bool = True,
         C: float = 10.0,
         use_hidden_decoding_state: bool = True,
     ) -> None:
@@ -86,6 +87,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self._seed_dim = seed_dim
+        self.with_poly = with_poly
 
         self.start_token = nn.Parameter(torch.zeros(hidden_dim), requires_grad=True)
 
@@ -96,10 +98,14 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
 
         self.GRU = nn.GRUCell(hidden_dim, hidden_dim) if use_hidden_decoding_state else None
 
-        self.poly_net = nn.Sequential(
-            nn.Linear(hidden_dim + seed_dim, poly_dim),
-            nn.ReLU(),
-            nn.Linear(poly_dim, hidden_dim),
+        self.poly_net = (
+            nn.Sequential(
+                nn.Linear(hidden_dim + seed_dim, poly_dim),
+                nn.ReLU(),
+                nn.Linear(poly_dim, hidden_dim),
+            )
+            if with_poly
+            else None
         )
 
         self.final_scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
@@ -259,7 +265,10 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
             q=context, k_cached=cache.k, v_cached=cache.v, attention_mask=attention_mask
         ).reshape(B, R, self.hidden_dim)
 
-        context_out = mha_out + self.poly_net(torch.cat([mha_out, cache.seed], dim=-1))
+        if self.poly_net is None:
+            context_out = mha_out
+        else:
+            context_out = mha_out + self.poly_net(torch.cat([mha_out, cache.seed], dim=-1))
 
         logits = self.final_scorer(
             h_c=context_out,

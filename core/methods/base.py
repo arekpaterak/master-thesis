@@ -11,7 +11,7 @@ from core.problems.solution import BaseSolution
 
 @dataclass(frozen=True)
 class Method:
-    name: str
     search: SearchParams
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution]
     improvement_step: ImprovementStep
+    name: str = "unnamed"

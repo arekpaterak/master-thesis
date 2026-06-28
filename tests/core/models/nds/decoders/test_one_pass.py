@@ -13,13 +13,17 @@ POLY_DIM = 32
 NUM_HEADS = 2
 
 
-def _gumbel():
+def _simple(with_poly=True):
     return SimpleOnePassDecoder(
-        hidden_dim=HIDDEN_DIM, seed_dim=SEED_DIM, poly_dim=POLY_DIM, num_heads=NUM_HEADS
+        hidden_dim=HIDDEN_DIM,
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+        num_heads=NUM_HEADS,
+        with_poly=with_poly,
     ), {}
 
 
-def _slot(slot_self_attention="post"):
+def _slot(slot_self_attention="post", with_poly=True):
     return SlotDecoder(
         hidden_dim=HIDDEN_DIM,
         seed_dim=SEED_DIM,
@@ -27,13 +31,38 @@ def _slot(slot_self_attention="post"):
         num_heads=NUM_HEADS,
         num_slots=M,
         slot_self_attention=slot_self_attention,
+        with_poly=with_poly,
     ), {}
 
 
 DECODERS = [
-    pytest.param(_gumbel, id="gumbel"),
+    pytest.param(_simple, id="gumbel"),
     pytest.param(_slot, id="slot"),
 ]
+
+
+@pytest.mark.parametrize("make_decoder", DECODERS)
+def test_without_poly_greedy_is_seed_independent(make_decoder):
+    decoder, extra_kwargs = make_decoder(with_poly=False)
+    decoder.eval()
+    assert decoder.poly_net is None
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    def greedy_actions(seed):
+        return decoder.rollout(
+            h_nodes=h_nodes,
+            seed=seed,
+            action_mask=action_mask,
+            deconstruction_size=M,
+            greedy=True,
+            **extra_kwargs,
+        ).actions
+
+    # Without PolyNet the greedy decode ignores the seed entirely.
+    seed_a = torch.randn(B, R, SEED_DIM)
+    seed_b = torch.randn(B, R, SEED_DIM)
+    assert torch.equal(greedy_actions(seed_a), greedy_actions(seed_b))
 
 
 @pytest.mark.parametrize("make_decoder", DECODERS)

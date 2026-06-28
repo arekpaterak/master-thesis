@@ -18,15 +18,21 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         seed_dim: int,
         poly_dim: int,
         num_heads: int,
+        with_poly: bool = True,
         C: float = 10.0,
     ):
         super().__init__()
         self._seed_dim = seed_dim
+        self.with_poly = with_poly
         self.MHA = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
-        self.poly_net = nn.Sequential(
-            nn.Linear(hidden_dim + seed_dim, poly_dim),
-            nn.ReLU(),
-            nn.Linear(poly_dim, hidden_dim),
+        self.poly_net = (
+            nn.Sequential(
+                nn.Linear(hidden_dim + seed_dim, poly_dim),
+                nn.ReLU(),
+                nn.Linear(poly_dim, hidden_dim),
+            )
+            if with_poly
+            else None
         )
         self.final_scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
 
@@ -46,7 +52,10 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         )  # (B, D)
         mha_out = mha_out.unsqueeze(1).expand(B, R, D)  # (B, R, D)
 
-        context = mha_out + self.poly_net(torch.cat([mha_out, seed], dim=-1))
+        if self.poly_net is None:
+            context = mha_out
+        else:
+            context = mha_out + self.poly_net(torch.cat([mha_out, seed], dim=-1))
 
         h_nodes_expanded = h_nodes.unsqueeze(1).expand(B, R, N, D)  # (B, R, N, D)
         action_mask_expanded = action_mask.unsqueeze(1).expand(B, R, N)  # (B, R, N)

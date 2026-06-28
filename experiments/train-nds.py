@@ -23,6 +23,7 @@ with app.setup(hide_code=True):
     import wandb
     from core.lns.acceptance_criterion import AcceptanceCriterionConfig
     from core.lns.config import SearchParams, StartSolutionParams
+    from core.models.nds.baseline import BaselineConfig
     from core.models.nds.config import (
         AmpConfig,
         CompileConfig,
@@ -150,18 +151,6 @@ def _():
 def _(env_config_widget, is_script_mode):
     env_config_widget if not is_script_mode and not wandb.login() else None
     return
-
-
-@app.cell(hide_code=True)
-def _(defaults):
-    loss_type, loss_forms = build_union_selector(PolicyLossConfig, defaults.loss)
-    return loss_forms, loss_type
-
-
-@app.cell(hide_code=True)
-def _(defaults):
-    reward_type, reward_forms = build_union_selector(RewardConfig, defaults.reward)
-    return reward_forms, reward_type
 
 
 @app.cell(column=1, hide_code=True)
@@ -359,13 +348,37 @@ def _(defaults):
     return (trainer_form,)
 
 
-@app.cell
+@app.cell(hide_code=True)
+def _(defaults):
+    loss_type, loss_forms = build_union_selector(PolicyLossConfig, defaults.loss)
+    return loss_forms, loss_type
+
+
+@app.cell(hide_code=True)
+def _(defaults):
+    baseline_type, baseline_forms = build_union_selector(BaselineConfig, defaults.baseline)
+    return baseline_forms, baseline_type
+
+
+@app.cell(hide_code=True)
 def _(loss_forms, loss_type):
     mo.vstack([mo.md("### Policy loss"), loss_type, *loss_forms[loss_type.value].values()])
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
+def _(baseline_forms, baseline_type):
+    mo.vstack([mo.md("### Baseline"), baseline_type, *baseline_forms[baseline_type.value].values()])
+    return
+
+
+@app.cell(hide_code=True)
+def _(defaults):
+    reward_type, reward_forms = build_union_selector(RewardConfig, defaults.reward)
+    return reward_forms, reward_type
+
+
+@app.cell(hide_code=True)
 def _(reward_forms, reward_type):
     mo.vstack([mo.md("### Reward"), reward_type, *reward_forms[reward_type.value].values()])
     return
@@ -517,6 +530,8 @@ def _(
     acceptance_forms,
     acceptance_type,
     amp_form,
+    baseline_forms,
+    baseline_type,
     compile_form,
     decoder_forms,
     decoder_type,
@@ -592,6 +607,7 @@ def _(
             model=_model,
             optimizer=OptimizerParams(**optimizer_form.value),
             loss=collect_union_value(PolicyLossConfig, loss_type, loss_forms),
+            baseline=collect_union_value(BaselineConfig, baseline_type, baseline_forms),
             reward=collect_union_value(RewardConfig, reward_type, reward_forms),
             amp=AmpConfig(**amp_form.value),
             compile=CompileConfig(**compile_form.value),
@@ -803,10 +819,23 @@ def _(
             it, title="Validation improvement steps", remove_on_exit=True
         )
 
+    def on_baseline_sync(result):
+        if config.logging.wandb_project:
+            wandb.log(
+                {
+                    "baseline/obj_model": result.model_mean,
+                    "baseline/obj_baseline": result.baseline_mean,
+                    "baseline/p_value": result.p_value,
+                    "baseline/updated": int(result.improved),
+                }
+            )
+
     model.to(device)
     nds_module = NDSModule(
         config=config,
         model=model,
+        baseline_eval_sampler=sampler,
+        on_baseline_sync=on_baseline_sync,
         improvement_step_progress=improvement_step_progress,
         validation_improvement_step_progress=val_improvement_step_progress,
     )
@@ -822,7 +851,11 @@ def _(
             checkpoints_path = run_dir / "checkpoints"
             checkpoints_path.mkdir(exist_ok=True)
             torch.save(
-                {"model": nds_module.model.state_dict(), "optimizer": optimizer.state_dict()},
+                {
+                    "model": nds_module.model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "baseline": nds_module.baseline.state_dict(),
+                },
                 checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
             )
 
@@ -905,6 +938,7 @@ def _(
         # Free the GPU whether training finished or was interrupted: the trained weights
         # are persisted in checkpoints and the in-memory model only needs to live on CPU.
         model.to("cpu")
+        nds_module.baseline.to("cpu")
         gc.collect()
         torch.cuda.empty_cache()
 

@@ -39,6 +39,7 @@ class DestroyDecoder(nn.Module, ABC):
         Args:
             h_nodes: Encoded node embeddings. Shape: (B, N, D).
             seed: Random seed vector for stochastic conditioning. Shape: (B, R, seed_dim).
+                Ignored by decoders built without PolyNet (``with_poly=False``).
             action_mask: Boolean mask where True marks forbidden nodes, shape (B, N).
                 Autoregressive decoders rebuild the (problem-specific, transitionable)
                 initial state internally and may ignore this argument.

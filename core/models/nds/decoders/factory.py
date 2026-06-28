@@ -21,7 +21,13 @@ def build_decoder(
     num_heads: int,
 ) -> DestroyDecoder:
     """Instantiate the destroy decoder selected by ``decoder_config``."""
-    shared = dict(hidden_dim=hidden_dim, seed_dim=seed_dim, poly_dim=poly_dim, num_heads=num_heads)
+    shared = dict(
+        hidden_dim=hidden_dim,
+        seed_dim=seed_dim,
+        poly_dim=poly_dim,
+        num_heads=num_heads,
+        with_poly=decoder_config.with_poly,
+    )
     match decoder_config:
         case AutoregressiveDecoderConfig():
             return AutoregressiveNDSDecoder(

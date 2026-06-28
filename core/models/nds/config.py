@@ -9,6 +9,12 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 
 from core.lns.acceptance_criterion import GreedyAcceptanceConfig
 from core.lns.config import SearchParams
+from core.models.nds.baseline import (
+    BaselineConfig,
+    GreedyRolloutBaselineConfig,
+    SharedBaselineConfig,
+    build_baseline,
+)
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 from core.models.nds.policy_loss import BestRolloutLossConfig, PolicyLossConfig
 from core.models.nds.reward import RelativeRewardConfig, RewardConfig
@@ -280,6 +286,7 @@ class TrainConfig(BaseModel):
     model: ModelParams = Field(default_factory=JointModelParams)
     optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
     loss: PolicyLossConfig = Field(default_factory=BestRolloutLossConfig)
+    baseline: BaselineConfig = Field(default_factory=SharedBaselineConfig)
     reward: RewardConfig = Field(default_factory=RelativeRewardConfig)
     trainer: TrainerParams = Field(default_factory=TrainerParams)
     search: SearchParams = Field(
@@ -299,6 +306,32 @@ class TrainConfig(BaseModel):
             if isinstance(model, dict) and "encoder_mode" not in model:
                 model["encoder_mode"] = "joint"
         return data
+
+    @model_validator(mode="after")
+    def _validate_baseline(self) -> Self:
+        if isinstance(self.baseline, GreedyRolloutBaselineConfig):
+            # The greedy rollout baseline trains on a single sampled rollout, so PolyNet
+            # (the multi-rollout diversity head) is disabled and the policy produces one
+            # rollout. A PolyNet-conditioned greedy baseline would depend on the random
+            # seed, defeating its purpose.
+            if self.search.num_rollouts != 1:
+                raise ValueError(
+                    "greedy_rollout baseline requires search.num_rollouts == 1, "
+                    f"got {self.search.num_rollouts}."
+                )
+            if self.model.decoder.with_poly:
+                raise ValueError(
+                    "greedy_rollout baseline requires model.decoder.with_poly = false."
+                )
+            return self
+
+        required = build_baseline(self.baseline).min_rollouts()
+        if self.search.num_rollouts < required:
+            raise ValueError(
+                f"baseline '{self.baseline.type}' requires search.num_rollouts >= "
+                f"{required}, got {self.search.num_rollouts}."
+            )
+        return self
 
     @computed_field
     @property
