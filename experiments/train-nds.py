@@ -54,7 +54,7 @@ with app.setup(hide_code=True):
     from core.problems import make_problem_config
     from core.problems.dataset import DatasetSampler
     from core.problems.sampler import Sampler
-    from core.results.plots import plot_lns_progress
+    from core.results.plots import plot_search_progress
     from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
     from core.ui.forms import build_mo_ui_dict, build_union_selector, collect_union_value
 
@@ -855,36 +855,38 @@ def _(
             )
 
     def on_epoch_validation_end(val_summary: EpochValidationSummary):
-        if config.logging.wandb_project:
-            wandb.log(
-                {
-                    "val/objective_initial": val_summary.objective_initial,
-                    "val/objective_final": val_summary.objective_final,
-                    "val/improvement": val_summary.improvement,
-                    "val/relative_improvement": val_summary.relative_improvement,
-                    "val/steps_to_best": val_summary.steps_to_best,
-                    "val/steps_with_improvement": val_summary.steps_with_improvement,
-                    "val/objective_curve": wandb.plot.line_series(
-                        xs=val_summary.step_labels,
-                        ys=[val_summary.objective_curve],
-                        keys=["objective"],
-                        title=f"Validation objective (epoch {val_summary.epoch})",
-                        xname="LNS step",
-                    ),
-                    "epoch": val_summary.epoch,
-                }
-            )
+        fig = None
         if config.validation.plot_enabled:
-            fig = plot_lns_progress(
+            fig = plot_search_progress(
                 val_summary.snapshots, val_summary.step_labels, epoch=val_summary.epoch
             )
             if config.validation.plot_save_to_disk:
                 plot_path = run_dir / "plots"
                 plot_path.mkdir(parents=True, exist_ok=True)
-                fig.savefig(
-                    plot_path / f"epoch_{val_summary.epoch:04d}.pdf",
-                    bbox_inches="tight",
-                )
+                _stem = plot_path / f"epoch_{val_summary.epoch:04d}"
+                fig.savefig(f"{_stem}.pdf", bbox_inches="tight")
+                fig.savefig(f"{_stem}.png", bbox_inches="tight", dpi=150)
+        if config.logging.wandb_project:
+            _log = {
+                "val/objective_initial": val_summary.objective_initial,
+                "val/objective_final": val_summary.objective_final,
+                "val/improvement": val_summary.improvement,
+                "val/relative_improvement": val_summary.relative_improvement,
+                "val/steps_to_best": val_summary.steps_to_best,
+                "val/steps_with_improvement": val_summary.steps_with_improvement,
+                "val/objective_curve": wandb.plot.line_series(
+                    xs=val_summary.step_labels,
+                    ys=[val_summary.objective_curve],
+                    keys=["objective"],
+                    title=f"Validation objective (epoch {val_summary.epoch})",
+                    xname="Improvement step",
+                ),
+                "epoch": val_summary.epoch,
+            }
+            if fig is not None:
+                _log["val/search_progress"] = wandb.Image(fig)
+            wandb.log(_log)
+        if fig is not None:
             plt.close(fig)
 
     optimizer = optim.AdamW(
@@ -900,6 +902,7 @@ def _(
             _ckpt = torch.load(_checkpoint_path, map_location="cpu", weights_only=True)
             optimizer.load_state_dict(_ckpt["optimizer"])
 
+    _interrupted = False
     try:
         Trainer(
             max_epochs=config.trainer.epochs,
@@ -923,10 +926,9 @@ def _(
             instance_sampler=sampler,
             validation_instance_sampler=val_sampler,
         )
-    except BaseException:
-        if config.logging.wandb_project:
-            wandb.finish(exit_code=1)
-    else:
+    except Exception:
+        _interrupted = True
+    finally:
         if config.logging.wandb_project:
             _final_checkpoint, _final_epoch = find_latest_checkpoint(run_dir)
             if _final_checkpoint is not None:
@@ -935,19 +937,19 @@ def _(
                     checkpoint_path=_final_checkpoint,
                     epoch=_final_epoch,
                 )
-            upload_validation_plots(
-                run_name=config.run_name,
-                plots_dir=run_dir / "plots",
-            )
-            wandb.finish()
-    finally:
+            if not _interrupted:
+                upload_validation_plots(
+                    run_name=config.run_name,
+                    plots_dir=run_dir / "plots",
+                )
+            wandb.finish(exit_code=1 if _interrupted else 0)
         # Free the GPU whether training finished or was interrupted: the trained weights
         # are persisted in checkpoints and the in-memory model only needs to live on CPU.
         model.to("cpu")
         gc.collect()
         torch.cuda.empty_cache()
 
-    mo.md("**Training complete.**")
+    mo.md("**Training completed.**")
     return
 
 

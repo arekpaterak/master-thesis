@@ -8,7 +8,7 @@ from matplotlib.figure import Figure
 from core.problems.solution import BaseSolution
 
 
-def plot_lns_progress(
+def plot_search_progress(
     snapshots: list[BaseSolution],
     step_labels: list[int],
     *,

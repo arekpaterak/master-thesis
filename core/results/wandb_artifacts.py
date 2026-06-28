@@ -18,12 +18,13 @@ def upload_final_checkpoint(*, run_name: str, checkpoint_path: Path, epoch: int)
 def upload_validation_plots(*, run_name: str, plots_dir: Path) -> None:
     if not plots_dir.exists():
         return
-    plots = sorted(plots_dir.glob("*.pdf"))
+    plots = sorted(plots_dir.glob("*.pdf")) + sorted(plots_dir.glob("*.png"))
     if not plots:
         return
     artifact = wandb.Artifact(
         name=f"val-plots-{run_name}",
         type="validation-plots",
+        metadata={"run_name": run_name},
     )
     for plot_path in plots:
         artifact.add_file(str(plot_path))

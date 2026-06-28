@@ -37,7 +37,7 @@ with app.setup:
     from core.models.nds.decoders.config import AutoregressiveDecoderConfig
     from core.problems import make_problem_config
     from core.problems.solve import generate_initial_solution
-    from core.results.plots import plot_lns_progress
+    from core.results.plots import plot_search_progress
     from core.results.wandb_artifacts import upload_eval_plots, upload_eval_results
     from core.results.writer import write_eval_results
     from core.ui.forms import build_mo_ui_dict, union_variants
@@ -669,7 +669,7 @@ def _(artifacts_root, eval_id, plot_snapshot_cb, result):
     if plot_snapshot_cb.snapshots:
         plots_dir.mkdir(parents=True, exist_ok=True)
         for plot_idx, snapshots in enumerate(plot_snapshot_cb.snapshots):
-            _fig = plot_lns_progress(snapshots, result.step_labels, epoch=0)
+            _fig = plot_search_progress(snapshots, result.step_labels, epoch=0)
             _fig.savefig(plots_dir / f"instance_{plot_idx:04d}.pdf", bbox_inches="tight")
             plt.close(_fig)
     return (plots_dir,)
