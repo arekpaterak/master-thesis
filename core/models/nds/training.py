@@ -38,6 +38,7 @@ class BatchTrainSummary(BaseModel):
     objective_before: float
     objective_after: float
     grad_norm: float
+    batch_time_sec: float
     instances_per_sec: float
 
 
@@ -57,6 +58,7 @@ class EpochTrainSummary(BaseModel):
     objective_before: float
     objective_after: float
     grad_norm: float
+    batch_time_sec: float
     instances_per_sec: float
 
     @computed_field
@@ -68,7 +70,9 @@ class EpochTrainSummary(BaseModel):
 class EpochTrainAccumulator(EpochAccumulator):
     def __init__(self) -> None:
         self._total_instances = 0
+        self._total_batches = 0
         self._total_time = 0.0
+        self._total_batch_time = 0.0
         self._total_loss = 0.0
         self._total_best_reward = 0.0
         self._total_reward_mean = 0.0
@@ -85,7 +89,9 @@ class EpochTrainAccumulator(EpochAccumulator):
     def update(self, summary: BatchTrainSummary) -> None:
         n = summary.batch_size
         self._total_instances += n
-        self._total_time += n / summary.instances_per_sec
+        self._total_batches += 1
+        self._total_time += summary.batch_time_sec
+        self._total_batch_time += summary.batch_time_sec
         self._total_loss += summary.loss * n
         self._total_best_reward += summary.reward_best * n
         self._total_reward_mean += summary.reward_mean * n
@@ -115,6 +121,7 @@ class EpochTrainAccumulator(EpochAccumulator):
             objective_before=self._total_objective_before / n,
             objective_after=self._total_objective_after / n,
             grad_norm=self._total_grad_norm / n,
+            batch_time_sec=self._total_batch_time / self._total_batches,
             instances_per_sec=self._total_instances / self._total_time,
         )
 
@@ -297,6 +304,7 @@ def configure_training_step(
             objective_before=objective_before,
             objective_after=objective_after,
             grad_norm=grad_norm.item(),
+            batch_time_sec=elapsed,
             instances_per_sec=batch_size / elapsed,
         )
 

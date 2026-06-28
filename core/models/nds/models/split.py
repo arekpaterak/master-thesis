@@ -56,8 +56,8 @@ class SolutionPositionalFusion(nn.Module):
 class InstanceCache(NamedTuple):
     """Static per-instance encoder products reused across LNS iterations.
 
-    Holds the instance embeddings and the cross-route positional encoding (XPE, ``None``
-    for TSP) -- all independent of the current solution.
+    Holds the instance embeddings and the cross-route positional encoding (XPE),
+    all independent of the current solution.
     """
 
     instance_node_embeddings: torch.Tensor
@@ -71,8 +71,6 @@ class SplitNDSModel(nn.Module):
     (the solution-aware neighbours/route layers are disabled).
     The current solution enters each iteration only through positional encodings
     concatenated onto the cached instance node embeddings just before the decoder, fused back to ``hidden_dim``.
-    At inference the instance encoding is cached across iterations;
-    during training it is recomputed each step so the per-step ``backward`` stays valid.
     """
 
     def __init__(

@@ -147,7 +147,7 @@ class SplitModelParams(_ModelParamsBase):
 
     encoder_mode: Literal["split"] = "split"
     encode_once_in_training: bool = Field(
-        default=False,
+        default=True,
         title="Encode once in training",
         description="Run the instance encoder once per training step and reuse the "
         "embeddings across all improvement steps (exact, with bounded memory). "

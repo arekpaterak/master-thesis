@@ -788,6 +788,16 @@ def _(config, is_script_mode, model, resume_run_dir, run_button):
                 config=config.model_dump(),
             )
             _wandb_id_path.write_text(wandb.run.id)
+        wandb.config.update(
+            {
+                "model/num_params": sum(p.numel() for p in model.parameters()),
+                "model/num_params_trainable": sum(
+                    p.numel() for p in model.parameters() if p.requires_grad
+                ),
+                "model/num_params_decoder": sum(p.numel() for p in model.decoder.parameters()),
+            },
+            allow_val_change=True,
+        )
         wandb.define_metric("val/*", step_metric="epoch")
     return find_latest_checkpoint, initial_epoch, run_dir
 
@@ -872,6 +882,7 @@ def _(
                 "val/objective_final": val_summary.objective_final,
                 "val/improvement": val_summary.improvement,
                 "val/relative_improvement": val_summary.relative_improvement,
+                "val/batch_time_sec": val_summary.batch_time_sec,
                 "val/steps_to_best": val_summary.steps_to_best,
                 "val/steps_with_improvement": val_summary.steps_with_improvement,
                 "val/objective_curve": wandb.plot.line_series(

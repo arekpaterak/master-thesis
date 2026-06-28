@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterable
 
 import torch
@@ -21,6 +22,7 @@ class BatchValidationSummary(BaseModel):
     batch_size: int
     objective_initial: float
     objective_final: float
+    batch_time_sec: float
     objective_curve: list[float]
     step_labels: list[int]
     snapshots: list[BaseSolution]
@@ -32,6 +34,7 @@ class EpochValidationSummary(BaseModel):
     epoch: int
     objective_initial: float
     objective_final: float
+    batch_time_sec: float
     objective_curve: list[float]
     step_labels: list[int]
     snapshots: list[BaseSolution]
@@ -66,8 +69,10 @@ class EpochValidationSummary(BaseModel):
 class EpochValidationAccumulator(EpochAccumulator):
     def __init__(self) -> None:
         self._total_instances = 0
+        self._total_batches = 0
         self._total_objective_initial = 0.0
         self._total_objective_final = 0.0
+        self._total_batch_time = 0.0
         self._weighted_curve: list[float] = []
         self._step_labels: list[int] = []
         self._snapshots: list[BaseSolution] = []
@@ -75,8 +80,10 @@ class EpochValidationAccumulator(EpochAccumulator):
     def update(self, summary: BatchValidationSummary) -> None:
         n = summary.batch_size
         self._total_instances += n
+        self._total_batches += 1
         self._total_objective_initial += summary.objective_initial * n
         self._total_objective_final += summary.objective_final * n
+        self._total_batch_time += summary.batch_time_sec
         if not self._weighted_curve:
             self._weighted_curve = [v * n for v in summary.objective_curve]
             self._step_labels = summary.step_labels
@@ -91,6 +98,7 @@ class EpochValidationAccumulator(EpochAccumulator):
             epoch=epoch,
             objective_initial=self._total_objective_initial / n,
             objective_final=self._total_objective_final / n,
+            batch_time_sec=self._total_batch_time / self._total_batches,
             objective_curve=[v / n for v in self._weighted_curve],
             step_labels=self._step_labels,
             snapshots=self._snapshots,
@@ -145,16 +153,19 @@ def configure_validation_step(
                 snapshots.append(_unbatch_first(solution))
                 objective_curve.append(solution.objective().mean().item())
 
+        start = time.perf_counter()
         with (
             torch.no_grad(),
             torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled),
         ):
             final = solve(method, instance, on_step=on_step, step_progress=step_progress)
+        elapsed = time.perf_counter() - start
 
         return BatchValidationSummary(
             batch_size=batch_size,
             objective_initial=objective_curve[0],
             objective_final=final.objective().mean().item(),
+            batch_time_sec=elapsed,
             objective_curve=objective_curve,
             step_labels=sorted(snapshot_step_set),
             snapshots=snapshots,
