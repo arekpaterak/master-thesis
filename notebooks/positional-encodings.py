@@ -12,7 +12,7 @@ def _(mo):
     Two geometric signals encode where each customer sits before the initial projection to a hidden embedding in a model:
 
     - **IPE** – in-route positional encoding: phase $\phi_i \in [0, 2\pi]$; solution geometry
-    - **XPE** – cross-route positional encoding: depot-anchored polar angle $\theta_i \in [0, 2\pi]$; instance geometry only
+    - **XPE** – cross-route positional encoding: depot-anchored polar angle $\theta_i \in [-\pi, \pi]$; instance geometry only
     """)
     return
 
@@ -202,7 +202,7 @@ def _(mo):
     mo.md(r"""
     ## XPE
 
-    $$\theta_i = \operatorname{atan2}(y_i - y_d,\; x_i - x_d) \bmod 2\pi$$
+    $$\theta_i = \operatorname{atan2}(y_i - y_d,\; x_i - x_d) \in [-\pi, \pi]$$
 
     A purely geometric, solution-independent signal. Customers in the same angular sector
     around the depot get similar encodings regardless of which route they are assigned to.

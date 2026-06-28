@@ -16,7 +16,10 @@ def circular_sinusoidal_encoding(
     schedule: FrequencySchedule | None = None,
     base: float = 10_000.0,
 ) -> torch.Tensor:
-    """Maps a circular phase in [0, 2*pi] to a multi-frequency sinusoidal encoding.
+    """Maps a circular phase (radians) to a multi-frequency sinusoidal encoding.
+
+    The phase is any angle in radians: IPE passes an in-route phase in [0, 2*pi],
+    XPE passes a depot-anchored polar angle in [-pi, pi].
 
     Two frequency schedules are supported:
 
@@ -29,7 +32,7 @@ def circular_sinusoidal_encoding(
       variant is then only approximately reversal-invariant (exact for k = 0 only).
 
     Args:
-        phase: (...) circular phase in [0, 2*pi].
+        phase: (...) circular phase in radians.
         dim: Output embedding dimension. Must be even.
         direction_aware: If True, returns interleaved sin/cos pairs (distinguishes a
             phase from its reflection; direction-sensitive variants). If False, returns

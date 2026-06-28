@@ -49,7 +49,7 @@ def test_cvrp_sequence_route_phase_not_implemented():
 
 def test_cvrp_depot_polar_angle():
     instance = _cvrp_instance()
-    angle = instance.depot_anchored_polar_angle()  # (1, 4) in [0, 2*pi]
+    angle = instance.depot_anchored_polar_angle()  # (1, 4) in [-pi, pi]
     expected = torch.tensor([[0.0, 0.0, math.pi / 2, math.pi / 2]])
     torch.testing.assert_close(angle, expected)
 
