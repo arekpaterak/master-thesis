@@ -11,7 +11,6 @@ from core.lns.acceptance_criterion import GreedyAcceptanceConfig
 from core.lns.config import SearchParams
 from core.models.nds.baseline import (
     BaselineConfig,
-    GreedyRolloutBaselineConfig,
     SharedBaselineConfig,
     build_baseline,
 )
@@ -308,23 +307,8 @@ class TrainConfig(BaseModel):
         return data
 
     @model_validator(mode="after")
-    def _validate_baseline(self) -> Self:
-        if isinstance(self.baseline, GreedyRolloutBaselineConfig):
-            # The greedy rollout baseline trains on a single sampled rollout, so PolyNet
-            # (the multi-rollout diversity head) is disabled and the policy produces one
-            # rollout. A PolyNet-conditioned greedy baseline would depend on the random
-            # seed, defeating its purpose.
-            if self.search.num_rollouts != 1:
-                raise ValueError(
-                    "greedy_rollout baseline requires search.num_rollouts == 1, "
-                    f"got {self.search.num_rollouts}."
-                )
-            if self.model.decoder.with_poly:
-                raise ValueError(
-                    "greedy_rollout baseline requires model.decoder.with_poly = false."
-                )
-            return self
-
+    def _validate_rollouts_for_baseline(self) -> Self:
+        """The training rollout count must support the chosen baseline."""
         required = build_baseline(self.baseline).min_rollouts()
         if self.search.num_rollouts < required:
             raise ValueError(

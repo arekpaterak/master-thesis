@@ -819,23 +819,10 @@ def _(
             it, title="Validation improvement steps", remove_on_exit=True
         )
 
-    def on_baseline_sync(result):
-        if config.logging.wandb_project:
-            wandb.log(
-                {
-                    "baseline/obj_model": result.model_mean,
-                    "baseline/obj_baseline": result.baseline_mean,
-                    "baseline/p_value": result.p_value,
-                    "baseline/updated": int(result.improved),
-                }
-            )
-
     model.to(device)
     nds_module = NDSModule(
         config=config,
         model=model,
-        baseline_eval_sampler=sampler,
-        on_baseline_sync=on_baseline_sync,
         improvement_step_progress=improvement_step_progress,
         validation_improvement_step_progress=val_improvement_step_progress,
     )
@@ -854,7 +841,6 @@ def _(
                 {
                     "model": nds_module.model.state_dict(),
                     "optimizer": optimizer.state_dict(),
-                    "baseline": nds_module.baseline.state_dict(),
                 },
                 checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
             )
@@ -887,6 +873,7 @@ def _(
         nds_module.parameters(),
         lr=config.optimizer.learning_rate,
         weight_decay=config.optimizer.weight_decay,
+        fused=True,
     )
 
     if resume_run_dir:
@@ -938,7 +925,6 @@ def _(
         # Free the GPU whether training finished or was interrupted: the trained weights
         # are persisted in checkpoints and the in-memory model only needs to live on CPU.
         model.to("cpu")
-        nds_module.baseline.to("cpu")
         gc.collect()
         torch.cuda.empty_cache()
 

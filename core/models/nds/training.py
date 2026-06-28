@@ -13,7 +13,7 @@ from core.lns.operators.repair import RepairOperator
 from core.lns.utils import best_repair
 from core.models.module import EpochAccumulator
 from core.models.nds.apply_rollout import apply_rollout as default_apply_rollout
-from core.models.nds.baseline import Baseline, BaselineContext
+from core.models.nds.baseline import Baseline
 from core.models.nds.factory import NDSModel
 from core.models.nds.policy_loss import PolicyLoss
 from core.models.nds.reward import Reward
@@ -174,18 +174,7 @@ def configure_training_step(
                     objective_before=step_objective_before,
                     objective_after=objective_after,
                 )
-                baseline_reward = baseline(
-                    reward=reward,
-                    context=BaselineContext(
-                        solution=solution,
-                        objective_before=step_objective_before,
-                        deconstruction_size=deconstruction_size,
-                        apply_rollout=_apply_rollout,
-                        repair=repair,
-                        n_repairs=n_repairs,
-                        compute_reward=compute_reward,
-                    ),
-                )
+                baseline_reward = baseline(reward)
                 reward_mean = reward.mean(dim=1, keepdim=True)
                 best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
 
