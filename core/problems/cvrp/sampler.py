@@ -17,6 +17,10 @@ class CVRPSampler(Sampler[CVRPInstance]):
         self._generator = torch.Generator()
         if seed is not None:
             self._generator.manual_seed(seed)
+        self._initial_state = self._generator.get_state()
+
+    def reset(self) -> None:
+        self._generator.set_state(self._initial_state)
 
     @classmethod
     def for_size(cls, size: int, *, seed: int | None = None) -> CVRPSampler:

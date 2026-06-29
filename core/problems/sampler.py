@@ -31,10 +31,11 @@ class Sampler[T: BaseProblemInstance](ABC):
     def __call__(self, batch_size: int) -> T: ...
 
     def reset(self) -> None:
-        """Rewind any internal position so the next pass starts from the beginning.
+        """Rewind any internal state so the next pass starts from the beginning.
 
-        Random samplers are stateless and keep this a no-op; dataset-backed
-        samplers override it to re-serve the same fixed instances each pass.
+        Seeded random samplers restore their generator to the initial seed state,
+        producing the same instances on every pass. Dataset-backed samplers rewind
+        their read position. Unseeded random samplers keep this a no-op.
         """
 
     @classmethod
