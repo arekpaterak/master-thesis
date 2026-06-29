@@ -34,6 +34,7 @@ search:
   improvement_step_type: numba_sequential
   insert_in_new_routes_only: true
   first_repair_uses_rollout_order: true
+  n_repairs: 5
   start_solution_params:
     num_improvement_steps: 50
     deconstruction_size: 15

@@ -153,6 +153,22 @@ class SplitModelParams(_ModelParamsBase):
         "embeddings across all improvement steps (exact, with bounded memory). "
         "False recomputes the encoder every step (current behavior).",
     )
+    with_fusion_neighbours_encoding: bool = Field(
+        default=False,
+        title="Fusion neighbours encoding",
+        description="Apply a neighbours encoding layer after positional fusion (before route and attention).",
+    )
+    with_fusion_route_encoding: bool = Field(
+        default=False,
+        title="Fusion route encoding",
+        description="Apply a route encoding layer after positional fusion (before attention). CVRP only.",
+    )
+    num_fusion_attention_layers: int = Field(
+        default=0,
+        title="Fusion attention layers",
+        description="Self-attention layers applied to all nodes after positional fusion. "
+        "0 = disabled.",
+    )
 
 
 ModelParams = Annotated[JointModelParams | SplitModelParams, Field(discriminator="encoder_mode")]

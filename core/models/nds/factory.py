@@ -22,6 +22,9 @@ def build_model(model_params: ModelParams, problem_name: str) -> NDSModel:
     if isinstance(model_params, SplitModelParams):
         return SplitNDSModel(
             **shared_kwargs,
+            with_fusion_neighbours_encoding=model_params.with_fusion_neighbours_encoding,
+            with_fusion_route_encoding=model_params.with_fusion_route_encoding,
+            num_fusion_attention_layers=model_params.num_fusion_attention_layers,
             decoder=build_decoder(
                 decoder_config,
                 hidden_dim=model_params.hidden_dim,

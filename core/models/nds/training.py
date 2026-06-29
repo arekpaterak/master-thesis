@@ -35,6 +35,7 @@ class BatchTrainSummary(BaseModel):
     reward_std: float
     acceptance_rate: float
     mean_unique_actions: float
+    objective_start: float
     objective_before: float
     objective_after: float
     grad_norm: float
@@ -55,6 +56,7 @@ class EpochTrainSummary(BaseModel):
     reward_std: float
     acceptance_rate: float
     mean_unique_actions: float
+    objective_start: float
     objective_before: float
     objective_after: float
     grad_norm: float
@@ -82,6 +84,7 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_reward_std = 0.0
         self._total_acceptance_rate = 0.0
         self._total_mean_unique_actions = 0.0
+        self._total_objective_start = 0.0
         self._total_objective_before = 0.0
         self._total_objective_after = 0.0
         self._total_grad_norm = 0.0
@@ -101,6 +104,7 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_reward_std += summary.reward_std * n
         self._total_acceptance_rate += summary.acceptance_rate * n
         self._total_mean_unique_actions += summary.mean_unique_actions * n
+        self._total_objective_start += summary.objective_start * n
         self._total_objective_before += summary.objective_before * n
         self._total_objective_after += summary.objective_after * n
         self._total_grad_norm += summary.grad_norm * n
@@ -118,6 +122,7 @@ class EpochTrainAccumulator(EpochAccumulator):
             reward_std=self._total_reward_std / n,
             acceptance_rate=self._total_acceptance_rate / n,
             mean_unique_actions=self._total_mean_unique_actions / n,
+            objective_start=self._total_objective_start / n,
             objective_before=self._total_objective_before / n,
             objective_after=self._total_objective_after / n,
             grad_norm=self._total_grad_norm / n,
@@ -158,6 +163,8 @@ def configure_training_step(
         instance = instance.to(device)
 
         solution = generate_start_solution(instance)
+
+        objective_start = solution.objective().mean().item()
 
         model.eval()
         with (
@@ -301,6 +308,7 @@ def configure_training_step(
             reward_std=total_reward_std / num_main_improvement_steps,
             acceptance_rate=total_acceptance_rate / num_main_improvement_steps,
             mean_unique_actions=total_mean_unique_actions / num_main_improvement_steps,
+            objective_start=objective_start,
             objective_before=objective_before,
             objective_after=objective_after,
             grad_norm=grad_norm.item(),

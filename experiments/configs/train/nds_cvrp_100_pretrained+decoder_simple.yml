@@ -31,6 +31,7 @@ search:
   num_rollouts: 128
   deconstruction_size: 15
   improvement_step_type: numba_sequential
+  n_repairs: 5
   insert_in_new_routes_only: true
   first_repair_uses_rollout_order: true
   start_solution_params:

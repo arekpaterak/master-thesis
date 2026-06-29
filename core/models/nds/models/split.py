@@ -8,7 +8,12 @@ import torch.nn as nn
 from core.models.embeddings.positional import circular_sinusoidal_encoding
 from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.decoders.base import DestroyDecoder
-from core.models.nds.encoder import NDSEncoder
+from core.models.nds.encoder import (
+    AttentionLayer,
+    NDSEncoder,
+    NeighboursEncodingLayer,
+    RouteEncodingLayer,
+)
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
@@ -26,31 +31,81 @@ from core.problems.tsp.features import (
 from core.states.destroy import initial_action_mask
 
 
-class SolutionPositionalFusion(nn.Module):
-    """Concatenate per-customer solution positional encodings onto cached instance
-    embeddings and project back to ``hidden_dim``.
+class SolutionFusionEncoder(nn.Module):
+    """Condition cached instance embeddings on the current solution.
 
-    The depot row (offset) passes through unchanged, mirroring ``CVRPInitialEmbedding``
-    which keeps the depot positional-encoding-free.
+    Applies up to three stages in sequence:
+    1. Project ``[customer_embedding, positional_encoding]`` back to ``hidden_dim``
+       (depot passes through unchanged).
+    2. Neighbours encoding -- message-passing from prev/next route neighbours.
+    3. Route encoding -- route-mean pooling and update.
+    4. Self-attention layers over all nodes.
+
+    Stages 2-4 are optional and share the encoder's norm and activation settings.
     """
 
-    def __init__(self, *, hidden_dim: int, pe_dim: int) -> None:
+    def __init__(
+        self,
+        *,
+        hidden_dim: int,
+        pe_dim: int,
+        with_neighbours_encoding: bool = False,
+        with_route_encoding: bool = False,
+        num_attention_layers: int = 0,
+        num_heads: int = 8,
+        ff_dim: int = 512,
+        encoder_config: EncoderConfig | None = None,
+    ) -> None:
         super().__init__()
         self.projection = nn.Linear(hidden_dim + pe_dim, hidden_dim)
+        self.neighbours = (
+            NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
+        )
+        self.route = RouteEncodingLayer(hidden_dim=hidden_dim) if with_route_encoding else None
+        _config = encoder_config or EncoderConfig()
+        self.attention_layers = nn.ModuleList(
+            [
+                AttentionLayer(
+                    hidden_dim=hidden_dim,
+                    num_heads=num_heads,
+                    ff_dim=ff_dim,
+                    norm_type=_config.norm_type,
+                    pre_norm=_config.pre_norm,
+                    ff_activation=_config.ff_activation,
+                )
+                for _ in range(num_attention_layers)
+            ]
+        )
 
-    def forward(self, h_nodes: torch.Tensor, positional: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        h_nodes: torch.Tensor,
+        positional: torch.Tensor,
+        *,
+        neighbours_index: torch.Tensor | None = None,
+        route_index: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """
         Args:
             h_nodes: (B, N+offset, hidden_dim) cached instance embeddings.
             positional: (B, N, pe_dim) per-customer solution positional encoding.
+            neighbours_index: (B, N, 2) required when neighbours encoding is enabled.
+            route_index: (B, N) required when route encoding is enabled.
 
         Returns:
             (B, N+offset, hidden_dim)
         """
         offset = h_nodes.shape[-2] - positional.shape[-2]
-        customer = h_nodes[:, offset:]
-        fused = self.projection(torch.cat([customer, positional], dim=-1))
-        return torch.cat([h_nodes[:, :offset], fused], dim=1)
+        customers = h_nodes[:, offset:]
+        fused_customers = self.projection(torch.cat([customers, positional], dim=-1))
+        h = torch.cat([h_nodes[:, :offset], fused_customers], dim=1)
+        if self.neighbours is not None:
+            h = self.neighbours(h, neighbours_index=neighbours_index)
+        if self.route is not None:
+            h = self.route(h, route_index=route_index)
+        for layer in self.attention_layers:
+            h = layer(h)
+        return h
 
 
 class InstanceCache(NamedTuple):
@@ -69,8 +124,9 @@ class SplitNDSModel(nn.Module):
 
     The static instance is encoded once by an attention-only ``NDSEncoder``
     (the solution-aware neighbours/route layers are disabled).
-    The current solution enters each iteration only through positional encodings
-    concatenated onto the cached instance node embeddings just before the decoder, fused back to ``hidden_dim``.
+    Each LNS iteration conditions on the current solution through three optional steps
+    applied after the positional fusion projection:
+    neighbours encoding, route encoding, and self-attention layers.
     """
 
     def __init__(
@@ -82,9 +138,17 @@ class SplitNDSModel(nn.Module):
         ff_dim: int = 512,
         encoder_config: EncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
+        with_fusion_neighbours_encoding: bool = False,
+        with_fusion_route_encoding: bool = False,
+        num_fusion_attention_layers: int = 0,
         decoder: DestroyDecoder,
     ) -> None:
         super().__init__()
+
+        if with_fusion_route_encoding and problem_name != "cvrp":
+            raise ValueError(
+                "with_fusion_route_encoding is only supported for problem_name='cvrp'."
+            )
 
         self.problem_name = problem_name
         self._positional = positional or PositionalEncodingConfig()
@@ -114,8 +178,15 @@ class SplitNDSModel(nn.Module):
 
         # CVRP fuses IPE + XPE, TSP fuses IPE only (no depot anchor).
         pe_components = 2 if problem_name == "cvrp" else 1
-        self.fusion = SolutionPositionalFusion(
-            hidden_dim=hidden_dim, pe_dim=pe_components * self._positional.dim
+        self.fusion = SolutionFusionEncoder(
+            hidden_dim=hidden_dim,
+            pe_dim=pe_components * self._positional.dim,
+            with_neighbours_encoding=with_fusion_neighbours_encoding,
+            with_route_encoding=with_fusion_route_encoding,
+            num_attention_layers=num_fusion_attention_layers,
+            num_heads=num_heads,
+            ff_dim=ff_dim,
+            encoder_config=encoder_config,
         )
         self.decoder = decoder
 
@@ -200,7 +271,13 @@ class SplitNDSModel(nn.Module):
         solution_features = self.solution_feature_extractor(solution).to(device)
         ipe = self._in_route_positional_encoding(solution_features)
         positional = ipe if cache.xpe is None else torch.cat([ipe, cache.xpe], dim=-1)
-        h_nodes = self.fusion(cache.instance_node_embeddings, positional)
+        route_index = solution_features.route_index if self.problem_name == "cvrp" else None
+        h_nodes = self.fusion(
+            cache.instance_node_embeddings,
+            positional,
+            neighbours_index=solution_features.neighbours_index,
+            route_index=route_index,
+        )
 
         N = h_nodes.shape[1]
         action_mask = initial_action_mask(
