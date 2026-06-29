@@ -184,7 +184,9 @@ class AttentionLayer(nn.Module):
         return norm(x + sublayer(x))
 
     def _self_attention(self, x: torch.Tensor) -> torch.Tensor:
-        out, _ = self.MHA(x, x, x)
+        # need_weights=False routes through the fused scaled_dot_product_attention kernel
+        # (the averaged attention weights are unused).
+        out, _ = self.MHA(x, x, x, need_weights=False)
         return out
 
 

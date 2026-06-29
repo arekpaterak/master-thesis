@@ -16,21 +16,28 @@ from core.states.destroy import DestroyState
 class DecoderCache(NamedTuple):
     """Precomputed values that remain constant across all deconstruction steps.
 
+    Keys, values, and node embeddings carry no rollout dimension: they are projected
+    once per instance and broadcast across rollouts inside attention, so the cache size
+    is independent of the number of rollouts.
+
+    Here N is the number of nodes the decoder selects over (including the depot for
+    problems that have one, e.g. CVRP).
+
     Attributes:
-        k: Projected keys for multi-head attention.
-            Shape: (B, rollout_size, N+1, hidden_dim).
-        v: Projected values for multi-head attention.
-            Shape: (B, rollout_size, N+1, hidden_dim).
+        k: Projected keys for multi-head attention, shared across rollouts.
+            Shape: (B, N, hidden_dim).
+        v: Projected values for multi-head attention, shared across rollouts.
+            Shape: (B, N, hidden_dim).
         seed: Seed vectors for diverse rollout conditioning.
             Shape: (B, rollout_size, seed_dim).
-        h_nodes_expanded: Node embeddings expanded over rollout dimension.
-            Shape: (B, rollout_size, N+1, hidden_dim).
+        h_nodes: Node embeddings.
+            Shape: (B, N, hidden_dim).
     """
 
     k: torch.Tensor
     v: torch.Tensor
     seed: torch.Tensor
-    h_nodes_expanded: torch.Tensor
+    h_nodes: torch.Tensor
 
 
 class DecoderState(NamedTuple):
@@ -202,22 +209,20 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
     ) -> DecoderCache:
         """Precompute keys, values, and seed vectors before the decoding loop.
 
+        Keys and values are projected once at the per-instance shape (B, N, hidden_dim);
+        they are broadcast across rollouts inside attention, so the cache does not grow
+        with the number of rollouts.
+
         Args:
-            h_nodes: Encoder output node embeddings. Shape: (B, N+1, hidden_dim).
+            h_nodes: Encoder output node embeddings. Shape: (B, N, hidden_dim).
             seed: Seed vectors for rollout diversity. Shape: (B, rollout_size, seed_dim).
 
         Returns:
-            DecoderCache containing projected keys, values, seed vectors, and expanded node embeddings.
+            DecoderCache containing projected keys, values, seed vectors, and node embeddings.
         """
-        B, L, hidden_dim = h_nodes.shape
-        _, rollout_size, _ = seed.shape
+        k, v = self.MHA.project_kv(h_nodes)
 
-        # Expand nodes for rollout dimension
-        h_nodes_expanded = h_nodes.unsqueeze(1).expand(B, rollout_size, L, hidden_dim)
-
-        k, v = self.MHA.project_kv(h_nodes_expanded)
-
-        return DecoderCache(k=k, v=v, seed=seed, h_nodes_expanded=h_nodes_expanded)
+        return DecoderCache(k=k, v=v, seed=seed, h_nodes=h_nodes)
 
     def forward(
         self,
@@ -235,20 +240,22 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
 
         Returns:
             DecoderOutput:
-                logits: Logits over all nodes. Shape: (B, rollout_size, N+1).
+                logits: Logits over all nodes. Shape: (B, rollout_size, N).
                 gru_hidden_state: A new GRU hidden state.
         """
-        B, R, _, _ = cache.h_nodes_expanded.shape
-        hidden_dim = self.hidden_dim
+        B, _, hidden_dim = cache.h_nodes.shape
+        R = cache.seed.shape[1]
 
         last_node_idx = problem_state.last_node_idx
         if last_node_idx is None:
             h_last_node = self.start_token.view(1, 1, -1).expand(B, R, -1)
         else:
-            h_last_node = cache.h_nodes_expanded.gather(
-                dim=-2,
-                index=last_node_idx.unsqueeze(-1).expand(B, R, 1, hidden_dim),
-            ).squeeze(-2)
+            # last_node_idx: (B, R, 1). Gather the per-rollout last-node embedding from the
+            # shared (B, N, hidden_dim) node embeddings.
+            h_last_node = cache.h_nodes.gather(
+                dim=1,
+                index=last_node_idx.expand(B, R, hidden_dim),
+            )
 
         gru_hidden = decoder_state.gru_hidden
         if self.GRU is not None:
@@ -270,9 +277,11 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         else:
             context_out = mha_out + self.poly_net(torch.cat([mha_out, cache.seed], dim=-1))
 
+        # Shared-keys scoring: the R rollouts in context_out (B, R, D) all score against
+        # the same per-instance nodes (B, N, D), avoiding any broadcast over R.
         logits = self.final_scorer(
             h_c=context_out,
-            h_nodes=cache.h_nodes_expanded,
+            h_nodes=cache.h_nodes,
             mask=problem_state.action_mask,
         )
 

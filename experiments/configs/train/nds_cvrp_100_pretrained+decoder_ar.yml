@@ -23,7 +23,7 @@ optimizer:
 trainer:
   epochs: 20
   instances_per_epoch: 1500
-  batch_size: 16
+  batch_size: 64
   num_main_improvement_steps: 100
 
 search:
@@ -51,7 +51,7 @@ logging:
 validation:
   validate_before_training: true
   num_instances: 100
-  batch_size: 50
+  batch_size: 100
   every_n_epochs: 1
   seed: 42
   dataset_path: data/nds/cvrp/vrp100_valid_seed1233.pkl

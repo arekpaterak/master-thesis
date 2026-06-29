@@ -48,5 +48,9 @@ class MultiheadAttentionWrapper(nn.Module):
         else:
             mask_flat = None
 
-        out_flat, _ = self.mha(q_flat, k_flat, v_flat, key_padding_mask=mask_flat)
+        # need_weights=False routes through the fused scaled_dot_product_attention kernel
+        # (the averaged attention weights are unused).
+        out_flat, _ = self.mha(
+            q_flat, k_flat, v_flat, key_padding_mask=mask_flat, need_weights=False
+        )
         return out_flat.view(*batch_shape, L_q, q.size(-1))

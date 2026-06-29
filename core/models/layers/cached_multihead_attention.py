@@ -42,32 +42,41 @@ class CachedMultiheadAttention(nn.Module):
     ) -> torch.Tensor:
         """
         Args:
-            q: Query tensor (..., L_q, embed_dim) or (..., embed_dim)
-            k_cached: Pre-projected Keys (..., L_k, embed_dim)
-            v_cached: Pre-projected Values (..., L_k, embed_dim)
-            attention_mask: optional bool mask (..., L_k) where True = attend (allowed).
+            q: Query tensor (B, R, embed_dim) or (B, R, L_q, embed_dim).
+            k_cached: Pre-projected Keys (B, L_k, embed_dim), shared across the R rollouts.
+            v_cached: Pre-projected Values (B, L_k, embed_dim), shared across the R rollouts.
+            attention_mask: optional bool mask (B, R, L_k) where True = attend (allowed).
                 Note: opposite convention to MultiHeadAttention - mirrors F.scaled_dot_product_attention.
+
+        The R rollouts are folded into the query-sequence dimension so the queries and
+        the shared keys/values keep the same batch dimension B. This keeps K/V stored
+        once per instance (no multiplication by R) and lets the fused
+        scaled_dot_product_attention kernel apply, instead of forcing the math path to
+        expand K/V over R at every step.
         """
-        # Normalize query shape to (..., Lq, embed_dim)
-        if q.dim() == k_cached.dim() - 1:
+        # Normalize query shape to (B, R, L_q, embed_dim)
+        if q.dim() == 3:
             q = q.unsqueeze(-2)
-
-        # Capture the batch shape (everything before the last two dims)
-        # For (B, R, L, embed_dim), batch_shape is (B, R)
-        batch_shape = q.shape[:-2]
-        L_q = q.size(-2)
+        B, R, L_q, _ = q.shape
         L_k = k_cached.size(-2)
+        num_heads, head_dim = self.num_heads, self.head_dim
 
-        def split_heads(x: torch.Tensor, L: int) -> torch.Tensor:
-            return x.view(*batch_shape, L, self.num_heads, self.head_dim).transpose(-3, -2)
+        # Fold the R rollouts (and their L_q queries) into one query-sequence axis so q
+        # shares batch B with k/v: (B, num_heads, R*L_q, head_dim).
+        q_heads = self.W_Q(q).reshape(B, R * L_q, num_heads, head_dim).transpose(1, 2)
+        k_heads = k_cached.view(B, L_k, num_heads, head_dim).transpose(
+            1, 2
+        )  # (B, num_heads, L_k, head_dim)
+        v_heads = v_cached.view(B, L_k, num_heads, head_dim).transpose(
+            1, 2
+        )  # (B, num_heads, L_k, head_dim)
 
-        q_heads = split_heads(self.W_Q(q), L_q)  # (..., H, L_q, head_dim)
-        k_heads = split_heads(k_cached, L_k)  # (..., H, L_k, head_dim)
-        v_heads = split_heads(v_cached, L_k)  # (..., H, L_k, head_dim)
-
-        if attention_mask is not None and attention_mask.dim() == len(batch_shape) + 1:
-            # If (..., Lk), convert to (..., 1, 1, Lk)
-            attention_mask = attention_mask.unsqueeze(-2).unsqueeze(-2)
+        if attention_mask is not None:
+            # (B, R, L_k) is the per-rollout mask; broadcast it over the L_q queries of
+            # each rollout and over heads -> (B, 1, R*L_q, L_k).
+            attention_mask = (
+                attention_mask[:, :, None, :].expand(B, R, L_q, L_k).reshape(B, 1, R * L_q, L_k)
+            )
 
         attn_out = F.scaled_dot_product_attention(
             q_heads,
@@ -75,12 +84,11 @@ class CachedMultiheadAttention(nn.Module):
             v_heads,
             attn_mask=attention_mask,
             is_causal=False,
-        )
+        )  # (B, num_heads, R*L_q, head_dim)
 
-        # Merge heads and project out
-        # (..., H, Lq, head_dim) -> (..., Lq, H, head_dim) -> (..., Lq, embed_dim)
-        attn_out = attn_out.transpose(-3, -2).reshape(*batch_shape, L_q, self.embed_dim)
+        # Merge heads and unfold the rollouts: (B, R, L_q, embed_dim)
+        attn_out = attn_out.transpose(1, 2).reshape(B, R, L_q, self.embed_dim)
         out = self.W_O(attn_out)
 
-        # Return (..., embed_dim) if input was (..., embed_dim), else (..., Lq, embed_dim)
+        # Return (B, R, embed_dim) if the query was a single token, else (B, R, L_q, embed_dim)
         return out.squeeze(-2) if L_q == 1 else out
