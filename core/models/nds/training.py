@@ -15,11 +15,68 @@ from core.models.module import EpochAccumulator
 from core.models.nds.apply_rollout import apply_rollout as default_apply_rollout
 from core.models.nds.baseline import Baseline
 from core.models.nds.factory import NDSModel
+from core.models.nds.models.split import SplitNDSModel
 from core.models.nds.policy_loss import PolicyLoss
 from core.models.nds.reward import Reward
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
+
+
+class EncoderPass:
+    """Strategy for producing per-improvement-step rollouts within a training step.
+
+    Subclasses decide whether the instance encoder runs once or every step; the loop
+    drives them uniformly: ``rollout`` each step, ``after_backward`` after every
+    ``loss.backward``, and ``finish`` once after the loop.
+    """
+
+    def rollout(self, solution: BaseSolution, **kwargs) -> Rollout:
+        raise NotImplementedError
+
+    def after_backward(self) -> None:
+        pass
+
+    def finish(self) -> None:
+        pass
+
+
+class RecomputePass(EncoderPass):
+    """Re-encode the instance every improvement step (rebuilds the graph each step)."""
+
+    def __init__(self, model: NDSModel) -> None:
+        self._model = model
+
+    def rollout(self, solution: BaseSolution, **kwargs) -> Rollout:
+        return self._model.rollout(solution, **kwargs)
+
+
+class EncodeOncePass(EncoderPass):
+    """Encode the instance once and reuse it across improvement steps.
+
+    The encoder output is detached into a leaf so each step's backward stays bounded;
+    its gradient is accumulated and pushed through the encoder once in ``finish``. This
+    is exact: the split encoder is a deterministic function of the instance.
+    """
+
+    def __init__(self, model: SplitNDSModel, instance: BaseProblemInstance) -> None:
+        self._model = model
+        base_cache = model.encode_instance(instance)
+        self._embeddings = base_cache.instance_node_embeddings
+        self._embeddings_detached = self._embeddings.detach().requires_grad_(True)
+        self._cache = base_cache._replace(instance_node_embeddings=self._embeddings_detached)
+        self._accumulated_gradient = torch.zeros_like(self._embeddings)
+
+    def rollout(self, solution: BaseSolution, **kwargs) -> Rollout:
+        return self._model.rollout(solution, cache=self._cache, **kwargs)
+
+    def after_backward(self) -> None:
+        self._accumulated_gradient += self._embeddings_detached.grad
+        self._embeddings_detached.grad = None
+
+    def finish(self) -> None:
+        """One encoder backward with the summed boundary gradient."""
+        self._embeddings.backward(gradient=self._accumulated_gradient)
 
 
 class BatchTrainSummary(BaseModel):
@@ -188,39 +245,21 @@ def configure_training_step(
         total_acceptance_rate = 0.0
         total_mean_unique_actions = 0.0
 
-        # Encode the static instance once and reuse it across improvement steps. The
-        # encoder output is detached into a leaf so each step's backward stays bounded;
-        # its gradient is accumulated and pushed through the encoder once after the loop.
-        # This is exact: the split encoder is a deterministic function of the instance.
-        step_cache = None
-        instance_node_embeddings = None
-        instance_node_embeddings_leaf = None
-        accumulated_encoder_gradient = None
-        if encode_once:
-            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
-                base_cache = model.encode_for_training(solution)
-            instance_node_embeddings = base_cache.instance_node_embeddings
-            instance_node_embeddings_leaf = instance_node_embeddings.detach().requires_grad_(True)
-            step_cache = base_cache._replace(instance_node_embeddings=instance_node_embeddings_leaf)
-            accumulated_encoder_gradient = torch.zeros_like(instance_node_embeddings)
+        # Encode the static instance once and reuse it across improvement steps, or
+        # recompute it every step. See EncodeOncePass / RecomputePass.
+        with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
+            encoder_pass: EncoderPass = (
+                EncodeOncePass(model, solution.instance) if encode_once else RecomputePass(model)
+            )
 
         for _step in improvement_step_progress(range(num_main_improvement_steps)):
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
-                if encode_once:
-                    rollout = model.rollout_from_cache(
-                        solution,
-                        step_cache,
-                        rollouts_per_solution=rollouts_per_solution,
-                        deconstruction_size=deconstruction_size,
-                        greedy=False,
-                    )
-                else:
-                    rollout = model.rollout(
-                        solution,
-                        rollouts_per_solution=rollouts_per_solution,
-                        deconstruction_size=deconstruction_size,
-                        greedy=False,
-                    )
+                rollout = encoder_pass.rollout(
+                    solution,
+                    rollouts_per_solution=rollouts_per_solution,
+                    deconstruction_size=deconstruction_size,
+                    greedy=False,
+                )
 
                 solution_deconstructed = _apply_rollout(solution, rollout)
                 assert solution_deconstructed.batch_dims == 2
@@ -245,9 +284,7 @@ def configure_training_step(
             else:
                 loss.backward()
 
-            if encode_once:
-                accumulated_encoder_gradient += instance_node_embeddings_leaf.grad
-                instance_node_embeddings_leaf.grad = None
+            encoder_pass.after_backward()
 
             solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
 
@@ -277,11 +314,7 @@ def configure_training_step(
                 is_unique.float().sum(dim=-1).mean().item() / deconstruction_size
             )
 
-        # One encoder backward with the summed boundary gradient. The accumulated
-        # gradient carries the scaler factor from each step's scaled backward (constant
-        # within a step), so scaler.unscale_ below unscales it together with the rest.
-        if encode_once:
-            instance_node_embeddings.backward(gradient=accumulated_encoder_gradient)
+        encoder_pass.finish()
 
         if scaler is not None:
             scaler.unscale_(optimizer)

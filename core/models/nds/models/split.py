@@ -197,16 +197,24 @@ class SplitNDSModel(nn.Module):
         self,
         solution: BaseSolution,
         *,
+        cache: InstanceCache | None = None,
         rollouts_per_solution: int,
         deconstruction_size: int,
         greedy: bool = False,
     ) -> Rollout:
+        """Rollout from the instance encoding.
+
+        When ``cache`` is given (encode-once training, see ``encode_instance``) it is
+        used directly. Otherwise, the static encoding is obtained from
+        ``_instance_cache_for``: identity-cached at inference, recomputed in training.
+        """
         # Identity anchor for the instance cache, taken before flattening reshapes the
         # solution (and its instance) into a fresh object on every call.
         instance_anchor = solution.instance
 
         solution, batch_dims = flatten_instance_batch(solution)
-        cache = self._instance_cache_for(instance_anchor, solution.instance)
+        if cache is None:
+            cache = self._instance_cache_for(instance_anchor, solution.instance)
 
         return self._rollout_from_cache(
             solution,
@@ -217,36 +225,15 @@ class SplitNDSModel(nn.Module):
             greedy=greedy,
         )
 
-    def encode_for_training(self, solution: BaseSolution) -> InstanceCache:
+    def encode_instance(self, instance: BaseProblemInstance) -> InstanceCache:
         """Encode the static instance once (with grad) for encode-once training.
 
         The returned cache is reused across every improvement step of a training step;
         only the solution-dependent positional fusion is recomputed per step. Pair this
-        with ``rollout_from_cache`` and accumulate the boundary gradient so a single
+        with ``rollout(cache=...)`` and accumulate the boundary gradient so a single
         encoder backward suffices. See ``encode_once_in_training``.
         """
-        solution, _ = flatten_instance_batch(solution)
-        return self._encode_instance(solution.instance)
-
-    def rollout_from_cache(
-        self,
-        solution: BaseSolution,
-        cache: InstanceCache,
-        *,
-        rollouts_per_solution: int,
-        deconstruction_size: int,
-        greedy: bool = False,
-    ) -> Rollout:
-        """Roll out from a precomputed instance cache (see ``encode_for_training``)."""
-        solution, batch_dims = flatten_instance_batch(solution)
-        return self._rollout_from_cache(
-            solution,
-            batch_dims,
-            cache,
-            rollouts_per_solution=rollouts_per_solution,
-            deconstruction_size=deconstruction_size,
-            greedy=greedy,
-        )
+        return self._encode_instance(instance.reshape(-1))
 
     def _rollout_from_cache(
         self,
