@@ -20,7 +20,7 @@ optimizer:
   weight_decay: 1.0e-6
 
 trainer:
-  epochs: 20
+  epochs: 25
   instances_per_epoch: 1500
   batch_size: 64
   num_main_improvement_steps: 100
@@ -49,7 +49,7 @@ logging:
 
 validation:
   validate_before_training: true
-  num_instances: 100
+  num_instances: 1000
   batch_size: 100
   every_n_epochs: 1
   seed: 42
