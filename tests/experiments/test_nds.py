@@ -14,7 +14,7 @@ from core.models.nds.config import (
 from core.problems import CVRPConfig
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-_NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "nds.py"
+_NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "train-nds.py"
 
 _MINIMAL_CONFIG = TrainConfig(
     problem=CVRPConfig(size=10),
@@ -25,7 +25,7 @@ _MINIMAL_CONFIG = TrainConfig(
         num_main_improvement_steps=1,
     ),
     search=SearchParams(
-        repair_type="greedy_reconnect",
+        repair_type="greedy_insert",
         num_improvement_steps=1,
         num_rollouts=2,
         deconstruction_size=3,

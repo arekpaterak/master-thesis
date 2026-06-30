@@ -101,5 +101,7 @@ class Decoder(nn.Module):
         context_embedding = context_embedding.squeeze(1)  # (batch, d_model)
 
         # Final single-head layer
-        log_p = self.final_scorer(h_c=context_embedding, h_nodes=node_embeddings, mask=action_mask)
+        log_p = self.final_scorer(
+            h_context=context_embedding, h_nodes=node_embeddings, mask=action_mask
+        )
         return log_p

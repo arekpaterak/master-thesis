@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 
 from core.models.entropy import entropy
+from core.models.layers.batched_gru_cell import BatchedGRUCell
 from core.models.layers.cached_multihead_attention import CachedMultiheadAttention
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.nds.decoders.base import DestroyDecoder
@@ -45,7 +46,7 @@ class DecoderState(NamedTuple):
 
     Attributes:
         gru_hidden: GRU hidden state accumulating history of selected customers.
-            Shape: (B*rollout, hidden_dim).
+            Shape: (B, rollout_size, hidden_dim).
     """
 
     gru_hidden: torch.Tensor
@@ -103,7 +104,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
             num_heads=num_heads,
         )
 
-        self.GRU = nn.GRUCell(hidden_dim, hidden_dim) if use_hidden_decoding_state else None
+        self.GRU = BatchedGRUCell(hidden_dim, hidden_dim) if use_hidden_decoding_state else None
 
         self.poly_net = (
             nn.Sequential(
@@ -198,7 +199,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
             device = next(self.parameters()).device
 
         return DecoderState(
-            gru_hidden=torch.zeros(batch_size * rollout_size, self.hidden_dim, device=device),
+            gru_hidden=torch.zeros(batch_size, rollout_size, self.hidden_dim, device=device),
         )
 
     def build_cache(
@@ -259,13 +260,10 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
 
         gru_hidden = decoder_state.gru_hidden
         if self.GRU is not None:
-            gru_hidden = self.GRU(
-                h_last_node.reshape(B * R, hidden_dim),
-                gru_hidden,
-            )
-            context = gru_hidden.reshape(B, R, hidden_dim)
+            gru_hidden = self.GRU(h_last_node, gru_hidden)
+            context = gru_hidden
         else:
-            context = h_last_node.reshape(B, R, hidden_dim)
+            context = h_last_node
 
         attention_mask = ~problem_state.action_mask
         mha_out = self.MHA(
@@ -273,14 +271,14 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         ).reshape(B, R, self.hidden_dim)
 
         if self.poly_net is None:
-            context_out = mha_out
+            context = mha_out
         else:
-            context_out = mha_out + self.poly_net(torch.cat([mha_out, cache.seed], dim=-1))
+            context = mha_out + self.poly_net(torch.cat([mha_out, cache.seed], dim=-1))
 
-        # Shared-keys scoring: the R rollouts in context_out (B, R, D) all score against
+        # Shared-keys scoring: the R rollouts in context (B, R, D) all score against
         # the same per-instance nodes (B, N, D), avoiding any broadcast over R.
         logits = self.final_scorer(
-            h_c=context_out,
+            h_context=context,
             h_nodes=cache.h_nodes,
             mask=problem_state.action_mask,
         )

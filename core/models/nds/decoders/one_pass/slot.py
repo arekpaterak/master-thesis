@@ -105,12 +105,10 @@ class SlotDecoder(OnePassDestroyDecoder):
                 torch.cat([mha_out, seed_expanded], dim=-1)
             )  # (B, R, M, hidden_dim)
 
-        # Expand h_nodes and mask over R and the M slot dimension so scorer
-        # sees matching batch dims: (B, R, M, N, D) and (B, R, M, N)
-        h_nodes_per_slot = h_nodes[:, None, None].expand(B, R, self.num_slots, N, hidden_dim)
-        mask_per_slot = action_mask[:, None, None].expand(B, R, self.num_slots, N)
+        # Nodes are shared across rollouts and slots: pass them un-expanded and let the
+        # scorer fold (R, M) into its query axes. The mask broadcasts via (B, 1, 1, N).
         return self.scorer(
-            h_c=context, h_nodes=h_nodes_per_slot, mask=mask_per_slot
+            h_context=context, h_nodes=h_nodes, mask=action_mask[:, None, None]
         )  # (B, R, M, N)
 
     def rollout(

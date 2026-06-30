@@ -14,7 +14,11 @@ class CompatibilityScorer(nn.Module):
     """
 
     def __init__(
-        self, *, hidden_dim: int = 128, C: float = 10.0, use_projections: bool = True
+        self,
+        *,
+        hidden_dim: int = 128,
+        C: float = 10.0,
+        use_projections: bool = True,
     ) -> None:
         super().__init__()
         self.scale = hidden_dim**0.5
@@ -31,42 +35,56 @@ class CompatibilityScorer(nn.Module):
     def forward(
         self,
         *,
-        h_c: torch.Tensor,
+        h_context: torch.Tensor,
         h_nodes: torch.Tensor,
         mask: torch.Tensor,
         temperature: float = 1.0,
     ) -> torch.Tensor:
         """
-        Two call patterns are supported, distinguished by the rank of ``h_c`` vs ``h_nodes``:
+        Scores queries from the context against per-instance keys (the nodes).
 
-        - Matched (``h_c`` rank == ``h_nodes`` rank - 1): one query per leading index.
-          ``h_c`` (..., d), ``h_nodes`` (..., n, d) -> scores (..., n).
-        - Shared keys (``h_c`` rank == ``h_nodes`` rank): the queries along the
-          second-to-last axis of ``h_c`` all score against the same ``n`` keys.
-          ``h_c`` (..., m, d), ``h_nodes`` (..., n, d) -> scores (..., m, n).
-          This avoids broadcasting the keys over the query axis (e.g. rollouts), which
-          would otherwise materialise a (..., m, n, d) tensor.
+        Every query in ``h_context`` scores against the same ``num_nodes`` nodes,
+        so the nodes carry no query dims and are never replicated over them.
+
+        The query dims ``*q`` are arbitrary:
+
+        - ``()`` for the attention model,
+        - ``(R,)`` for the AR decoder and the NAR simple decoder,
+        - ``(R, M)`` for the slot decoder.
 
         Args:
-            h_c: Context embedding(s) to use as a query, (..., d) or (..., m, d).
-            h_nodes: Node embeddings to use as keys (..., n, d).
-            mask: Boolean mask broadcastable to the score shape; True = masked out.
+            h_context: Query embedding(s), (B, *q, d).
+            h_nodes: Node embeddings used as keys, (B, num_nodes, d).
+            mask: Boolean mask broadcastable to (B, *q, num_nodes); True = masked out.
             temperature (float): Softmax temperature. Defaults to 1.0.
 
         Returns:
-            Log-probabilities, (..., n) or (..., m, n).
+            Log-probabilities, (B, *q, num_nodes).
         """
-        Q = self.W_Q(h_c)
-        K = self.W_K(h_nodes)
+        Q = self.W_Q(h_context)  # (B, *q, d)
+        K = self.W_K(h_nodes)  # (B, num_nodes, d)
 
-        if Q.dim() == K.dim():
-            # Shared keys: (..., m, d) x (..., d, n) -> (..., m, n). No key broadcasting.
-            u = torch.matmul(Q, K.transpose(-2, -1)) / self.scale
-        else:
-            # Matched: one query vector per leading index.
-            u = torch.matmul(Q.unsqueeze(-2), K.transpose(-2, -1)).squeeze(-2) / self.scale
+        batch_size, d, num_nodes = Q.shape[0], Q.shape[-1], K.shape[-2]
+        query_dims = Q.shape[1:-1]  # *q
 
-        u = self.C * torch.tanh(u)
+        expected_mask_dim = len(query_dims) + 2
+        if mask.dim() != expected_mask_dim:
+            raise ValueError(
+                f"mask must have dim {expected_mask_dim} (batch + {len(query_dims)} query dim(s) + nodes) "
+                f"for query dims {tuple(query_dims)}, got mask shape {tuple(mask.shape)}"
+            )
+        if mask.shape[-1] != num_nodes:
+            raise ValueError(
+                f"mask's last dim must be num_nodes={num_nodes}, got mask shape {tuple(mask.shape)}."
+            )
+
+        # Fold the query dims (*q) into one dimension so the keys are never broadcast or expanded over the query dims.
+        Q_flat = Q.reshape(batch_size, -1, d)  # (B, prod(*q), d)
+        # (B, prod(*q), d) x (B, d, num_nodes) -> (B, prod(*q), num_nodes)
+        scores = torch.matmul(Q_flat, K.transpose(-2, -1)) / self.scale
+        u = scores.reshape(batch_size, *query_dims, num_nodes)  # (B, *q, num_nodes)
+
+        u = self.C * torch.tanh(u)  # (B, *q, num_nodes)
         u = u / temperature
-        u = u.masked_fill(mask, float("-inf"))
-        return F.log_softmax(u, dim=-1)
+        u = u.masked_fill(mask, float("-inf"))  # broadcast mask, fill forbidden keys
+        return F.log_softmax(u, dim=-1)  # (B, *q, num_nodes)

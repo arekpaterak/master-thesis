@@ -25,7 +25,7 @@ def test_decoder_step(use_hidden_decoding_state: bool) -> None:
     )
 
     assert log_p.shape == (B, rollout_size, N + 1)
-    assert gru_hidden_state.shape == (B * rollout_size, 128)
+    assert gru_hidden_state.shape == (B, rollout_size, 128)
     if use_hidden_decoding_state:
         assert torch.not_equal(gru_hidden_state, decoder_state.gru_hidden).all()
     else:

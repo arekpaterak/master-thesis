@@ -57,10 +57,10 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         else:
             context = mha_out + self.poly_net(torch.cat([mha_out, seed], dim=-1))
 
-        h_nodes_expanded = h_nodes.unsqueeze(1).expand(B, R, N, D)  # (B, R, N, D)
-        action_mask_expanded = action_mask.unsqueeze(1).expand(B, R, N)  # (B, R, N)
+        # Nodes are shared across rollouts: pass them un-expanded and let the scorer fold
+        # the R rollouts into its query axis. The mask broadcasts over R via (B, 1, N).
         logits = self.final_scorer(
-            h_c=context, h_nodes=h_nodes_expanded, mask=action_mask_expanded
+            h_context=context, h_nodes=h_nodes, mask=action_mask.unsqueeze(1)
         )  # (B, R, N)
         return logits
 

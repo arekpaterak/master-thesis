@@ -72,6 +72,11 @@ class CachedMultiheadAttention(nn.Module):
         )  # (B, num_heads, L_k, head_dim)
 
         if attention_mask is not None:
+            if attention_mask.shape != (B, R, L_k):
+                raise ValueError(
+                    f"attention_mask must have shape (B, R, L_k) = {(B, R, L_k)}, "
+                    f"got {tuple(attention_mask.shape)}."
+                )
             # (B, R, L_k) is the per-rollout mask; broadcast it over the L_q queries of
             # each rollout and over heads -> (B, 1, R*L_q, L_k).
             attention_mask = (
