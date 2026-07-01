@@ -77,7 +77,8 @@ class SearchParams(BaseModel):
         description=(
             "If set, removed customers may only be reinserted into routes the destroy "
             "touched (their remnants) or routes created during this repair, never an "
-            "untouched route. Only supported by the numba_sequential improvement step."
+            "untouched route. Only supported by the numba_sequential improvement step, "
+            "and only for CVRP (TSP has a single tour, no routes)."
         ),
     )
     acceptance: AcceptanceCriterionConfig = Field(

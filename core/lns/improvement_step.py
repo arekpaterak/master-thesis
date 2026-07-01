@@ -18,6 +18,9 @@ from .operators.repair.base import RepairOperator
 from .utils import apply_nodes, best_repair, select_solution
 
 if TYPE_CHECKING:
+    from core.problems.cvrp.graph_solution import CVRPGraphSolution
+    from core.problems.tsp.graph_solution import TSPGraphSolution
+
     from .config import SearchParams
 
 
@@ -81,15 +84,15 @@ class ParallelImprovementStep(ImprovementStep):
 
 
 class NumbaSequentialImprovementStep(ImprovementStep):
-    """CPU/numba sequential step for CVRP.
+    """CPU/numba sequential step.
 
     Accepts any :class:`NodeDestroyOperator`. Calls ``select_nodes`` to obtain
     all rollout node sets upfront, then folds the whole rollout loop (stitch-destroy,
     best-of-n greedy cheapest-insertion and acceptance) into a single numba pass,
     avoiding per-iteration GPU kernel launches.
 
-    Only the stitched CVRP greedy-insert repair is supported (the kernel reimplements
-    the repair, so the ``repair`` argument is validated and otherwise unused).
+    Only the stitched CVRP greedy-insert repair or the TSP greedy-insert repair are supported
+    (the kernel reimplements the repair, so the ``repair`` argument is validated and otherwise unused).
     """
 
     def __init__(
@@ -103,10 +106,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         first_repair_uses_rollout_order: bool = False,
         insert_in_new_routes_only: bool = False,
     ) -> None:
-        if getattr(repair, "problem_name", None) != "cvrp" or not repair.requires_stitch:
-            raise NotImplementedError(
-                "NumbaSequentialImprovementStep only supports the stitched CVRP greedy-insert repair."
-            )
+        self._validate_repair(repair)
         self._destroy = destroy
         self._num_rollouts = num_rollouts
         self._n_repairs = n_repairs
@@ -114,18 +114,25 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         self._first_repair_uses_rollout_order = first_repair_uses_rollout_order
         self._insert_in_new_routes_only = insert_in_new_routes_only
 
-    def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
-        from core.lns.numba_kernels.cvrp_sequential_improvement_step import run_with_removals
-        from core.problems.cvrp.graph_solution import CVRPGraphSolution
+    @staticmethod
+    def _validate_repair(repair: RepairOperator) -> None:
+        match getattr(repair, "problem_name", None):
+            case "cvrp" if repair.repair_type == "greedy_insert" and repair.requires_stitch:
+                return
+            case "tsp" if repair.repair_type == "greedy_insert":
+                return
+        raise NotImplementedError(
+            "NumbaSequentialImprovementStep only supports the stitched CVRP "
+            "greedy-insert repair or the TSP greedy-insert repair, got "
+            f"{type(repair).__name__} (problem_name={getattr(repair, 'problem_name', None)!r})."
+        )
 
-        if not isinstance(solution, CVRPGraphSolution):
-            raise NotImplementedError(
-                f"NumbaSequentialImprovementStep not implemented for {type(solution)}"
-            )
+    def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
+        from core.problems.cvrp.graph_solution import CVRPGraphSolution
+        from core.problems.tsp.graph_solution import TSPGraphSolution
 
         nodes = self._destroy.select_nodes(solution, self._num_rollouts)  # [*B, R, M]
         accept_kind, temperature = _acceptance_to_kernel(accept)
-        next_np, prev_np, locations, demand, capacity = solution.to_numpy_arrays()
         nodes_to_remove = (
             nodes.reshape(-1, nodes.shape[-2], nodes.shape[-1])
             .detach()
@@ -134,7 +141,30 @@ class NumbaSequentialImprovementStep(ImprovementStep):
             .numpy()
             .astype(np.int64, copy=False)
         )
-        next_out, prev_out = run_with_removals(
+        match solution:
+            case CVRPGraphSolution():
+                return self._call_cvrp(solution, nodes_to_remove, accept_kind, temperature)
+            case TSPGraphSolution():
+                return self._call_tsp(solution, nodes_to_remove, accept_kind, temperature)
+            case _:
+                raise NotImplementedError(
+                    f"NumbaSequentialImprovementStep not implemented for {type(solution)}"
+                )
+
+    def _call_cvrp(
+        self,
+        solution: CVRPGraphSolution,
+        nodes_to_remove: np.ndarray,
+        accept_kind: int,
+        temperature: float,
+    ) -> CVRPGraphSolution:
+        from core.lns.numba_kernels.cvrp_sequential_improvement_step import (
+            run_with_removals as cvrp_improvement_step,
+        )
+        from core.problems.cvrp.graph_solution import CVRPGraphSolution
+
+        next_np, prev_np, locations, demand, capacity = solution.to_numpy_arrays()
+        next_out, prev_out = cvrp_improvement_step(
             next=next_np,
             prev=prev_np,
             nodes_to_remove=nodes_to_remove,
@@ -150,6 +180,45 @@ class NumbaSequentialImprovementStep(ImprovementStep):
             insert_in_new_routes_only=self._insert_in_new_routes_only,
         )
         return CVRPGraphSolution.from_numpy_arrays(
+            instance=solution.instance,
+            next=next_out,
+            prev=prev_out,
+            batch_size=solution.batch_size,
+            device=solution.device,
+        )
+
+    def _call_tsp(
+        self,
+        solution: TSPGraphSolution,
+        nodes_to_remove: np.ndarray,
+        accept_kind: int,
+        temperature: float,
+    ) -> TSPGraphSolution:
+        from core.lns.numba_kernels.tsp_sequential_improvement_step import (
+            run_with_removals as tsp_improvement_step,
+        )
+        from core.problems.tsp.graph_solution import TSPGraphSolution
+
+        if self._insert_in_new_routes_only:
+            raise NotImplementedError(
+                "insert_in_new_routes_only is a CVRP-only concept (TSP has a single "
+                "tour, no routes)."
+            )
+
+        next_np, prev_np, locations = solution.to_numpy_arrays()
+        next_out, prev_out = tsp_improvement_step(
+            next=next_np,
+            prev=prev_np,
+            nodes_to_remove=nodes_to_remove,
+            locations=locations,
+            n_repairs=self._n_repairs,
+            accept_kind=accept_kind,
+            temperature=temperature,
+            eps=EPS,
+            base_seed=self._seed,
+            first_repair_uses_order=self._first_repair_uses_rollout_order,
+        )
+        return TSPGraphSolution.from_numpy_arrays(
             instance=solution.instance,
             next=next_out,
             prev=prev_out,

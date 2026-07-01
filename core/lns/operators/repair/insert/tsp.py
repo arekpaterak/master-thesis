@@ -8,6 +8,9 @@ from core.problems.tsp import TSPSolution
 
 # TODO: Rewrite as batched, similar to CVRP
 class TSPGreedyInsertRepair[S: TSPSolution](RepairOperator[S]):
+    repair_type = "greedy_insert"
+    problem_name = "tsp"
+
     def __call__(self, deconstructed_solution: S) -> S:
         if not isinstance(deconstructed_solution, TSPSolution):
             raise NotImplementedError(

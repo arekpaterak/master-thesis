@@ -16,13 +16,15 @@ and acceptance mirrors :mod:`core.lns.acceptance_criterion`.
 Randomness uses numba's per-thread ``np.random``. To stay reproducible under
 ``prange`` (where draws would otherwise depend on the thread count), each parallel
 iteration reseeds ``np.random`` from a seed derived only from ``base_seed`` and the
-iteration index -- see :func:`_seed_for`.
+iteration index -- see :func:`seed_for`.
 """
 
 from __future__ import annotations
 
 import numpy as np
 from numba import njit, prange
+
+from .common import dist, seed_for
 
 DEPOT = 0
 UNASSIGNED = -1
@@ -73,17 +75,6 @@ def run_with_removals(
     )
 
 
-@njit(inline="always")
-def _seed_for(base_seed: int, index: int, count: int) -> int:
-    """Distinct 32-bit RNG seed for one (base_seed, index) pair.
-
-    ``count`` is the number of indices (the batch size) so distinct ``base_seed``
-    values never overlap. Masked to 32 bits because ``np.random.seed`` takes a
-    32-bit seed.
-    """
-    return (base_seed * count + index) & 0xFFFFFFFF
-
-
 @njit(parallel=True, cache=True)
 def _run_for_batch(
     *,
@@ -105,7 +96,7 @@ def _run_for_batch(
     next_out = next.copy()
     prev_out = prev.copy()
     for global_idx in prange(global_size):
-        np.random.seed(_seed_for(base_seed, global_idx, global_size))
+        np.random.seed(seed_for(base_seed, global_idx, global_size))
         _run_for_single(
             next_out=next_out[global_idx],
             prev_out=prev_out[global_idx],
@@ -246,13 +237,6 @@ def _run_for_single(
 
 
 @njit(inline="always")
-def _dist(locations: np.ndarray, i: int, j: int) -> float:
-    dx = locations[i, 0] - locations[j, 0]
-    dy = locations[i, 1] - locations[j, 1]
-    return np.sqrt(dx * dx + dy * dy)
-
-
-@njit(inline="always")
 def _remove_customer_and_stitch(nxt: np.ndarray, prv: np.ndarray, customer: int) -> None:
     """Detach customer and stitch its neighbours."""
     u = prv[customer]
@@ -288,14 +272,14 @@ def _objective(
     total_distance = 0.0
     for head in range(1, num_customers + 1):
         if prv[head] == DEPOT:
-            total_distance += _dist(locations, DEPOT, head)
+            total_distance += dist(locations, DEPOT, head)
             node = head
             while True:
                 next_node = nxt[node]
                 if next_node == DEPOT:
-                    total_distance += _dist(locations, node, DEPOT)
+                    total_distance += dist(locations, node, DEPOT)
                     break
-                total_distance += _dist(locations, node, next_node)
+                total_distance += dist(locations, node, next_node)
                 node = next_node
     return total_distance
 
@@ -368,7 +352,7 @@ def _insert_customer_at_cheapest(
 
     # New-route fallback (depot -> c -> depot) is always valid for a feasible
     # single customer, so the argmin is always defined.
-    best_cost = 2.0 * _dist(locations, DEPOT, customer)
+    best_cost = 2.0 * dist(locations, DEPOT, customer)
     best_u = DEPOT
     best_v = DEPOT
     for x in range(1, num_customers + 1):
@@ -379,9 +363,7 @@ def _insert_customer_at_cheapest(
         if route_demand[x] + demand_c <= capacity:
             u = prv[x]
             cost = (
-                _dist(locations, u, customer)
-                + _dist(locations, customer, x)
-                - _dist(locations, u, x)
+                dist(locations, u, customer) + dist(locations, customer, x) - dist(locations, u, x)
             )
             if cost < best_cost:
                 best_cost = cost
@@ -389,9 +371,9 @@ def _insert_customer_at_cheapest(
                 best_v = x
             if nxt[x] == DEPOT:
                 cost = (
-                    _dist(locations, x, customer)
-                    + _dist(locations, customer, DEPOT)
-                    - _dist(locations, x, DEPOT)
+                    dist(locations, x, customer)
+                    + dist(locations, customer, DEPOT)
+                    - dist(locations, x, DEPOT)
                 )
                 if cost < best_cost:
                     best_cost = cost

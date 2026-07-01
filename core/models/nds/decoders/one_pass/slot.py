@@ -53,7 +53,7 @@ class SlotDecoder(OnePassDestroyDecoder):
             if slot_self_attention != "none"
             else None
         )
-        self.MHA = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
+        self.cross_attn = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
         self.poly_net = (
             nn.Sequential(
                 nn.Linear(hidden_dim + seed_dim, poly_dim),
@@ -88,7 +88,7 @@ class SlotDecoder(OnePassDestroyDecoder):
             assert self.slot_self_attn is not None
             queries = queries + self.slot_self_attn(queries, queries, queries)
 
-        mha_out = self.MHA(
+        mha_out = self.cross_attn(
             queries, h_nodes, h_nodes, attention_mask=~action_mask
         )  # (B, M, hidden_dim)
 

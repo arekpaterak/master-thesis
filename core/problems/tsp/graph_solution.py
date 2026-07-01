@@ -10,6 +10,7 @@ from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPInstance
 
 if TYPE_CHECKING:
+    import numpy as np
     from matplotlib.axes import Axes
 
 
@@ -55,6 +56,48 @@ class TSPGraphSolution(BaseSolution):
         prev_nodes.scatter_(-1, sequence, sequence.roll(1, dims=-1))
 
         return cls(_instance=instance, _next=next_nodes, _prev=prev_nodes, batch_size=b_size)
+
+    def to_numpy_arrays(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Extract contiguous numpy arrays for a numba improvement kernel.
+
+        Batch dims are collapsed to a single leading dim G; floats are float64.
+        Pair with :meth:`from_numpy_arrays` to rebuild a solution from the kernel output.
+
+        Returns:
+            ``(next, prev, locations)`` with shapes ``(G, N)`` int64, ``(G, N)`` int64
+            and ``(G, N, 2)`` float64.
+        """
+        N = self.instance.num_nodes
+        next = self._next.reshape(-1, N).detach().cpu().contiguous().numpy()
+        prev = self._prev.reshape(-1, N).detach().cpu().contiguous().numpy()
+        locations = (
+            self.instance.locations.reshape(-1, N, 2).detach().cpu().double().contiguous().numpy()
+        )
+        return next, prev, locations
+
+    @classmethod
+    def from_numpy_arrays(
+        cls,
+        *,
+        instance: TSPInstance,
+        next: np.ndarray,
+        prev: np.ndarray,
+        batch_size: torch.Size,
+        device: torch.device,
+    ) -> TSPGraphSolution:
+        """Rebuild a solution from kernel-produced ``next``/``prev`` numpy arrays."""
+        num_nodes = instance.num_nodes
+        next_tensor = (
+            torch.from_numpy(next)
+            .to(device=device, dtype=torch.long)
+            .reshape(*batch_size, num_nodes)
+        )
+        prev_tensor = (
+            torch.from_numpy(prev)
+            .to(device=device, dtype=torch.long)
+            .reshape(*batch_size, num_nodes)
+        )
+        return cls(_instance=instance, _next=next_tensor, _prev=prev_tensor, batch_size=batch_size)
 
     def __post_init__(self) -> None:
         pass
