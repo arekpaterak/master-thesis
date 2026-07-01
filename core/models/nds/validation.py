@@ -23,6 +23,7 @@ class BatchValidationSummary(BaseModel):
     objective_initial: float
     objective_final: float
     batch_time_sec: float
+    instances_per_sec: float
     objective_curve: list[float]
     step_labels: list[int]
     snapshots: list[BaseSolution]
@@ -35,6 +36,7 @@ class EpochValidationSummary(BaseModel):
     objective_initial: float
     objective_final: float
     batch_time_sec: float
+    instances_per_sec: float
     objective_curve: list[float]
     step_labels: list[int]
     snapshots: list[BaseSolution]
@@ -56,14 +58,6 @@ class EpochValidationSummary(BaseModel):
     def steps_to_best(self) -> int:
         best_idx = min(range(len(self.objective_curve)), key=lambda i: self.objective_curve[i])
         return self.step_labels[best_idx]
-
-    @computed_field
-    @property
-    def steps_with_improvement(self) -> float:
-        improvements = sum(b < a for a, b in zip(self.objective_curve, self.objective_curve[1:]))
-        return (
-            improvements / (len(self.objective_curve) - 1) if len(self.objective_curve) > 1 else 0.0
-        )
 
 
 class EpochValidationAccumulator(EpochAccumulator):
@@ -99,6 +93,7 @@ class EpochValidationAccumulator(EpochAccumulator):
             objective_initial=self._total_objective_initial / n,
             objective_final=self._total_objective_final / n,
             batch_time_sec=self._total_batch_time / self._total_batches,
+            instances_per_sec=self._total_instances / self._total_batch_time,
             objective_curve=[v / n for v in self._weighted_curve],
             step_labels=self._step_labels,
             snapshots=self._snapshots,
@@ -166,6 +161,7 @@ def configure_validation_step(
             objective_initial=objective_curve[0],
             objective_final=final.objective().mean().item(),
             batch_time_sec=elapsed,
+            instances_per_sec=batch_size / elapsed,
             objective_curve=objective_curve,
             step_labels=sorted(snapshot_step_set),
             snapshots=snapshots,

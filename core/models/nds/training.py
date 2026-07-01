@@ -91,7 +91,7 @@ class BatchTrainSummary(BaseModel):
     log_p: float
     reward_std: float
     acceptance_rate: float
-    mean_unique_actions: float
+    unique_actions_ratio: float
     objective_start: float
     objective_before: float
     objective_after: float
@@ -112,7 +112,7 @@ class EpochTrainSummary(BaseModel):
     log_p: float
     reward_std: float
     acceptance_rate: float
-    mean_unique_actions: float
+    unique_actions_ratio: float
     objective_start: float
     objective_before: float
     objective_after: float
@@ -140,7 +140,7 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_log_p = 0.0
         self._total_reward_std = 0.0
         self._total_acceptance_rate = 0.0
-        self._total_mean_unique_actions = 0.0
+        self._total_unique_actions_ratio = 0.0
         self._total_objective_start = 0.0
         self._total_objective_before = 0.0
         self._total_objective_after = 0.0
@@ -160,7 +160,7 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_log_p += summary.log_p * n
         self._total_reward_std += summary.reward_std * n
         self._total_acceptance_rate += summary.acceptance_rate * n
-        self._total_mean_unique_actions += summary.mean_unique_actions * n
+        self._total_unique_actions_ratio += summary.unique_actions_ratio * n
         self._total_objective_start += summary.objective_start * n
         self._total_objective_before += summary.objective_before * n
         self._total_objective_after += summary.objective_after * n
@@ -178,7 +178,7 @@ class EpochTrainAccumulator(EpochAccumulator):
             log_p=self._total_log_p / n,
             reward_std=self._total_reward_std / n,
             acceptance_rate=self._total_acceptance_rate / n,
-            mean_unique_actions=self._total_mean_unique_actions / n,
+            unique_actions_ratio=self._total_unique_actions_ratio / n,
             objective_start=self._total_objective_start / n,
             objective_before=self._total_objective_before / n,
             objective_after=self._total_objective_after / n,
@@ -243,7 +243,7 @@ def configure_training_step(
         total_log_p = 0.0
         total_reward_std = 0.0
         total_acceptance_rate = 0.0
-        total_mean_unique_actions = 0.0
+        total_unique_actions_ratio = 0.0
 
         # Encode the static instance once and reuse it across improvement steps, or
         # recompute it every step. See EncodeOncePass / RecomputePass.
@@ -310,7 +310,7 @@ def configure_training_step(
             total_log_p += best_log_p.mean().item()
             total_reward_std += reward.std(dim=1).mean().item()
             total_acceptance_rate += (best_reward > 0).float().mean().item()
-            total_mean_unique_actions += (
+            total_unique_actions_ratio += (
                 is_unique.float().sum(dim=-1).mean().item() / deconstruction_size
             )
 
@@ -340,7 +340,7 @@ def configure_training_step(
             log_p=total_log_p / num_main_improvement_steps,
             reward_std=total_reward_std / num_main_improvement_steps,
             acceptance_rate=total_acceptance_rate / num_main_improvement_steps,
-            mean_unique_actions=total_mean_unique_actions / num_main_improvement_steps,
+            unique_actions_ratio=total_unique_actions_ratio / num_main_improvement_steps,
             objective_start=objective_start,
             objective_before=objective_before,
             objective_after=objective_after,

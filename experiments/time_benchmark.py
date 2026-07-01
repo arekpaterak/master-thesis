@@ -57,31 +57,6 @@ from core.problems.solve import generate_initial_solution
 
 OUTPUT_DEFAULT = Path(__file__).parent / "results" / "tables" / "time_benchmark.csv"
 
-CSV_FIELDS = [
-    "method",
-    "step_type",
-    "step",
-    "objective",
-    "objective_std",
-    "cumulative_time_ms",
-    "cumulative_time_std_ms",
-    "mean_step_ms",
-    "mean_step_std_ms",
-    "problem",
-    "problem_size",
-    "batch_size",
-    "num_parameters",
-    "deconstruction_size",
-    "num_rollouts",
-    "n_repairs",
-    "repair_type",
-    "acceptance",
-    "use_cuda",
-    "repeats",
-    "seed",
-    "torch_version",
-]
-
 # Columns identifying a unique measurement; re-running overwrites the matching row.
 KEY_FIELDS = (
     "method",
@@ -89,9 +64,28 @@ KEY_FIELDS = (
     "step",
     "problem",
     "problem_size",
-    "batch_size",
     "deconstruction_size",
+    "num_rollouts",
+    "batch_size",
 )
+
+CSV_FIELDS = [
+    *KEY_FIELDS,
+    "cumulative_time_ms",
+    "cumulative_time_std_ms",
+    "mean_step_ms",
+    "mean_step_std_ms",
+    "n_repairs",
+    "repair_type",
+    "acceptance",
+    "num_parameters",
+    "objective",
+    "objective_std",
+    "use_cuda",
+    "repeats",
+    "seed",
+    "torch_version",
+]
 
 
 @dataclass(frozen=True)
