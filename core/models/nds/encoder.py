@@ -57,8 +57,7 @@ class NDSEncoder(nn.Module):
             ff_activation=encoder_config.ff_activation,
         )
         self.pre_attention = nn.Sequential(
-            attention_layer(),
-            attention_layer(),
+            *(attention_layer() for _ in range(encoder_config.num_pre_attention_layers))
         )
         self.neighbours_encoding = (
             NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
@@ -67,8 +66,7 @@ class NDSEncoder(nn.Module):
             RouteEncodingLayer(hidden_dim=hidden_dim) if with_route_encoding else None
         )
         self.post_attention = nn.Sequential(
-            attention_layer(),
-            attention_layer(),
+            *(attention_layer() for _ in range(encoder_config.num_post_attention_layers))
         )
 
     def forward(self, instance, solution) -> torch.Tensor:

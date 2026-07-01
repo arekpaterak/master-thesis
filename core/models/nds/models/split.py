@@ -31,94 +31,6 @@ from core.problems.tsp.features import (
 from core.states.destroy import initial_action_mask
 
 
-class SolutionFusionEncoder(nn.Module):
-    """Condition cached instance embeddings on the current solution.
-
-    Applies up to three stages in sequence:
-    1. Project ``[customer_embedding, positional_encoding]`` back to ``hidden_dim``
-       (depot passes through unchanged).
-    2. Neighbours encoding -- message-passing from prev/next route neighbours.
-    3. Route encoding -- route-mean pooling and update.
-    4. Self-attention layers over all nodes.
-
-    Stages 2-4 are optional and share the encoder's norm and activation settings.
-    """
-
-    def __init__(
-        self,
-        *,
-        hidden_dim: int,
-        pe_dim: int,
-        with_neighbours_encoding: bool = False,
-        with_route_encoding: bool = False,
-        num_attention_layers: int = 0,
-        num_heads: int = 8,
-        ff_dim: int = 512,
-        encoder_config: EncoderConfig | None = None,
-    ) -> None:
-        super().__init__()
-        self.projection = nn.Linear(hidden_dim + pe_dim, hidden_dim)
-        self.neighbours = (
-            NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
-        )
-        self.route = RouteEncodingLayer(hidden_dim=hidden_dim) if with_route_encoding else None
-        _config = encoder_config or EncoderConfig()
-        self.attention_layers = nn.ModuleList(
-            [
-                AttentionLayer(
-                    hidden_dim=hidden_dim,
-                    num_heads=num_heads,
-                    ff_dim=ff_dim,
-                    norm_type=_config.norm_type,
-                    pre_norm=_config.pre_norm,
-                    ff_activation=_config.ff_activation,
-                )
-                for _ in range(num_attention_layers)
-            ]
-        )
-
-    def forward(
-        self,
-        h_nodes: torch.Tensor,
-        positional: torch.Tensor,
-        *,
-        neighbours_index: torch.Tensor | None = None,
-        route_index: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        """
-        Args:
-            h_nodes: (B, N+offset, hidden_dim) cached instance embeddings.
-            positional: (B, N, pe_dim) per-customer solution positional encoding.
-            neighbours_index: (B, N, 2) required when neighbours encoding is enabled.
-            route_index: (B, N) required when route encoding is enabled.
-
-        Returns:
-            (B, N+offset, hidden_dim)
-        """
-        offset = h_nodes.shape[-2] - positional.shape[-2]
-        customers = h_nodes[:, offset:]
-        fused_customers = self.projection(torch.cat([customers, positional], dim=-1))
-        h = torch.cat([h_nodes[:, :offset], fused_customers], dim=1)
-        if self.neighbours is not None:
-            h = self.neighbours(h, neighbours_index=neighbours_index)
-        if self.route is not None:
-            h = self.route(h, route_index=route_index)
-        for layer in self.attention_layers:
-            h = layer(h)
-        return h
-
-
-class InstanceCache(NamedTuple):
-    """Static per-instance encoder products reused across LNS iterations.
-
-    Holds the instance embeddings and the cross-route positional encoding (XPE),
-    all independent of the current solution.
-    """
-
-    instance_node_embeddings: torch.Tensor
-    xpe: torch.Tensor | None
-
-
 class SplitNDSModel(nn.Module):
     """Destroy model with a split-frequency encoder designed specifically for LNS search.
 
@@ -329,3 +241,91 @@ class SplitNDSModel(nn.Module):
             direction_aware=config.direction_aware,
             schedule=config.frequency_schedule,
         )
+
+
+class SolutionFusionEncoder(nn.Module):
+    """Condition cached instance embeddings on the current solution.
+
+    Applies up to three stages in sequence:
+    1. Project ``[customer_embedding, positional_encoding]`` back to ``hidden_dim``
+       (depot passes through unchanged).
+    2. Neighbours encoding -- message-passing from prev/next route neighbours.
+    3. Route encoding -- route-mean pooling and update.
+    4. Self-attention layers over all nodes.
+
+    Stages 2-4 are optional and share the encoder's norm and activation settings.
+    """
+
+    def __init__(
+        self,
+        *,
+        hidden_dim: int,
+        pe_dim: int,
+        with_neighbours_encoding: bool = False,
+        with_route_encoding: bool = False,
+        num_attention_layers: int = 0,
+        num_heads: int = 8,
+        ff_dim: int = 512,
+        encoder_config: EncoderConfig | None = None,
+    ) -> None:
+        super().__init__()
+        self.projection = nn.Linear(hidden_dim + pe_dim, hidden_dim)
+        self.neighbours = (
+            NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
+        )
+        self.route = RouteEncodingLayer(hidden_dim=hidden_dim) if with_route_encoding else None
+        _config = encoder_config or EncoderConfig()
+        self.attention_layers = nn.ModuleList(
+            [
+                AttentionLayer(
+                    hidden_dim=hidden_dim,
+                    num_heads=num_heads,
+                    ff_dim=ff_dim,
+                    norm_type=_config.norm_type,
+                    pre_norm=_config.pre_norm,
+                    ff_activation=_config.ff_activation,
+                )
+                for _ in range(num_attention_layers)
+            ]
+        )
+
+    def forward(
+        self,
+        h_nodes: torch.Tensor,
+        positional: torch.Tensor,
+        *,
+        neighbours_index: torch.Tensor | None = None,
+        route_index: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """
+        Args:
+            h_nodes: (B, N+offset, hidden_dim) cached instance embeddings.
+            positional: (B, N, pe_dim) per-customer solution positional encoding.
+            neighbours_index: (B, N, 2) required when neighbours encoding is enabled.
+            route_index: (B, N) required when route encoding is enabled.
+
+        Returns:
+            (B, N+offset, hidden_dim)
+        """
+        offset = h_nodes.shape[-2] - positional.shape[-2]
+        customers = h_nodes[:, offset:]
+        fused_customers = self.projection(torch.cat([customers, positional], dim=-1))
+        h = torch.cat([h_nodes[:, :offset], fused_customers], dim=1)
+        if self.neighbours is not None:
+            h = self.neighbours(h, neighbours_index=neighbours_index)
+        if self.route is not None:
+            h = self.route(h, route_index=route_index)
+        for layer in self.attention_layers:
+            h = layer(h)
+        return h
+
+
+class InstanceCache(NamedTuple):
+    """Static per-instance encoder products reused across LNS iterations.
+
+    Holds the instance embeddings and the cross-route positional encoding (XPE),
+    all independent of the current solution.
+    """
+
+    instance_node_embeddings: torch.Tensor
+    xpe: torch.Tensor | None

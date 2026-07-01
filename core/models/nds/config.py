@@ -52,6 +52,16 @@ class EncoderConfig(BaseModel):
         title="FF activation",
         description="Feed-forward variant. 'relu' = 2-layer ReLU MLP (AM default), 'swiglu' = SwiGLU.",
     )
+    num_pre_attention_layers: int = Field(
+        default=2,
+        title="Pre-attention layers",
+        description="Self-attention layers before the neighbours/route encoding layers.",
+    )
+    num_post_attention_layers: int = Field(
+        default=2,
+        title="Post-attention layers",
+        description="Self-attention layers after the neighbours/route encoding layers.",
+    )
 
 
 class PositionalEncodingConfig(BaseModel):
@@ -154,12 +164,12 @@ class SplitModelParams(_ModelParamsBase):
         "False recomputes the encoder every step (current behavior).",
     )
     with_fusion_neighbours_encoding: bool = Field(
-        default=False,
+        default=True,
         title="Fusion neighbours encoding",
         description="Apply a neighbours encoding layer after positional fusion (before route and attention).",
     )
     with_fusion_route_encoding: bool = Field(
-        default=False,
+        default=True,
         title="Fusion route encoding",
         description="Apply a route encoding layer after positional fusion (before attention). CVRP only.",
     )
