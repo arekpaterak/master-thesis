@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
-from core.models.nds.encoder import NDSEncoder
+from core.models.nds.encoders import NDSEncoder
 
 
 def load_original_pretrained_encoder_weights(

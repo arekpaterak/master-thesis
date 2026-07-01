@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
-from core.models.nds.encoder import NDSEncoder
+from core.models.nds.encoders import NDSEncoder
 from core.models.nds.models.joint import JointNDSModel
 from core.models.nds.pretrained import (
     load_original_pretrained_decoder_weights,

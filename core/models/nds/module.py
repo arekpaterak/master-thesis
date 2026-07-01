@@ -14,6 +14,7 @@ from core.models.nds.apply_rollout import apply_rollout
 from core.models.nds.baseline import build_baseline
 from core.models.nds.config import TrainConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
+from core.models.nds.encoders import SplitNDSEncoder
 from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.policy_loss import build_policy_loss
@@ -50,7 +51,15 @@ class NDSModule(Module):
 
         if config.compile.enabled:
             compile_kwargs = dict(mode=config.compile.mode, fullgraph=config.compile.fullgraph)
-            self.model.encoder = torch.compile(self.model.encoder, **compile_kwargs)
+            # SplitNDSEncoder has no single forward (its encode_instance/fuse would run eager
+            # through an OptimizedModule proxy), so compile the static instance encoder it wraps;
+            # the per-step fusion stays eager, matching the pre-refactor behaviour.
+            if isinstance(self.model.encoder, SplitNDSEncoder):
+                self.model.encoder.instance_encoder = torch.compile(
+                    self.model.encoder.instance_encoder, **compile_kwargs
+                )
+            else:
+                self.model.encoder = torch.compile(self.model.encoder, **compile_kwargs)
             # The autoregressive decoder has a Python decoding loop that does not compile
             # cleanly; only the one-pass decoders are compiled.
             if not isinstance(self.model.decoder, AutoregressiveNDSDecoder):

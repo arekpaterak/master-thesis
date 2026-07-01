@@ -1,5 +1,5 @@
 from core.models.embeddings import CVRPInitialEmbedding
-from core.models.nds.encoder import NDSEncoder
+from core.models.nds.encoders import NDSEncoder
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
