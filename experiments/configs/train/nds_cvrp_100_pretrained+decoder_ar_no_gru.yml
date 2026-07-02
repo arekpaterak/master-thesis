@@ -8,6 +8,9 @@ model:
   ff_dim: 512
   poly_dim: 256
   seed_dim: 10
+  encoder:
+    encoding_order: route_neighbours
+    route_aggregation: sum
   decoder:
     type: ar
     use_hidden_decoding_state: false

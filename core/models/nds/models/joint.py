@@ -4,10 +4,10 @@ from typing import Literal
 
 import torch.nn as nn
 
-from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 from core.models.nds.decoders.factory import build_decoder
-from core.models.nds.encoders import NDSEncoder
+from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.nds import NDSEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout

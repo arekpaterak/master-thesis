@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Self
 
 import torch
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from core.lns.config import SearchParams
 from core.lns.operators.repair import RepairOperator
@@ -12,6 +13,7 @@ from core.models.nds.config import ModelParams
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
+from core.models.nds.pretrained.config import validate_encoder_matches_original_nds
 from core.problems import ProblemConfig
 
 
@@ -26,6 +28,11 @@ class NDSPretrainedConfig(BaseModel):
     )
     search: SearchParams = Field(default_factory=SearchParams)
 
+    @model_validator(mode="after")
+    def _validate_encoder_for_original_pretrained(self) -> Self:
+        validate_encoder_matches_original_nds(self.model.encoder)
+        return self
+
 
 class NDSPretrainedMethod:
     @classmethod
@@ -37,7 +44,7 @@ class NDSPretrainedMethod:
         generate_start_solution,
         device: torch.device,
     ) -> Method:
-        from core.models.nds.pretrained import (
+        from core.models.nds.pretrained.load import (
             load_original_pretrained_decoder_weights,
             load_original_pretrained_encoder_weights,
         )

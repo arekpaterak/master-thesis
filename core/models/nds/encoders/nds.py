@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from core.models.embeddings.cvrp import CVRPInitialEmbedding
 from core.models.embeddings.tsp import TSPInitialEmbedding
-from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.encoders.layers import (
     AttentionLayer,
     NeighboursEncodingLayer,
@@ -61,11 +61,14 @@ class NDSEncoder(nn.Module):
         self.pre_attention = nn.Sequential(
             *(attention_layer() for _ in range(encoder_config.num_pre_attention_layers))
         )
+        self.encoding_order = encoder_config.encoding_order
         self.neighbours_encoding = (
             NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
         )
         self.route_encoding = (
-            RouteEncodingLayer(hidden_dim=hidden_dim) if with_route_encoding else None
+            RouteEncodingLayer(hidden_dim=hidden_dim, aggregation=encoder_config.route_aggregation)
+            if with_route_encoding
+            else None
         )
         self.post_attention = nn.Sequential(
             *(attention_layer() for _ in range(encoder_config.num_post_attention_layers))
@@ -83,11 +86,22 @@ class NDSEncoder(nn.Module):
         h = self.initial_embedding(instance, solution)
         h = self.pre_attention(h)
 
-        if self.neighbours_encoding is not None:
-            h = self.neighbours_encoding(h, neighbours_index=solution.neighbours_index)
+        def apply_neighbours(h: torch.Tensor) -> torch.Tensor:
+            if self.neighbours_encoding is None:
+                return h
+            return self.neighbours_encoding(h, neighbours_index=solution.neighbours_index)
 
-        if self.route_encoding is not None:
-            h = self.route_encoding(h, route_index=solution.route_index)
+        def apply_route(h: torch.Tensor) -> torch.Tensor:
+            if self.route_encoding is None:
+                return h
+            return self.route_encoding(h, route_index=solution.route_index)
+
+        if self.encoding_order == "route_neighbours":
+            h = apply_route(h)
+            h = apply_neighbours(h)
+        else:
+            h = apply_neighbours(h)
+            h = apply_route(h)
 
         h = self.post_attention(h)
         return h

@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from core.models.embeddings.positional import circular_sinusoidal_encoding
-from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.encoders.layers import (
     AttentionLayer,
     NeighboursEncodingLayer,
@@ -178,8 +178,12 @@ class SolutionFusionEncoder(nn.Module):
         self.neighbours = (
             NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
         )
-        self.route = RouteEncodingLayer(hidden_dim=hidden_dim) if with_route_encoding else None
         _config = encoder_config or EncoderConfig()
+        self.route = (
+            RouteEncodingLayer(hidden_dim=hidden_dim, aggregation=_config.route_aggregation)
+            if with_route_encoding
+            else None
+        )
         self.attention_layers = nn.ModuleList(
             [
                 AttentionLayer(

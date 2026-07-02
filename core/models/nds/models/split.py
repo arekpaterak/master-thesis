@@ -4,8 +4,8 @@ from typing import Literal
 
 import torch.nn as nn
 
-from core.models.nds.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.decoders.base import DestroyDecoder
+from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.encoders.split import InstanceCache, SplitNDSEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout

@@ -42,7 +42,7 @@ with app.setup(hide_code=True):
     from core.models.nds.factory import build_model
     from core.models.nds.module import NDSModule
     from core.models.nds.policy_loss import PolicyLossConfig
-    from core.models.nds.pretrained import (
+    from core.models.nds.pretrained.load import (
         load_original_pretrained_decoder_weights,
         load_original_pretrained_encoder_weights,
     )

@@ -1,0 +1,75 @@
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class EncoderConfig(BaseModel):
+    """Architecture choices for the transformer encoder layers."""
+
+    norm_type: Literal["instance", "rms"] = Field(
+        default="instance",
+        title="Norm type",
+        description="Normalization. 'instance' = InstanceNorm1d (AM default), 'rms' = RMSNorm.",
+    )
+    pre_norm: bool = Field(
+        default=False,
+        title="Pre-norm",
+        description="If True, normalize before each sublayer (pre-norm). Default is post-norm.",
+    )
+    ff_activation: Literal["relu", "swiglu"] = Field(
+        default="relu",
+        title="FF activation",
+        description="Feed-forward variant. 'relu' = 2-layer ReLU MLP (AM default), 'swiglu' = SwiGLU.",
+    )
+    num_pre_attention_layers: int = Field(
+        default=2,
+        title="Pre-attention layers",
+        description="Self-attention layers before the neighbours/route encoding layers.",
+    )
+    num_post_attention_layers: int = Field(
+        default=2,
+        title="Post-attention layers",
+        description="Self-attention layers after the neighbours/route encoding layers.",
+    )
+    encoding_order: Literal["route_neighbours", "neighbours_route"] = Field(
+        default="route_neighbours",
+        title="Encoding order",
+        description="Order of the structural encoding layers.",
+    )
+    route_aggregation: Literal["mean", "sum"] = Field(
+        default="mean",
+        title="Route aggregation",
+        description="Pooling used to aggregate customer embeddings into a per-route "
+        "embedding in the route encoding layer.",
+    )
+
+
+class PositionalEncodingConfig(BaseModel):
+    """Hierarchical positional encoding (IPE + XPE) settings.
+
+    Where the encoding is injected relative to the encoder follows from the model
+    structure, not from this config: the 'joint' encoder injects it before the encoder
+    (over its inputs), while the 'split' (LNS-native) model injects it after the encoder
+    just before the decoder. Disable positional encoding entirely by leaving the
+    surrounding field unset (``None``).
+    """
+
+    dim: int = Field(
+        default=16,
+        title="Per-component encoding dimension",
+        description="Per-component encoding dimension (must be even).",
+    )
+    direction_aware: bool = Field(
+        default=False,
+        title="Direction aware",
+        description="If True, use sin/cos pairs (direction-sensitive). False = cosine-only "
+        "(reversal-invariant).",
+    )
+    frequency_schedule: Literal["integer", "geometric"] = Field(
+        default="integer",
+        title="Frequency schedule",
+        description="Frequency schedule. 'integer' = Fourier harmonics (exact reversal "
+        "invariance for the cosine-only variant); 'geometric' = lambda^(-2k/D).",
+    )

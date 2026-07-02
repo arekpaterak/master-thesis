@@ -5,7 +5,11 @@ from pathlib import Path
 import torch
 
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
-from core.models.nds.encoders import NDSEncoder
+from core.models.nds.encoders.nds import NDSEncoder
+from core.models.nds.pretrained.config import (
+    ORIGINAL_NDS_ENCODING_ORDER,
+    ORIGINAL_NDS_ROUTE_AGGREGATION,
+)
 
 
 def load_original_pretrained_encoder_weights(
@@ -17,6 +21,8 @@ def load_original_pretrained_encoder_weights(
     This function extracts and remaps only the encoder weights,
     bridging the naming and layout differences between the original implementation and this codebase.
     """
+    _guard_original_nds_graph(encoder)
+
     device = next(encoder.parameters()).device
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     checkpoint_state_dict = checkpoint["model_state_dict"]
@@ -106,6 +112,24 @@ def load_original_pretrained_decoder_weights(
     _copy(nds_sd, out, "decoder.poly_layer_2", "poly_net.2")
 
     decoder.load_state_dict(out, strict=True)
+
+
+def _guard_original_nds_graph(encoder: NDSEncoder) -> None:
+    """Refuse to load original NDS weights into an incompatible computation graph."""
+    both_encodings = encoder.route_encoding is not None and encoder.neighbours_encoding is not None
+    if both_encodings and encoder.encoding_order != ORIGINAL_NDS_ENCODING_ORDER:
+        raise ValueError(
+            f"original NDS pretrained model require encoding_order="
+            f"{ORIGINAL_NDS_ENCODING_ORDER!r}, got {encoder.encoding_order!r}."
+        )
+    if (
+        encoder.route_encoding is not None
+        and encoder.route_encoding.aggregation != ORIGINAL_NDS_ROUTE_AGGREGATION
+    ):
+        raise ValueError(
+            f"original NDS pretrained model require route aggregation="
+            f"{ORIGINAL_NDS_ROUTE_AGGREGATION!r}, got {encoder.route_encoding.aggregation!r}."
+        )
 
 
 def _map_attention_layer(

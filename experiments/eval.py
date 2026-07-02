@@ -35,6 +35,11 @@ with app.setup:
     from core.methods.base import Method
     from core.models.nds.config import JointModelParams, TrainConfig
     from core.models.nds.decoders.config import AutoregressiveDecoderConfig
+    from core.models.nds.encoders.config import EncoderConfig
+    from core.models.nds.pretrained.config import (
+        ORIGINAL_NDS_ENCODING_ORDER,
+        ORIGINAL_NDS_ROUTE_AGGREGATION,
+    )
     from core.problems import make_problem_config
     from core.problems.solve import generate_initial_solution
     from core.results.plots import plot_search_progress
@@ -476,9 +481,13 @@ def _(
             checkpoint_path=Path(ckpt_path),
             load_decoder=pretrained_load_decoder_widget.value,
             model=JointModelParams(
+                encoder=EncoderConfig(
+                    encoding_order=ORIGINAL_NDS_ENCODING_ORDER,
+                    route_aggregation=ORIGINAL_NDS_ROUTE_AGGREGATION,
+                ),
                 decoder=AutoregressiveDecoderConfig(
                     use_hidden_decoding_state=pretrained_use_hidden_widget.value
-                )
+                ),
             ),
             search=search_params,
         )

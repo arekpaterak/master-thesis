@@ -15,82 +15,14 @@ from core.models.nds.baseline import (
     build_baseline,
 )
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
+from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
 from core.models.nds.policy_loss import BestRolloutLossConfig, PolicyLossConfig
+from core.models.nds.pretrained.config import (
+    OriginalPretrainedConfig,
+    validate_encoder_matches_original_nds,
+)
 from core.models.nds.reward import RelativeRewardConfig, RewardConfig
 from core.problems import CVRPConfig, ProblemConfig
-
-
-class OriginalPretrainedConfig(BaseModel):
-    """Configuration for initialising from an original NDS pretrained checkpoint."""
-
-    path: str = Field(
-        title="Original pretrained checkpoint",
-        description="Path to the pretrained checkpoint file.",
-    )
-    load_decoder: bool = Field(
-        default=False,
-        title="Load decoder from original pretrained",
-        description="Also load decoder weights.",
-    )
-
-
-class EncoderConfig(BaseModel):
-    """Architecture choices for the transformer encoder layers."""
-
-    norm_type: Literal["instance", "rms"] = Field(
-        default="instance",
-        title="Norm type",
-        description="Normalization. 'instance' = InstanceNorm1d (AM default), 'rms' = RMSNorm.",
-    )
-    pre_norm: bool = Field(
-        default=False,
-        title="Pre-norm",
-        description="If True, normalize before each sublayer (pre-norm). Default is post-norm.",
-    )
-    ff_activation: Literal["relu", "swiglu"] = Field(
-        default="relu",
-        title="FF activation",
-        description="Feed-forward variant. 'relu' = 2-layer ReLU MLP (AM default), 'swiglu' = SwiGLU.",
-    )
-    num_pre_attention_layers: int = Field(
-        default=2,
-        title="Pre-attention layers",
-        description="Self-attention layers before the neighbours/route encoding layers.",
-    )
-    num_post_attention_layers: int = Field(
-        default=2,
-        title="Post-attention layers",
-        description="Self-attention layers after the neighbours/route encoding layers.",
-    )
-
-
-class PositionalEncodingConfig(BaseModel):
-    """Hierarchical positional encoding (IPE + XPE) settings.
-
-    Where the encoding is injected relative to the encoder follows from the model
-    structure, not from this config: the 'joint' encoder injects it before the encoder
-    (over its inputs), while the 'split' (LNS-native) model injects it after the encoder
-    just before the decoder. Disable positional encoding entirely by leaving the
-    surrounding field unset (``None``).
-    """
-
-    dim: int = Field(
-        default=16,
-        title="Per-component encoding dimension",
-        description="Per-component encoding dimension (must be even).",
-    )
-    direction_aware: bool = Field(
-        default=False,
-        title="Direction aware",
-        description="If True, use sin/cos pairs (direction-sensitive). False = cosine-only "
-        "(reversal-invariant).",
-    )
-    frequency_schedule: Literal["integer", "geometric"] = Field(
-        default="integer",
-        title="Frequency schedule",
-        description="Frequency schedule. 'integer' = Fourier harmonics (exact reversal "
-        "invariance for the cosine-only variant); 'geometric' = lambda^(-2k/D).",
-    )
 
 
 class _ModelParamsBase(BaseModel):
@@ -143,6 +75,12 @@ class JointModelParams(_ModelParamsBase):
     def _validate_weights_mutually_exclusive(self) -> Self:
         if self.init_weights is not None and self.original_pretrained_weights is not None:
             raise ValueError("init_weights and original_pretrained_weights are mutually exclusive.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_encoder_for_original_pretrained(self) -> Self:
+        if self.original_pretrained_weights is not None:
+            validate_encoder_matches_original_nds(self.encoder)
         return self
 
 

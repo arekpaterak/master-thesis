@@ -163,8 +163,11 @@ class RouteEncodingLayer(nn.Module):
     Named Tour Encoding Layer in the original paper (Hottung et al. 2025).
     """
 
-    def __init__(self, *, hidden_dim: int) -> None:
+    def __init__(self, *, hidden_dim: int, aggregation: str = "mean") -> None:
         super().__init__()
+        if aggregation not in ("mean", "sum"):
+            raise ValueError(f"Unknown aggregation: {aggregation!r}")
+        self.aggregation = aggregation
         self.tour_combiner = nn.Linear(2 * hidden_dim, hidden_dim)
         self.feedforward_layer = nn.Linear(hidden_dim, hidden_dim)
         self.norm = InstanceNorm(hidden_dim)
@@ -199,12 +202,12 @@ class RouteEncodingLayer(nn.Module):
             B, max_routes, hidden_dim, device=node_embeddings.device, dtype=node_embeddings.dtype
         )
         route_embeddings = route_embeddings.scatter_reduce(
-            1, idx, customer_embeddings, reduce="mean", include_self=False
+            1, idx, customer_embeddings, reduce=self.aggregation, include_self=False
         )
-        route_mean_per_customer = route_embeddings.gather(1, idx)  # (B, N, hidden_dim)
+        route_pooled_per_customer = route_embeddings.gather(1, idx)  # (B, N, hidden_dim)
 
         combined = F.relu(
-            self.tour_combiner(torch.cat([customer_embeddings, route_mean_per_customer], dim=-1))
+            self.tour_combiner(torch.cat([customer_embeddings, route_pooled_per_customer], dim=-1))
         )
         update = self.feedforward_layer(combined)
         updated_customer_embeddings = self.norm(customer_embeddings + update)

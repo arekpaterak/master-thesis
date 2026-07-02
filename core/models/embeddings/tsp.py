@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from core.models.embeddings.positional import circular_sinusoidal_encoding
-from core.models.nds.config import PositionalEncodingConfig
+from core.models.nds.encoders.config import PositionalEncodingConfig
 from core.problems.tsp.features import TSPInstanceFeatures, TSPSolutionFeatures
 
 
