@@ -168,10 +168,11 @@ class SplitModelParams(_ModelParamsBase):
         title="Fusion neighbours encoding",
         description="Apply a neighbours encoding layer after positional fusion (before route and attention).",
     )
-    with_fusion_route_encoding: bool = Field(
-        default=True,
+    with_fusion_route_encoding: bool | None = Field(
+        default=None,
         title="Fusion route encoding",
-        description="Apply a route encoding layer after positional fusion (before attention). CVRP only.",
+        description="Apply a route encoding layer after positional fusion (before attention). "
+        "CVRP only. None means problem-specific default (True for CVRP, False for TSP).",
     )
     num_fusion_attention_layers: int = Field(
         default=0,

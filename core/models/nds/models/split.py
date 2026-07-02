@@ -33,11 +33,14 @@ class SplitNDSModel(nn.Module):
         encoder_config: EncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
         with_fusion_neighbours_encoding: bool = False,
-        with_fusion_route_encoding: bool = False,
+        with_fusion_route_encoding: bool | None = None,
         num_fusion_attention_layers: int = 0,
         decoder: DestroyDecoder,
     ) -> None:
         super().__init__()
+
+        if with_fusion_route_encoding is None:
+            with_fusion_route_encoding = problem_name == "cvrp"
 
         self.problem_name = problem_name
         self.encoder = SplitNDSEncoder(

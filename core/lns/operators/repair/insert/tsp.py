@@ -11,6 +11,9 @@ class TSPGreedyInsertRepair[S: TSPSolution](RepairOperator[S]):
     repair_type = "greedy_insert"
     problem_name = "tsp"
 
+    def __init__(self, *, deconstruction_size: int | None = None) -> None:
+        self._deconstruction_size = deconstruction_size
+
     def __call__(self, deconstructed_solution: S) -> S:
         if not isinstance(deconstructed_solution, TSPSolution):
             raise NotImplementedError(

@@ -58,6 +58,15 @@ def test_tsp_rollout_shape() -> None:
     assert rollout.actions.shape == (3, R, M)
 
 
+def test_fusion_route_encoding_defaults_to_problem() -> None:
+    # None resolves to a problem-specific default: on for CVRP, off for TSP.
+    cvrp = build_model(SplitModelParams(decoder=SimpleOnePassDecoderConfig()), "cvrp")
+    tsp = build_model(SplitModelParams(decoder=SimpleOnePassDecoderConfig()), "tsp")
+
+    assert cvrp.encoder.fusion.route is not None
+    assert tsp.encoder.fusion.route is None
+
+
 def test_cache_reused_in_eval_and_bypassed_in_train() -> None:
     model = _cvrp_model()
     solution = _cvrp_solution(B=2, N=20)
