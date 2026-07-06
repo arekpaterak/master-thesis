@@ -77,6 +77,7 @@ def main(
 
     summary_rows: list[dict[str, object]] = []
     curves: dict[str, list[dict[str, object]]] = {}
+    # TODO: Upload after each setting
     for setting in settings:
         if isinstance(setting, CVRPLibProblemSetting):
             summary_rows.append(_run_cvrplib(method, setting, eval_config, torch_device, eval_dir))

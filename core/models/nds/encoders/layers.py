@@ -215,9 +215,13 @@ class RouteEncodingLayer(nn.Module):
         max_routes = N + 1
         idx = route_index.unsqueeze(-1).expand(B, N, hidden_dim)
         route_embeddings = torch.zeros(
-            B, max_routes, hidden_dim, device=node_embeddings.device, dtype=node_embeddings.dtype
+            B,
+            max_routes,
+            hidden_dim,
+            device=node_embeddings.device,
+            dtype=customer_embeddings.dtype,
         )
-        route_embeddings = route_embeddings.scatter_reduce(
+        route_embeddings.scatter_reduce_(
             1, idx, customer_embeddings, reduce=self.aggregation, include_self=False
         )
         route_pooled_per_customer = route_embeddings.gather(1, idx)  # (B, N, hidden_dim)
