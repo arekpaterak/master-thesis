@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EncoderConfig(BaseModel):
@@ -17,6 +17,12 @@ class EncoderConfig(BaseModel):
         default=False,
         title="Pre-norm",
         description="If True, normalize before each sublayer (pre-norm). Default is post-norm.",
+    )
+    with_final_norm: bool | None = Field(
+        default=None,
+        title="Norm after all layers",
+        description="Final normalization before the encoder output. None resolves based on pre_norm "
+        "(on when pre_norm is enabled, off otherwise).",
     )
     ff_activation: Literal["relu", "swiglu"] = Field(
         default="relu",
@@ -44,6 +50,12 @@ class EncoderConfig(BaseModel):
         description="Pooling used to aggregate customer embeddings into a per-route "
         "embedding in the route encoding layer.",
     )
+
+    @model_validator(mode="after")
+    def _resolve_with_final_norm(self) -> EncoderConfig:
+        if self.with_final_norm is None:
+            self.with_final_norm = self.pre_norm
+        return self
 
 
 class PositionalEncodingConfig(BaseModel):

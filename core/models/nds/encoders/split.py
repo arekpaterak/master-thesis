@@ -11,6 +11,7 @@ from core.models.nds.encoders.layers import (
     AttentionLayer,
     NeighboursEncodingLayer,
     RouteEncodingLayer,
+    build_norm,
 )
 from core.models.nds.encoders.nds import NDSEncoder
 from core.models.utils import get_model_device
@@ -84,6 +85,7 @@ class SplitNDSEncoder(nn.Module):
             positional=None,
             with_neighbours_encoding=False,
             with_route_encoding=False,
+            with_final_norm=False,
         )
 
         # CVRP fuses IPE + XPE, TSP fuses IPE only (no depot anchor).
@@ -174,13 +176,24 @@ class SolutionFusionEncoder(nn.Module):
         encoder_config: EncoderConfig | None = None,
     ) -> None:
         super().__init__()
+        _config = encoder_config or EncoderConfig()
         self.projection = nn.Linear(hidden_dim + pe_dim, hidden_dim)
         self.neighbours = (
-            NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
+            NeighboursEncodingLayer(
+                hidden_dim=hidden_dim,
+                norm_type=_config.norm_type,
+                pre_norm=_config.pre_norm,
+            )
+            if with_neighbours_encoding
+            else None
         )
-        _config = encoder_config or EncoderConfig()
         self.route = (
-            RouteEncodingLayer(hidden_dim=hidden_dim, aggregation=_config.route_aggregation)
+            RouteEncodingLayer(
+                hidden_dim=hidden_dim,
+                aggregation=_config.route_aggregation,
+                norm_type=_config.norm_type,
+                pre_norm=_config.pre_norm,
+            )
             if with_route_encoding
             else None
         )
@@ -196,6 +209,9 @@ class SolutionFusionEncoder(nn.Module):
                 )
                 for _ in range(num_attention_layers)
             ]
+        )
+        self.final_norm = (
+            build_norm(_config.norm_type, hidden_dim) if _config.with_final_norm else None
         )
 
     def forward(
@@ -226,6 +242,8 @@ class SolutionFusionEncoder(nn.Module):
             h = self.route(h, route_index=route_index)
         for layer in self.attention_layers:
             h = layer(h)
+        if self.final_norm is not None:
+            h = self.final_norm(h)
         return h
 
 

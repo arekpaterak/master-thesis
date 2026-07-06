@@ -42,7 +42,7 @@ class SwiGLUFeedForward(nn.Module):
         return self.out_proj(F.silu(self.gate_proj(x)) * self.value_proj(x))
 
 
-def _build_norm(norm_type: str, hidden_dim: int) -> nn.Module:
+def build_norm(norm_type: str, hidden_dim: int) -> nn.Module:
     if norm_type == "instance":
         return InstanceNorm(hidden_dim)
     if norm_type == "rms":
@@ -76,8 +76,8 @@ class AttentionLayer(nn.Module):
         super().__init__()
         self.pre_norm = pre_norm
         self.MHA = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
-        self.norm1 = _build_norm(norm_type, hidden_dim)
-        self.norm2 = _build_norm(norm_type, hidden_dim)
+        self.norm1 = build_norm(norm_type, hidden_dim)
+        self.norm2 = build_norm(norm_type, hidden_dim)
         self.FF = _build_feedforward(ff_activation, hidden_dim, ff_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -107,12 +107,15 @@ class NeighboursEncodingLayer(nn.Module):
     Named Message Passing Layer in the original paper (Hottung et al. 2025).
     """
 
-    def __init__(self, *, hidden_dim: int) -> None:
+    def __init__(
+        self, *, hidden_dim: int, norm_type: str = "instance", pre_norm: bool = False
+    ) -> None:
         super().__init__()
+        self.pre_norm = pre_norm
         self.neighbour_projector = nn.Linear(hidden_dim, hidden_dim, bias=False)
         self.neighbour_combiner = nn.Linear(2 * hidden_dim, hidden_dim)
         self.feedforward_layer = nn.Linear(hidden_dim, hidden_dim)
-        self.norm = InstanceNorm(hidden_dim)
+        self.norm = build_norm(norm_type, hidden_dim)
 
     def forward(
         self,
@@ -132,15 +135,19 @@ class NeighboursEncodingLayer(nn.Module):
         """
         # offset=1 for problems with a depot (CVRP), offset=0 when all nodes are customers (TSP)
         offset = h.shape[-2] - neighbours_index.shape[-2]
-        customer_embeddings = h[:, offset:]  # (B, N, hidden_dim)
 
-        previous = self._gather(h, neighbours_index[:, :, 0])  # (B, N, hidden_dim)
-        next = self._gather(h, neighbours_index[:, :, 1])  # (B, N, hidden_dim)
+        source = self.norm(h) if self.pre_norm else h
+        customer_embeddings = source[:, offset:]  # (B, N, hidden_dim)
+
+        previous = self._gather(source, neighbours_index[:, :, 0])  # (B, N, hidden_dim)
+        next = self._gather(source, neighbours_index[:, :, 1])  # (B, N, hidden_dim)
 
         neighbour_info = self.neighbour_projector(previous) + self.neighbour_projector(next)
         combined = torch.cat([customer_embeddings, neighbour_info], dim=-1)
         update = self.feedforward_layer(F.relu(self.neighbour_combiner(combined)))
-        updated = self.norm(customer_embeddings + update)
+
+        raw = h[:, offset:]
+        updated = raw + update if self.pre_norm else self.norm(raw + update)
 
         return torch.cat([h[:, :offset], updated], dim=1)
 
@@ -163,14 +170,22 @@ class RouteEncodingLayer(nn.Module):
     Named Tour Encoding Layer in the original paper (Hottung et al. 2025).
     """
 
-    def __init__(self, *, hidden_dim: int, aggregation: str = "mean") -> None:
+    def __init__(
+        self,
+        *,
+        hidden_dim: int,
+        aggregation: str = "mean",
+        norm_type: str = "instance",
+        pre_norm: bool = False,
+    ) -> None:
         super().__init__()
         if aggregation not in ("mean", "sum"):
             raise ValueError(f"Unknown aggregation: {aggregation!r}")
         self.aggregation = aggregation
+        self.pre_norm = pre_norm
         self.tour_combiner = nn.Linear(2 * hidden_dim, hidden_dim)
         self.feedforward_layer = nn.Linear(hidden_dim, hidden_dim)
-        self.norm = InstanceNorm(hidden_dim)
+        self.norm = build_norm(norm_type, hidden_dim)
 
     def forward(
         self,
@@ -191,7 +206,8 @@ class RouteEncodingLayer(nn.Module):
         offset = L - N
 
         route_index = route_index.reshape(B, N)
-        customer_embeddings = node_embeddings[:, offset:]
+        source = self.norm(node_embeddings) if self.pre_norm else node_embeddings
+        customer_embeddings = source[:, offset:]
 
         # Static upper bound on route count: at most one route per customer.
         # Sized to N+1 to cover both 0-indexed and 1-indexed (head-node) schemes
@@ -210,6 +226,8 @@ class RouteEncodingLayer(nn.Module):
             self.tour_combiner(torch.cat([customer_embeddings, route_pooled_per_customer], dim=-1))
         )
         update = self.feedforward_layer(combined)
-        updated_customer_embeddings = self.norm(customer_embeddings + update)
+
+        raw = node_embeddings[:, offset:]
+        updated_customer_embeddings = raw + update if self.pre_norm else self.norm(raw + update)
 
         return torch.cat([node_embeddings[:, :offset], updated_customer_embeddings], dim=1)

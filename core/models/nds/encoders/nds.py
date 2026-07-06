@@ -8,6 +8,7 @@ from core.models.nds.encoders.layers import (
     AttentionLayer,
     NeighboursEncodingLayer,
     RouteEncodingLayer,
+    build_norm,
 )
 
 
@@ -23,6 +24,7 @@ class NDSEncoder(nn.Module):
         positional: PositionalEncodingConfig | None = None,
         with_neighbours_encoding: bool = True,
         with_route_encoding: bool = True,
+        with_final_norm: bool | None = None,
         initial_embedding: nn.Module | None = None,
     ) -> None:
         super().__init__()
@@ -63,15 +65,32 @@ class NDSEncoder(nn.Module):
         )
         self.encoding_order = encoder_config.encoding_order
         self.neighbours_encoding = (
-            NeighboursEncodingLayer(hidden_dim=hidden_dim) if with_neighbours_encoding else None
+            NeighboursEncodingLayer(
+                hidden_dim=hidden_dim,
+                norm_type=encoder_config.norm_type,
+                pre_norm=encoder_config.pre_norm,
+            )
+            if with_neighbours_encoding
+            else None
         )
         self.route_encoding = (
-            RouteEncodingLayer(hidden_dim=hidden_dim, aggregation=encoder_config.route_aggregation)
+            RouteEncodingLayer(
+                hidden_dim=hidden_dim,
+                aggregation=encoder_config.route_aggregation,
+                norm_type=encoder_config.norm_type,
+                pre_norm=encoder_config.pre_norm,
+            )
             if with_route_encoding
             else None
         )
         self.post_attention = nn.Sequential(
             *(attention_layer() for _ in range(encoder_config.num_post_attention_layers))
+        )
+        apply_final_norm = (
+            encoder_config.with_final_norm if with_final_norm is None else with_final_norm
+        )
+        self.final_norm = (
+            build_norm(encoder_config.norm_type, hidden_dim) if apply_final_norm else None
         )
 
     def forward(self, instance, solution) -> torch.Tensor:
@@ -104,4 +123,7 @@ class NDSEncoder(nn.Module):
             h = apply_route(h)
 
         h = self.post_attention(h)
+
+        if self.final_norm is not None:
+            h = self.final_norm(h)
         return h
