@@ -24,14 +24,30 @@ def search[S: BaseSolution](
     improvement_step: ImprovementStep,
     criterion: AcceptanceCriterion,
     n_iterations: int,
+    synchronize: Callable[[S], S] = lambda solution: solution,
     on_step: Callable[[int, S], None] | None = None,
     step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> SearchResult:
+    """Run the LNS destroy/repair/accept loop.
+
+    Works on both plain ``(B, ...)`` and D4-augmented ``(B, A, ...)`` solutions;
+    objective comparisons and ``select_solution`` are elementwise over the batch
+    dims either way.
+
+    Args:
+        synchronize: Per-iteration hook applied after the improvement step and
+            before best selection, mapping ``(B, A, ...) -> (B, A, ...)``. Defaults
+            to the identity. For augmented simulated annealing (Algorithm 2 from the
+            NDS paper) pass the closure from ``build_augmentation_synchronizer`` to
+            exchange high-cost augmented copies for good ones within a
+            temperature-controlled threshold.
+    """
     criterion.reset()
     best = solution
     history: list[float] = []
     for step in step_progress(range(n_iterations)):
         solution = improvement_step(solution, criterion)
+        solution = synchronize(solution)
         best = select_solution(solution.objective() < best.objective(), solution, best)
         history.append(solution.objective().mean().item())
         criterion.step()
@@ -40,57 +56,34 @@ def search[S: BaseSolution](
     return SearchResult(solution=solution, best_solution=best, history=history)
 
 
-def augmented_search[S: BaseSolution](
-    augmented_solution: S,
-    *,
-    improvement_step: ImprovementStep,
-    criterion: SimulatedAnnealingAcceptance,
-    n_iterations: int,
-    threshold_factor: float,
-    on_step: Callable[[int, S], None] | None = None,
-    step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
-) -> SearchResult:
-    """Algorithm 2 (Augmented Simulated Annealing) from the NDS paper.
+def build_augmentation_synchronizer[S: BaseSolution](
+    criterion: SimulatedAnnealingAcceptance, threshold_factor: float
+) -> Callable[[S], S]:
+    """Build the cross-augmentation exchange hook for augmented simulated annealing.
 
-    Runs LNS independently on ``A`` D4-augmented copies of each instance and at
-    each outer iteration replaces high-cost augmented solutions by randomly
-    sampled good ones whose cost is within a temperature-controlled threshold.
-
-    The augmentation dim must be the innermost batch dim, so cost reductions and
-    cross-augmentation exchange use ``dim=-1``.
+    At each iteration it replaces high-cost augmented copies by randomly sampled
+    good ones whose cost is within a temperature-controlled threshold. The
+    augmentation dim must be the innermost batch dim, so cost reductions and the
+    exchange use ``dim=-1``.
 
     Args:
-        augmented_solution: Starting solution with shape ``(B, A, ...)``.
-        improvement_step: Inner LNS step that takes a solution + criterion.
-        criterion: SA criterion. Its current temperature drives the exchange
-            threshold; must be SA (not greedy) because the threshold depends
-            on temperature.
-        n_iterations: Number of outer iterations.
+        criterion: SA criterion. Its current temperature (read live) drives the
+            exchange threshold; must be SA because the threshold depends on
+            temperature.
         threshold_factor: ``delta`` in the paper. Higher = more aggressive
             replacement when temperature is high.
-        on_step: Optional callback invoked after each outer iteration.
-        step_progress: Optional progress iterator.
 
     Returns:
-        SearchResult with the final augmented solution, the per-(B, A) best
-        observed solution, and a history of the mean over B of min-over-A cost.
+        A ``(B, A, ...) -> (B, A, ...)`` hook to pass as ``search(synchronize=...)``.
     """
-    criterion.reset()
-    best = augmented_solution
-    history: list[float] = []
-    for step in step_progress(range(n_iterations)):
-        augmented_solution = improvement_step(augmented_solution, criterion)
-        costs = augmented_solution.objective()  # (B, A)
+
+    def synchronize(solution: S) -> S:
+        costs = solution.objective()  # (B, A)
         best_cost = costs.min(dim=-1, keepdim=True).values  # (B, 1)
         threshold = best_cost + criterion.temperature * threshold_factor  # (B, 1)
-        augmented_solution = _exchange_above_threshold(augmented_solution, costs, threshold)
+        return _exchange_above_threshold(solution, costs, threshold)
 
-        best = select_solution(costs < best.objective(), augmented_solution, best)
-        history.append(costs.min(dim=-1).values.mean().item())
-        criterion.step()
-        if on_step is not None:
-            on_step(step + 1, augmented_solution)
-    return SearchResult(solution=augmented_solution, best_solution=best, history=history)
+    return synchronize
 
 
 def _exchange_above_threshold[S: BaseSolution](

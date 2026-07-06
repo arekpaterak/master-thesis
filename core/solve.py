@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance, build_criterion
-from core.lns.search import augmented_search, search
+from core.lns.search import build_augmentation_synchronizer, search
 from core.methods.base import Method
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -21,16 +21,15 @@ def solve(
     )
 
     augmented = method.search.n_augmentations > 1
-    if augmented and not isinstance(criterion, SimulatedAnnealingAcceptance):
-        raise ValueError(
-            "Augmented search (n_augmentations > 1) requires a simulated_annealing "
-            "acceptance criterion -- the cross-augmentation threshold depends on "
-            "the SA temperature."
-        )
-
     if augmented:
         instance = instance.augment(method.search.n_augmentations)
     solution = method.generate_start_solution(instance)
+
+    synchronize: Callable[[BaseSolution], BaseSolution] = lambda solution: solution
+    if augmented and isinstance(criterion, SimulatedAnnealingAcceptance):
+        synchronize = build_augmentation_synchronizer(
+            criterion, method.search.augmented_threshold_factor
+        )
 
     # Reduce a (B, A) augmented solution to (B,). Identity for the plain (B,) path.
     reduce_augmentations = _best_augmentation if augmented else lambda solution: solution
@@ -43,26 +42,15 @@ def solve(
 
         step_callback(0, solution)
 
-    if augmented:
-        assert isinstance(criterion, SimulatedAnnealingAcceptance)
-        result = augmented_search(
-            solution,
-            improvement_step=method.improvement_step,
-            criterion=criterion,
-            n_iterations=method.search.num_improvement_steps,
-            threshold_factor=method.search.augmented_threshold_factor,
-            on_step=step_callback,
-            step_progress=step_progress,
-        )
-    else:
-        result = search(
-            solution,
-            improvement_step=method.improvement_step,
-            criterion=criterion,
-            n_iterations=method.search.num_improvement_steps,
-            on_step=step_callback,
-            step_progress=step_progress,
-        )
+    result = search(
+        solution,
+        improvement_step=method.improvement_step,
+        criterion=criterion,
+        n_iterations=method.search.num_improvement_steps,
+        synchronize=synchronize,
+        on_step=step_callback,
+        step_progress=step_progress,
+    )
 
     return reduce_augmentations(result.solution)
 

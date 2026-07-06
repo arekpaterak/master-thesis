@@ -75,5 +75,6 @@ validation:
       num_improvement_steps: 50
       deconstruction_size: 15
     n_repairs: 5
+    n_augmentations: 1
     acceptance:
       type: greedy

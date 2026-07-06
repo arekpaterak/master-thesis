@@ -4,7 +4,11 @@ import torch
 
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
 from core.lns.improvement_step import NoopImprovementStep
-from core.lns.search import _exchange_above_threshold, augmented_search, search
+from core.lns.search import (
+    _exchange_above_threshold,
+    build_augmentation_synchronizer,
+    search,
+)
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
 
@@ -57,31 +61,58 @@ def test_exchange_with_no_good_solutions_keeps_existing_solutions():
     assert torch.equal(new_solution._route_id, solution._route_id)
 
 
-def test_augmented_search_with_one_augmentation_matches_plain_search():
-    B, N = 2, 6
-    instance = _make_instance(B, N, A=1)
+def test_search_with_sa_synchronizer_preserves_augmentation_dim():
+    B, A, N = 2, 4, 6
+    instance = _make_instance(B, N, A)
+    solution = CVRPGraphSolution.one_customer_per_route(instance)
+    criterion = SimulatedAnnealingAcceptance.from_range(
+        temperature_start=0.1, temperature_min=0.001, n_steps=5
+    )
+    synchronize = build_augmentation_synchronizer(criterion, threshold_factor=15.0)
+
+    result = search(
+        solution,
+        improvement_step=NoopImprovementStep(),
+        criterion=criterion,
+        n_iterations=5,
+        synchronize=synchronize,
+    )
+
+    assert result.solution.batch_size == torch.Size([B, A])
+    objective = result.solution.objective()
+    assert objective.shape == (B, A)
+    assert torch.isfinite(objective).all()
+
+
+def test_sa_synchronizer_is_noop_when_all_augmented_copies_share_cost():
+    # D4 augmentations are isometries, so every augmented copy of the same solution
+    # has identical cost; no copy exceeds the threshold, so the exchange is a no-op
+    # and the run matches plain search.
+    B, A, N = 2, 4, 6
+    instance = _make_instance(B, N, A)
     solution = CVRPGraphSolution.one_customer_per_route(instance)
 
-    criterion_a = SimulatedAnnealingAcceptance.from_range(
+    criterion_plain = SimulatedAnnealingAcceptance.from_range(
         temperature_start=0.1, temperature_min=0.001, n_steps=5
     )
-    criterion_b = SimulatedAnnealingAcceptance.from_range(
+    criterion_synced = SimulatedAnnealingAcceptance.from_range(
         temperature_start=0.1, temperature_min=0.001, n_steps=5
     )
+    synchronize = build_augmentation_synchronizer(criterion_synced, threshold_factor=15.0)
 
-    plain_result = search(
+    plain = search(
         solution,
         improvement_step=NoopImprovementStep(),
-        criterion=criterion_a,
+        criterion=criterion_plain,
         n_iterations=5,
     )
-    augmented_result = augmented_search(
+    synced = search(
         solution,
         improvement_step=NoopImprovementStep(),
-        criterion=criterion_b,
+        criterion=criterion_synced,
         n_iterations=5,
-        threshold_factor=15.0,
+        synchronize=synchronize,
     )
 
-    assert torch.equal(plain_result.solution._next, augmented_result.solution._next)
-    assert torch.equal(plain_result.solution._prev, augmented_result.solution._prev)
+    assert torch.equal(plain.solution._next, synced.solution._next)
+    assert torch.equal(plain.solution._prev, synced.solution._prev)

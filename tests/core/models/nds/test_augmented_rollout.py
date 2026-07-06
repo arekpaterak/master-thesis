@@ -6,7 +6,7 @@ import torch
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
 from core.lns.improvement_step import SequentialImprovementStep
 from core.lns.operators.repair import RepairOperator
-from core.lns.search import augmented_search
+from core.lns.search import build_augmentation_synchronizer, search
 from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
@@ -60,7 +60,7 @@ def test_rollout_plain_path_is_unchanged(model: JointNDSModel):
     assert rollout.actions.shape == (B, R, DECONSTRUCTION_SIZE)
 
 
-def test_augmented_search_with_model_reduces_to_batch_augmentation(model: JointNDSModel):
+def test_augmented_sa_search_with_model_reduces_to_batch_augmentation(model: JointNDSModel):
     solution = _make_solution(augment=A)
     repair = RepairOperator.create(
         "cvrp", "greedy_reconnect", deconstruction_size=DECONSTRUCTION_SIZE
@@ -76,12 +76,12 @@ def test_augmented_search_with_model_reduces_to_batch_augmentation(model: JointN
         temperature_start=0.1, temperature_min=0.001, n_steps=3
     )
 
-    result = augmented_search(
+    result = search(
         solution,
         improvement_step=improvement_step,
         criterion=criterion,
         n_iterations=3,
-        threshold_factor=15.0,
+        synchronize=build_augmentation_synchronizer(criterion, threshold_factor=15.0),
     )
 
     assert result.solution.batch_size == torch.Size([B, A])
