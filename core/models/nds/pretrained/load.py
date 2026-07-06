@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
-from core.models.nds.encoders.nds import NDSEncoder
+from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.pretrained.config import (
     ORIGINAL_NDS_ENCODING_ORDER,
     ORIGINAL_NDS_ROUTE_AGGREGATION,
@@ -13,7 +13,7 @@ from core.models.nds.pretrained.config import (
 
 
 def load_original_pretrained_encoder_weights(
-    encoder: NDSEncoder, checkpoint_path: Path | str
+    encoder: JointEncoder, checkpoint_path: Path | str
 ) -> None:
     """Loads NDS original pretrained weights into NDSEncoder.
 
@@ -114,7 +114,7 @@ def load_original_pretrained_decoder_weights(
     decoder.load_state_dict(out, strict=True)
 
 
-def _guard_original_nds_graph(encoder: NDSEncoder) -> None:
+def _guard_original_nds_graph(encoder: JointEncoder) -> None:
     """Refuse to load original NDS weights into an incompatible computation graph."""
     both_encodings = encoder.route_encoding is not None and encoder.neighbours_encoding is not None
     if both_encodings and encoder.encoding_order != ORIGINAL_NDS_ENCODING_ORDER:

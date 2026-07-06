@@ -7,13 +7,13 @@ import torch.nn as nn
 
 from core.models.embeddings.positional import circular_sinusoidal_encoding
 from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.encoders.layers import (
     AttentionLayer,
     NeighboursEncodingLayer,
     RouteEncodingLayer,
     build_norm,
 )
-from core.models.nds.encoders.nds import NDSEncoder
 from core.models.utils import get_model_device
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
@@ -62,21 +62,28 @@ class SplitNDSEncoder(nn.Module):
             )
 
         self.problem_name = problem_name
-        self._positional = positional or PositionalEncodingConfig()
+        self._positional = positional
 
+        with_positional = self._positional is not None
         match problem_name:
             case "cvrp":
-                self.instance_feature_extractor = CVRPInstanceFeatureExtractor(with_positional=True)
-                self.solution_feature_extractor = CVRPSolutionFeatureExtractor(with_positional=True)
+                self.instance_feature_extractor = CVRPInstanceFeatureExtractor(
+                    with_positional=with_positional
+                )
+                self.solution_feature_extractor = CVRPSolutionFeatureExtractor(
+                    with_positional=with_positional
+                )
             case "tsp":
                 self.instance_feature_extractor = TSPInstanceFeatureExtractor()
-                self.solution_feature_extractor = TSPSolutionFeatureExtractor(with_positional=True)
+                self.solution_feature_extractor = TSPSolutionFeatureExtractor(
+                    with_positional=with_positional
+                )
             case _:
                 raise ValueError(f"Unsupported problem_name: {problem_name}")
 
         # The instance encoder must stay solution-independent: structural layers off
         # and no positional encoding injected at the input (it is injected at fusion).
-        self.instance_encoder = NDSEncoder(
+        self.instance_encoder = JointEncoder(
             problem_name=problem_name,
             hidden_dim=hidden_dim,
             num_heads=num_heads,
@@ -88,11 +95,12 @@ class SplitNDSEncoder(nn.Module):
             with_final_norm=False,
         )
 
-        # CVRP fuses IPE + XPE, TSP fuses IPE only (no depot anchor).
+        # CVRP fuses IPE + XPE, TSP fuses IPE only (no depot anchor). 0 when PE is disabled.
         pe_components = 2 if problem_name == "cvrp" else 1
+        pe_dim = pe_components * self._positional.dim if self._positional is not None else 0
         self.fusion = SolutionFusionEncoder(
             hidden_dim=hidden_dim,
-            pe_dim=pe_components * self._positional.dim,
+            pe_dim=pe_dim,
             with_neighbours_encoding=with_fusion_neighbours_encoding,
             with_route_encoding=with_fusion_route_encoding,
             num_attention_layers=num_fusion_attention_layers,
@@ -121,21 +129,27 @@ class SplitNDSEncoder(nn.Module):
         device = get_model_device(self)
         solution_features = self.solution_feature_extractor(solution).to(device)
         ipe = self._in_route_positional_encoding(solution_features)
-        positional = ipe if cache.xpe is None else torch.cat([ipe, cache.xpe], dim=-1)
+        if ipe is None:
+            positional = None
+        else:
+            positional = ipe if cache.xpe is None else torch.cat([ipe, cache.xpe], dim=-1)
         route_index = solution_features.route_index if self.problem_name == "cvrp" else None
         return self.fusion(
             cache.instance_node_embeddings,
             positional,
+            num_customers=solution_features.neighbours_index.shape[-2],
             neighbours_index=solution_features.neighbours_index,
             route_index=route_index,
         )
 
     def _cross_route_encoding(self, instance_features) -> torch.Tensor | None:
-        if self.problem_name != "cvrp":
+        if self.problem_name != "cvrp" or self._positional is None:
             return None
         return self._positional_encoding(instance_features.depot_angle)
 
-    def _in_route_positional_encoding(self, solution_features) -> torch.Tensor:
+    def _in_route_positional_encoding(self, solution_features) -> torch.Tensor | None:
+        if self._positional is None:
+            return None
         if self.problem_name == "cvrp":
             return self._positional_encoding(solution_features.route_phase)
         return self._positional_encoding(solution_features.tour_phase)
@@ -217,24 +231,30 @@ class SolutionFusionEncoder(nn.Module):
     def forward(
         self,
         h_nodes: torch.Tensor,
-        positional: torch.Tensor,
+        positional: torch.Tensor | None,
         *,
+        num_customers: int,
         neighbours_index: torch.Tensor | None = None,
         route_index: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Args:
             h_nodes: (B, N+offset, hidden_dim) cached instance embeddings.
-            positional: (B, N, pe_dim) per-customer solution positional encoding.
+            positional: (B, N, pe_dim) per-customer solution positional encoding, or
+                None when positional encoding is disabled.
+            num_customers: N, used to split off the depot/non-customer offset.
             neighbours_index: (B, N, 2) required when neighbours encoding is enabled.
             route_index: (B, N) required when route encoding is enabled.
 
         Returns:
             (B, N+offset, hidden_dim)
         """
-        offset = h_nodes.shape[-2] - positional.shape[-2]
+        offset = h_nodes.shape[-2] - num_customers
         customers = h_nodes[:, offset:]
-        fused_customers = self.projection(torch.cat([customers, positional], dim=-1))
+        projection_input = (
+            customers if positional is None else torch.cat([customers, positional], dim=-1)
+        )
+        fused_customers = self.projection(projection_input)
         h = torch.cat([h_nodes[:, :offset], fused_customers], dim=1)
         if self.neighbours is not None:
             h = self.neighbours(h, neighbours_index=neighbours_index)

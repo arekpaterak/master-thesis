@@ -5,7 +5,7 @@ import torch
 
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.encoders.config import EncoderConfig
-from core.models.nds.encoders.nds import NDSEncoder
+from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.models.joint import JointNDSModel
 from core.models.nds.pretrained.load import (
     load_original_pretrained_decoder_weights,
@@ -32,7 +32,7 @@ requires_checkpoint = pytest.mark.skipif(
 
 @requires_checkpoint
 def test_load_pretrained_changes_weights() -> None:
-    encoder = NDSEncoder(problem_name="cvrp", encoder_config=PRETRAINED_ENCODER_CONFIG)
+    encoder = JointEncoder(problem_name="cvrp", encoder_config=PRETRAINED_ENCODER_CONFIG)
     before = encoder.pre_attention[0].MHA.in_proj_weight.clone()
 
     load_original_pretrained_encoder_weights(encoder, CHECKPOINT)
@@ -45,7 +45,7 @@ def test_load_pretrained_changes_weights() -> None:
 
 @requires_checkpoint
 def test_load_pretrained_zeros_in_proj_bias() -> None:
-    encoder = NDSEncoder(problem_name="cvrp", encoder_config=PRETRAINED_ENCODER_CONFIG)
+    encoder = JointEncoder(problem_name="cvrp", encoder_config=PRETRAINED_ENCODER_CONFIG)
     load_original_pretrained_encoder_weights(encoder, CHECKPOINT)
 
     for i, layer in enumerate((*encoder.pre_attention, *encoder.post_attention)):
@@ -61,7 +61,7 @@ def test_load_pretrained_encoder_forward() -> None:
     instance = sampler(B)
     solution = one_customer_per_route(instance)
 
-    encoder = NDSEncoder(problem_name="cvrp", encoder_config=PRETRAINED_ENCODER_CONFIG)
+    encoder = JointEncoder(problem_name="cvrp", encoder_config=PRETRAINED_ENCODER_CONFIG)
     load_original_pretrained_encoder_weights(encoder, CHECKPOINT)
     encoder.eval()
 
@@ -86,7 +86,7 @@ def test_load_pretrained_decoder() -> None:
 
 @requires_checkpoint
 def test_load_pretrained_fails_on_incompatible_architecture() -> None:
-    encoder = NDSEncoder(
+    encoder = JointEncoder(
         problem_name="cvrp", hidden_dim=64, encoder_config=PRETRAINED_ENCODER_CONFIG
     )  # checkpoint expects hidden_dim=128
     with pytest.raises(RuntimeError):
@@ -111,7 +111,7 @@ def test_load_pretrained_model_forward() -> None:
 
 
 def test_load_guard_rejects_mean_route_aggregation() -> None:
-    encoder = NDSEncoder(
+    encoder = JointEncoder(
         problem_name="cvrp",
         encoder_config=EncoderConfig(encoding_order="route_neighbours", route_aggregation="mean"),
     )
@@ -120,7 +120,7 @@ def test_load_guard_rejects_mean_route_aggregation() -> None:
 
 
 def test_load_guard_rejects_neighbours_first_order() -> None:
-    encoder = NDSEncoder(
+    encoder = JointEncoder(
         problem_name="cvrp",
         encoder_config=EncoderConfig(encoding_order="neighbours_route", route_aggregation="sum"),
     )

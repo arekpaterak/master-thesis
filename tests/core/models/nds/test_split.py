@@ -4,6 +4,7 @@ from core.models.nds.config import SplitModelParams
 from core.models.nds.decoders.config import (
     SimpleOnePassDecoderConfig,
 )
+from core.models.nds.encoders.config import PositionalEncodingConfig
 from core.models.nds.factory import build_model
 from core.models.nds.models.split import SplitNDSModel
 from core.problems.cvrp import CVRP, CVRPSampler
@@ -65,6 +66,44 @@ def test_fusion_route_encoding_defaults_to_problem() -> None:
 
     assert cvrp.encoder.fusion.route is not None
     assert tsp.encoder.fusion.route is None
+
+
+def test_positional_encoding_can_be_disabled_with_structural_layers_on() -> None:
+    # No positional encoding, but neighbours/route encoding still active: the solution
+    # must reach the model purely through the structural fusion layers.
+    model = build_model(
+        SplitModelParams(
+            decoder=SimpleOnePassDecoderConfig(),
+            positional_encoding=None,
+            with_fusion_neighbours_encoding=True,
+            with_fusion_route_encoding=True,
+        ),
+        "cvrp",
+    ).eval()
+
+    assert (
+        model.encoder.fusion.projection.in_features == model.encoder.fusion.projection.out_features
+    )
+    assert model.encoder.fusion.neighbours is not None
+    assert model.encoder.fusion.route is not None
+
+    solution = _cvrp_solution(B=2, N=20)
+    rollout = model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
+    assert rollout.actions.shape == (2, 3, 5)
+
+
+def test_positional_encoding_enabled_widens_fusion_projection() -> None:
+    model = build_model(
+        SplitModelParams(
+            decoder=SimpleOnePassDecoderConfig(),
+            positional_encoding=PositionalEncodingConfig(dim=16),
+        ),
+        "cvrp",
+    )
+
+    # CVRP fuses IPE + XPE, so the projection input is hidden_dim + 2 * pe_dim.
+    default_hidden_dim = SplitModelParams().hidden_dim
+    assert model.encoder.fusion.projection.in_features == default_hidden_dim + 2 * 16
 
 
 def test_cache_reused_in_eval_and_bypassed_in_train() -> None:

@@ -12,7 +12,7 @@ from core.models.nds.encoders.layers import (
 )
 
 
-class NDSEncoder(nn.Module):
+class JointEncoder(nn.Module):
     def __init__(
         self,
         *,

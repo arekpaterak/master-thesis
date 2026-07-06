@@ -7,7 +7,7 @@ import torch.nn as nn
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 from core.models.nds.decoders.factory import build_decoder
 from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
-from core.models.nds.encoders.nds import NDSEncoder
+from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
@@ -73,7 +73,7 @@ class JointNDSModel(nn.Module):
             case _:
                 raise ValueError(f"Unsupported problem_name: {problem_name}")
 
-        self.encoder = NDSEncoder(
+        self.encoder = JointEncoder(
             problem_name=problem_name,
             hidden_dim=hidden_dim,
             num_heads=num_heads,
