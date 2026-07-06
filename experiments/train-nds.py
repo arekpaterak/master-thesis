@@ -6,6 +6,7 @@ app = marimo.App(width="columns")
 with app.setup(hide_code=True):
     import gc
     import sys
+    import traceback
     from pathlib import Path
 
     import marimo as mo
@@ -913,7 +914,7 @@ def _(
             _ckpt = torch.load(_checkpoint_path, map_location="cpu", weights_only=True)
             optimizer.load_state_dict(_ckpt["optimizer"])
 
-    _interrupted = False
+    _error: Exception | None = None
     try:
         Trainer(
             max_epochs=config.trainer.epochs,
@@ -937,8 +938,11 @@ def _(
             instance_sampler=sampler,
             validation_instance_sampler=val_sampler,
         )
-    except Exception:
-        _interrupted = True
+    except Exception as exc:
+        # Surface the error instead of silently ending the run, then re-raise below so
+        # the process exits non-zero (after the cleanup in `finally`).
+        traceback.print_exc()
+        _error = exc
     finally:
         if config.logging.wandb_project:
             _final_checkpoint, _final_epoch = find_latest_checkpoint(run_dir)
@@ -948,17 +952,20 @@ def _(
                     checkpoint_path=_final_checkpoint,
                     epoch=_final_epoch,
                 )
-            if not _interrupted:
+            if _error is None:
                 upload_validation_plots(
                     run_name=config.run_name,
                     plots_dir=run_dir / "plots",
                 )
-            wandb.finish(exit_code=1 if _interrupted else 0)
-        # Free the GPU whether training finished or was interrupted: the trained weights
-        # are persisted in checkpoints and the in-memory model only needs to live on CPU.
+            wandb.finish(exit_code=1 if _error is not None else 0)
+        # Free the GPU whether training finished or errored: the trained weights are
+        # persisted in checkpoints and the in-memory model only needs to live on CPU.
         model.to("cpu")
         gc.collect()
         torch.cuda.empty_cache()
+
+    if _error is not None:
+        raise _error
 
     mo.md("**Training completed.**")
     return
