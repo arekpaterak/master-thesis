@@ -63,7 +63,9 @@ class RandomNodeDestroy[S: BaseSolution](NodeDestroyOperator[S]):
     def __call__(self, solution: S) -> S:
         nodes = self.select_nodes(solution, num_rollouts=1).squeeze(-2)
         match solution:
-            case TSPSolution() | TSPGraphSolution() as s:
+            case TSPGraphSolution() as s:
+                return s.remove_nodes(nodes, stitch=self.stitch)
+            case TSPSolution() as s:
                 return s.remove_nodes(nodes)
             case CVRPSolution() | CVRPGraphSolution() as s:
                 if isinstance(s, CVRPGraphSolution):

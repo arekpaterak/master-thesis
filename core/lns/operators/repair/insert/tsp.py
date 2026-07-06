@@ -3,24 +3,114 @@ from __future__ import annotations
 import torch
 
 from core.lns.operators.repair.base import RepairOperator
+from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPSolution
+from core.problems.tsp.graph_solution import TSPGraphSolution
 
 
-# TODO: Rewrite as batched, similar to CVRP
-class TSPGreedyInsertRepair[S: TSPSolution](RepairOperator[S]):
+class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
     repair_type = "greedy_insert"
     problem_name = "tsp"
+    requires_stitch = True
 
-    def __init__(self, *, deconstruction_size: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        seed: int | None = None,
+        deconstruction_size: int | None = None,
+    ) -> None:
+        self._seed = seed
         self._deconstruction_size = deconstruction_size
+        self._generator: torch.Generator | None = None
 
     def __call__(self, deconstructed_solution: S) -> S:
-        if not isinstance(deconstructed_solution, TSPSolution):
-            raise NotImplementedError(
-                f"Operator not implemented for {type(deconstructed_solution)}"
-            )
+        match deconstructed_solution:
+            case TSPGraphSolution() as s:
+                return self._call_graph(s)
+            case TSPSolution() as s:
+                return self._call_sequence(s)
+            case _:
+                raise NotImplementedError(
+                    f"Operator not implemented for {type(deconstructed_solution)}"
+                )
 
-        s = deconstructed_solution
+    def _device_generator(self, device: torch.device) -> torch.Generator:
+        if self._generator is None or self._generator.device != device:
+            gen = torch.Generator(device=device)
+            if self._seed is not None:
+                gen.manual_seed(self._seed)
+            self._generator = gen
+        return self._generator
+
+    def _loop_bound(self, solution: TSPGraphSolution) -> int:
+        if self._deconstruction_size is None:
+            return int(solution.num_unassigned.max().item())
+        return min(self._deconstruction_size, solution.instance.num_nodes)
+
+    @staticmethod
+    def _pick_unassigned_node(
+        is_free: torch.Tensor,
+        generator: torch.Generator,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Random free node per batch. Returns (...,)."""
+        scores = torch.rand(is_free.shape, generator=generator, device=device)
+        return scores.masked_fill(~is_free, -1.0).argmax(-1)
+
+    def _call_graph(self, deconstructed_solution: TSPGraphSolution) -> TSPGraphSolution:
+        solution = deconstructed_solution.clone()
+        device = solution.instance.locations.device
+        generator = self._device_generator(device)
+
+        distances = solution.instance.distances()  # constant across iterations
+        for _ in range(self._loop_bound(solution)):
+            is_unassigned = (solution.prev_nodes == solution.UNASSIGNED) & (
+                solution.next_nodes == solution.UNASSIGNED
+            )  # (..., N)
+
+            node = self._pick_unassigned_node(is_unassigned, generator, device)
+            u_positions, v_positions, costs = self._enumerate_insertion_positions(
+                solution, node, distances
+            )
+            best_position = costs.argmin(-1)
+            chosen_u = u_positions.gather(-1, best_position[..., None]).squeeze(-1)
+            chosen_v = v_positions.gather(-1, best_position[..., None]).squeeze(-1)
+
+            is_active = is_unassigned.any(dim=-1)  # (...,)
+            solution.insert_(node, chosen_u, chosen_v, mask=is_active)
+
+        return solution
+
+    @staticmethod
+    def _enumerate_insertion_positions(
+        solution: TSPGraphSolution,
+        node: torch.Tensor,
+        distances: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Materialise candidate insertion positions as (u, v, cost) tensors.
+
+        Each position corresponds to a directed edge (u, v) in the current solution.
+        Inserting c splits the edge: u -> c -> v. Invalid positions get cost = +inf.
+        """
+        n = solution.instance.num_nodes
+        batch_shape = node.shape
+
+        distance_from_node = distances.gather(
+            -2, node[..., None, None].expand(*batch_shape, 1, n)
+        ).squeeze(-2)  # (..., N)
+        flat_dist = distances.flatten(-2, -1)  # (..., N^2)
+
+        u, v, valid = solution.insertion_positions()  # (..., N) each
+
+        costs = (
+            distance_from_node.gather(-1, u)
+            + distance_from_node.gather(-1, v)
+            - flat_dist.gather(-1, u * n + v)
+        )
+        costs.masked_fill_(~valid, float("inf"))
+        return u, v, costs
+
+    def _call_sequence(self, s: TSPSolution) -> TSPSolution:
         if not (s.tour == s.UNASSIGNED).any():
             return s
 

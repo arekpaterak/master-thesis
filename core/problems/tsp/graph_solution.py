@@ -205,13 +205,18 @@ class TSPGraphSolution(BaseSolution):
     def is_complete(self) -> torch.Tensor:
         return self.num_unassigned == 0
 
-    def remove_nodes(self, nodes: torch.Tensor) -> TSPGraphSolution:
+    def remove_nodes(self, nodes: torch.Tensor, *, stitch: bool = False) -> TSPGraphSolution:
         target_batch_shape = nodes.shape[:-1]
 
         shape_diff = len(target_batch_shape) - len(self.batch_size)
         expanded = (
             self.reshape(*self.batch_size, *[1] * shape_diff).expand(target_batch_shape).clone()
         )
+
+        if stitch:
+            for m in range(nodes.shape[-1]):
+                expanded._remove_node_(nodes[..., m])
+            return expanded
 
         predecessors = expanded._prev.gather(-1, nodes)
         successors = expanded._next.gather(-1, nodes)
@@ -221,6 +226,63 @@ class TSPGraphSolution(BaseSolution):
         expanded._prev.scatter_(-1, successors, self.UNASSIGNED)
 
         return expanded
+
+    def _remove_node_(self, node: torch.Tensor) -> None:
+        """Removes one node per batch element, stitching its neighbours together. In-place."""
+        node_idx = node.unsqueeze(-1)
+        u = self._prev.gather(-1, node_idx)
+        v = self._next.gather(-1, node_idx)
+        safe_u = u.clamp(min=0)
+        safe_v = v.clamp(min=0)
+
+        self._next.scatter_(-1, safe_u, v)
+        self._prev.scatter_(-1, safe_v, u)
+
+        self._prev.scatter_(-1, node_idx, node_idx.new_full(node_idx.shape, self.UNASSIGNED))
+        self._next.scatter_(-1, node_idx, node_idx.new_full(node_idx.shape, self.UNASSIGNED))
+
+    def insertion_positions(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """All existing directed edges in the solution.
+
+        Returns:
+            u: (..., N) source nodes. Invalid slots use 0.
+            v: (..., N) target nodes, i.e. ``arange(N)``.
+            valid: (..., N) bool - True where node ``v`` has an assigned predecessor.
+        """
+        n = self._instance.num_nodes
+        v = torch.arange(n, device=self._next.device).expand(*self.batch_size, n)
+        valid = self._prev != self.UNASSIGNED
+        u = self._prev.clamp(min=0)
+        return u, v, valid
+
+    def insert_(
+        self,
+        c: torch.Tensor,
+        u: torch.Tensor,
+        v: torch.Tensor,
+        *,
+        mask: torch.Tensor | None = None,
+    ) -> None:
+        """Inserts node c between predecessor u and successor v. In-place.
+
+        Args:
+            c: Node indices to insert, shape (...,).
+            u: Predecessor indices, shape (...,).
+            v: Successor indices, shape (...,).
+            mask: Optional (...,) bool. If provided, only batches where the mask
+                is True are updated; others keep their previous state.
+        """
+        c_idx = c.unsqueeze(-1)
+        u_idx = u.unsqueeze(-1)
+        v_idx = v.unsqueeze(-1)
+        active = (
+            mask.unsqueeze(-1) if mask is not None else torch.ones_like(c_idx, dtype=torch.bool)
+        )
+
+        self._prev.scatter_(-1, c_idx, torch.where(active, u_idx, self._prev.gather(-1, c_idx)))
+        self._next.scatter_(-1, c_idx, torch.where(active, v_idx, self._next.gather(-1, c_idx)))
+        self._next.scatter_(-1, u_idx, torch.where(active, c_idx, self._next.gather(-1, u_idx)))
+        self._prev.scatter_(-1, v_idx, torch.where(active, c_idx, self._prev.gather(-1, v_idx)))
 
     def remove_edges(self, *, end_nodes: torch.Tensor) -> None:
         if end_nodes.shape == self._next.shape[:-1]:

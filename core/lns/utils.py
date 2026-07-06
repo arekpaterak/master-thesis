@@ -24,7 +24,7 @@ def apply_nodes(
         case CVRPGraphSolution() as s:
             return s.remove_nodes(nodes, stitch=stitch)
         case TSPGraphSolution() as s:
-            return s.remove_nodes(nodes)
+            return s.remove_nodes(nodes, stitch=stitch)
         case _:
             raise NotImplementedError(f"apply_nodes not implemented for {type(solution)}")
 
