@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import math
+import time
 import warnings
 from collections.abc import Callable, Iterable, Iterator
 
 import torch
 from pydantic import BaseModel, computed_field
 
-from core.eval_config import EvaluationConfig
+from core.eval.problem_setting import SyntheticProblemSetting
 from core.methods.base import Method
 from core.problems.dataset import DatasetSampler
 from core.problems.instance import BaseProblemInstance
@@ -19,9 +20,9 @@ from core.solve import solve
 class EvaluationResult(BaseModel):
     model_config = {"frozen": True, "arbitrary_types_allowed": True}
 
-    method_name: str
     step_labels: list[int]
     objective_per_step: torch.Tensor  # (n_steps, num_test_instances)
+    total_time_s: float = 0.0
 
     @computed_field
     @property
@@ -56,44 +57,46 @@ class Evaluator:
         self.step_progress = step_progress
         self.device = device
 
-    def evaluate(self, eval_config: EvaluationConfig, method: Method) -> EvaluationResult:
+    def evaluate(self, setting: SyntheticProblemSetting, method: Method) -> EvaluationResult:
         batches: list[BatchEvaluationResult] = []
+        start = time.perf_counter()
         for batch_idx, instance in enumerate(
-            self.batch_progress(list(self._iter_batches(eval_config)))
+            self.batch_progress(list(self._iter_batches(setting)))
         ):
             batch_result = self._evaluate_batch(method, instance, batch_idx)
             for callback in self.on_batch_end:
                 callback(batch_idx, batch_result)
             batches.append(batch_result)
-        return self._aggregate(method.name, batches)
+        elapsed = time.perf_counter() - start
+        return self._aggregate(batches, total_time_s=elapsed)
 
-    def _iter_batches(self, eval_config: EvaluationConfig) -> Iterator[BaseProblemInstance]:
-        sampler = self._build_sampler(eval_config)
-        num_batches = math.ceil(eval_config.num_test_instances / eval_config.batch_size)
-        remaining = eval_config.num_test_instances
+    def _iter_batches(self, setting: SyntheticProblemSetting) -> Iterator[BaseProblemInstance]:
+        sampler = self._build_sampler(setting)
+        num_batches = math.ceil(setting.num_test_instances / setting.batch_size)
+        remaining = setting.num_test_instances
         for _ in range(num_batches):
-            batch_size = min(eval_config.batch_size, remaining)
+            batch_size = min(setting.batch_size, remaining)
             remaining -= batch_size
             instance = sampler(batch_size)
             if self.device is not None:
                 instance = instance.to(self.device)
             yield instance
 
-    def _build_sampler(self, eval_config: EvaluationConfig) -> Sampler:
-        if eval_config.dataset_path is None:
-            return Sampler.from_config(eval_config.problem, seed=eval_config.test_seed)
+    def _build_sampler(self, setting: SyntheticProblemSetting) -> Sampler:
+        if setting.dataset_path is None:
+            return Sampler.from_config(setting.problem, seed=setting.test_seed)
 
-        sampler = DatasetSampler.from_file(eval_config.problem.name, eval_config.dataset_path)
+        sampler = DatasetSampler.from_file(setting.problem.name, setting.dataset_path)
         dataset_problem_size = sampler.num_nodes - 1
-        if dataset_problem_size != eval_config.problem.size:
+        if dataset_problem_size != setting.problem.size:
             raise ValueError(
                 f"Dataset instances have size {dataset_problem_size} but problem.size is "
-                f"{eval_config.problem.size}."
+                f"{setting.problem.size}."
             )
-        if eval_config.num_test_instances > len(sampler):
+        if setting.num_test_instances > len(sampler):
             raise ValueError(
-                f"num_test_instances={eval_config.num_test_instances} exceeds the "
-                f"{len(sampler)} instances available in {eval_config.dataset_path}."
+                f"num_test_instances={setting.num_test_instances} exceeds the "
+                f"{len(sampler)} instances available in {setting.dataset_path}."
             )
         return sampler
 
@@ -125,7 +128,7 @@ class Evaluator:
         )
 
     def _aggregate(
-        self, method_name: str, batches: list[BatchEvaluationResult]
+        self, batches: list[BatchEvaluationResult], *, total_time_s: float
     ) -> EvaluationResult:
         assert batches, "Expected at least one batch"
         step_labels = batches[0].step_labels
@@ -133,9 +136,9 @@ class Evaluator:
             assert batch.step_labels == step_labels, "Expected all batches to share step_labels"
         per_instance_objective = torch.cat([batch.objective_per_step for batch in batches], dim=1)
         return EvaluationResult(
-            method_name=method_name,
             step_labels=step_labels,
             objective_per_step=per_instance_objective,
+            total_time_s=total_time_s,
         )
 
 

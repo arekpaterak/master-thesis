@@ -1,0 +1,4 @@
+# CVRPLIB set X, restricted to instances up to 300 customers.
+kind: cvrplib
+set_name: X
+max_customers: 300

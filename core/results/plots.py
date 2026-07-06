@@ -1,11 +1,40 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from core.problems.solution import BaseSolution
+
+
+def plot_objective_curve(
+    step_labels: Sequence[int],
+    mean: Sequence[float],
+    std: Sequence[float],
+    *,
+    title: str,
+) -> Figure:
+    """Mean objective vs improvement step, with a +/- 1 std band."""
+    fig, ax = plt.subplots(figsize=(8, 4))
+    steps = list(step_labels)
+    mean = list(mean)
+    std = list(std)
+    ax.plot(steps, mean, label="mean")
+    ax.fill_between(
+        steps,
+        [m - s for m, s in zip(mean, std)],
+        [m + s for m, s in zip(mean, std)],
+        alpha=0.2,
+        label="+/- 1 std",
+    )
+    ax.set_xlabel("Improvement step")
+    ax.set_ylabel("Objective")
+    ax.set_title(title)
+    ax.legend()
+    fig.tight_layout()
+    return fig
 
 
 def plot_search_progress(

@@ -1,7 +1,8 @@
+# Small in-distribution slice for quick smoke tests.
+kind: synthetic
 problem:
   name: cvrp
   size: 100
 num_test_instances: 100
 batch_size: 100
 test_seed: 2026
-num_plot_instances: 4

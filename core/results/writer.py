@@ -4,24 +4,26 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import polars as pl
-
-from core.results.schema import EVAL_SCHEMA
-
-
-def eval_results_dir(run_dir: Path) -> Path:
-    return run_dir / "results" / "eval"
+import yaml
 
 
-def write_eval_results(
-    run_dir: Path,
-    *,
-    eval_run_id: str,
+def eval_output_dir(base_dir: Path, suite_name: str, eval_id: str) -> Path:
+    return base_dir / suite_name / eval_id
+
+
+def write_csv_rows(
     rows: Iterable[Mapping[str, object]],
+    *,
+    schema: dict[str, pl.DataType],
+    path: Path,
 ) -> Path:
-    """Write eval rows (one parquet per eval run) under the shared EVAL_SCHEMA."""
-    df = pl.DataFrame(list(rows), schema=EVAL_SCHEMA)
-    out_dir = eval_results_dir(run_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{eval_run_id}.parquet"
-    df.write_parquet(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(list(rows), schema=schema).write_csv(path)
+    return path
+
+
+def write_config(config: Mapping[str, object], *, path: Path) -> Path:
+    """Write the effective evaluation config alongside its results."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(dict(config), sort_keys=False))
     return path

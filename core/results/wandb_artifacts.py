@@ -55,6 +55,33 @@ def upload_eval_results(
     wandb.log_artifact(artifact, aliases=[eval_id])
 
 
+def upload_eval_dir(
+    *,
+    run_name: str,
+    eval_dir: Path,
+    eval_id: str,
+    metadata: dict | None = None,
+    link_checkpoint_alias: str | None = None,
+) -> None:
+    """Upload a whole eval output dir (CSVs + config.yml + plots) as one artifact.
+
+    ``eval_id`` is added as an alias so multiple eval invocations stay individually
+    addressable. When ``link_checkpoint_alias`` is set, the source checkpoint artifact
+    is marked as used for lineage (trained methods only).
+    """
+    if not eval_dir.exists():
+        return
+    if link_checkpoint_alias is not None:
+        wandb.use_artifact(f"checkpoint-{run_name}:{link_checkpoint_alias}")
+    artifact = wandb.Artifact(
+        name=f"eval-{run_name}",
+        type="eval-results",
+        metadata=metadata or {},
+    )
+    artifact.add_dir(str(eval_dir))
+    wandb.log_artifact(artifact, aliases=[eval_id])
+
+
 def upload_eval_plots(*, run_name: str, eval_id: str, plots_dir: Path) -> None:
     """Upload eval LNS-progress PDFs as an artifact, aliased by eval_id."""
     if not plots_dir.exists():

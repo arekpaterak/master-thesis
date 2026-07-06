@@ -1,756 +1,349 @@
-import marimo
+from __future__ import annotations
 
-__generated_with = "0.23.6"
-app = marimo.App(width="medium")
+import time
+from datetime import datetime
+from pathlib import Path
 
-with app.setup:
-    import sys
-    from datetime import datetime
-    from pathlib import Path
+import matplotlib.pyplot as plt
+import polars as pl
+import torch
+import typer
+from dotenv import load_dotenv
+from rich.console import Console
+from rich.table import Table
+from tqdm import tqdm
 
-    import marimo as mo
-    import matplotlib.pyplot as plt
-    import polars as pl
-    import torch
-    import yaml
-    from dotenv import load_dotenv
-    from rich.console import Console
-    from rich.table import Table as RichTable
-    from tqdm import tqdm
-    from wigglystuff import EnvConfig
+from core.eval.config import EvaluationConfig
+from core.eval.loader import load_evaluation_config
+from core.eval.problem_setting import CVRPLibProblemSetting, SyntheticProblemSetting
+from core.evaluation import EvaluationResult, Evaluator, PlotSnapshotCallback
+from core.methods import build_method
+from core.methods.base import Method
+from core.methods.nds_trained import NDSTrainedConfig
+from core.problems import make_problem_config
+from core.problems.cvrp.dataset import load_cvrplib_instance, load_cvrplib_solution_bks
+from core.results.plots import plot_objective_curve, plot_search_progress
+from core.results.schema import (
+    CVRPLIB_BUCKET_SCHEMA,
+    CVRPLIB_INSTANCE_SCHEMA,
+    SUMMARY_SCHEMA,
+    SYNTHETIC_CURVE_SCHEMA,
+    SYNTHETIC_INSTANCE_SCHEMA,
+)
+from core.results.summary import (
+    cvrplib_bucket_rows,
+    cvrplib_summary_row,
+    synthetic_curve_rows,
+    synthetic_instance_rows,
+    synthetic_summary_row,
+)
+from core.results.writer import eval_output_dir, write_config, write_csv_rows
+from core.solve import solve
 
-    import wandb
-    from core.eval_config import EvaluationConfig
-    from core.evaluation import Evaluator, PlotSnapshotCallback
-    from core.lns.acceptance_criterion import AcceptanceCriterionConfig
-    from core.lns.config import SearchParams
-    from core.methods import (
-        NDSPretrainedConfig,
-        NDSPretrainedMethod,
-        NDSTrainedConfig,
-        NDSTrainedMethod,
-        RandomDestroyMethod,
-        RandomDestroyMethodConfig,
-    )
-    from core.methods.base import Method
-    from core.models.nds.config import JointModelParams, TrainConfig
-    from core.models.nds.decoders.config import AutoregressiveDecoderConfig
-    from core.models.nds.encoders.config import EncoderConfig
-    from core.models.nds.pretrained.config import (
-        ORIGINAL_NDS_ENCODING_ORDER,
-        ORIGINAL_NDS_ROUTE_AGGREGATION,
-    )
-    from core.problems import make_problem_config
-    from core.problems.solve import generate_initial_solution
-    from core.results.plots import plot_search_progress
-    from core.results.wandb_artifacts import upload_eval_plots, upload_eval_results
-    from core.results.writer import write_eval_results
-    from core.ui.forms import build_mo_ui_dict, union_variants
+EXPERIMENTS_DIR = Path(__file__).parent
+EVAL_CONFIGS_DIR = EXPERIMENTS_DIR / "configs" / "eval"
+CVRPLIB_DIR = EXPERIMENTS_DIR.parent / "data" / "cvrplib"
+RESULTS_DIR = EXPERIMENTS_DIR / "results" / "eval"
 
+console = Console()
+app = typer.Typer(add_completion=False)
+
+
+@app.command()
+def main(
+    config: Path = typer.Option(..., help="Eval config YAML (path, or name under configs/eval)."),
+    device: str | None = typer.Option(None, help="Torch device (default: cuda if available)."),
+    problem: list[str] = typer.Option(
+        None, "--problem", "-p", help="Only run these problem settings, by label. Repeatable."
+    ),
+    first: bool = typer.Option(False, "--first", help="Run only the first (selected) problem."),
+) -> None:
+    """Evaluate a single method across the problem settings listed in the config."""
     load_dotenv(".env")
+    config_path = config if config.exists() else EVAL_CONFIGS_DIR / config
+    eval_config = load_evaluation_config(config_path)
+    torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
-    RUNS_DIR = Path(__file__).parent / "runs"
-    EVAL_CONFIGS_DIR = Path(__file__).parent / "configs" / "eval"
-    PRETRAINED_DIR = Path(__file__).parent / "pretrained" / "nds"
+    settings = _select_problems(eval_config, problem, first)
+    eval_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    eval_dir = eval_output_dir(RESULTS_DIR, eval_config.name, eval_id)
 
-    METHOD_TYPES = ("random-destroy", "nds-trained", "nds-pretrained")
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    # Evaluation
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    ## Setup
-    """)
-    return
-
-
-@app.cell
-def _():
-    _default_device = "cuda" if torch.cuda.is_available() else "cpu"
-    device_widget = mo.ui.dropdown(["cuda", "cpu"], value=_default_device, label="Device")
-    device_widget
-    return (device_widget,)
-
-
-@app.cell
-def _(device_widget):
-    device = torch.device(device_widget.value)
-    device
-    return (device,)
-
-
-@app.cell
-def _():
-    is_script_mode = mo.app_meta().mode == "script"
-    return (is_script_mode,)
-
-
-@app.cell(hide_code=True)
-def _(is_script_mode):
-    cli_eval_yaml: dict = {}
-    cli_method_type: str | None = None
-    cli_run_name: str | None = None
-    if is_script_mode:
-        args = mo.cli_args()
-        if not args or args.get("help"):
-            usage = RichTable(title="Evaluation -- CLI usage")
-            usage.add_column("Flag", style="cyan")
-            usage.add_column("Description")
-            usage.add_row("--method <type>", "One of: " + ", ".join(METHOD_TYPES))
-            usage.add_row("--run <run_name>", "Training run (for method=nds-trained).")
-            usage.add_row("--eval-config <path>", "YAML preset for EvaluationConfig.")
-            Console().print(usage)
-            sys.exit(0)
-        cli_method_type = str(args.get("method")) if args.get("method") else None
-        cli_run_name = str(args.get("run")) if args.get("run") else None
-        eval_config_path = args.get("eval-config") or args.get("eval_config")
-        if eval_config_path:
-            with open(str(eval_config_path)) as _f:
-                cli_eval_yaml = yaml.safe_load(_f) or {}
-    return cli_eval_yaml, cli_method_type, cli_run_name
-
-
-@app.cell(hide_code=True)
-def _():
-    env_config_widget = mo.ui.anywidget(
-        EnvConfig({"WANDB_API_KEY": lambda k: wandb.login(key=k, verify=True)})
-    )
-    return (env_config_widget,)
-
-
-@app.cell(hide_code=True)
-def _(env_config_widget, is_script_mode):
-    env_config_widget if not is_script_mode and not wandb.login() else None
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    ## Method
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    method_type_widget = mo.ui.dropdown(
-        list(METHOD_TYPES), value="random-destroy", label="Method type"
-    )
-    method_type_widget
-    return (method_type_widget,)
-
-
-@app.cell(hide_code=True)
-def _(cli_method_type: str | None, is_script_mode, method_type_widget):
-    method_type = cli_method_type if is_script_mode else method_type_widget.value
-    return (method_type,)
-
-
-@app.cell(hide_code=True)
-def _():
-    random_destroy_seed_widget = mo.ui.number(0, 2**31 - 1, value=0, step=1, label="Destroy seed")
-    return (random_destroy_seed_widget,)
-
-
-@app.cell(hide_code=True)
-def _(method_type, random_destroy_seed_widget):
-    mo.vstack(
-        [mo.md("### Random destroy"), random_destroy_seed_widget]
-    ) if method_type == "random-destroy" else None
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    completed_runs: list[str] = []
-    if RUNS_DIR.exists():
-        for candidate in sorted(RUNS_DIR.glob("nds-*")):
-            if (
-                candidate.is_dir()
-                and (candidate / "config.yml").exists()
-                and list((candidate / "checkpoints").glob("epoch_*.pt"))
-            ):
-                completed_runs.append(candidate.name)
-
-    run_dropdown_widget = mo.ui.dropdown(
-        completed_runs,
-        value=completed_runs[-1] if completed_runs else None,
-        label="Training run",
-    )
-    return (run_dropdown_widget,)
-
-
-@app.cell(hide_code=True)
-def _(method_type, run_dropdown_widget):
-    run_dropdown_widget if method_type == "nds-trained" else None
-    return
-
-
-@app.cell(hide_code=True)
-def _(
-    cli_run_name: str | None,
-    is_script_mode,
-    method_type,
-    run_dropdown_widget,
-):
-    if method_type != "nds-trained":
-        chosen_run_name = None
-    elif is_script_mode:
-        if not cli_run_name:
-            raise ValueError("Pass --run <run_name> when method=nds-trained.")
-        chosen_run_name = cli_run_name
-    else:
-        chosen_run_name = run_dropdown_widget.value
-    return (chosen_run_name,)
-
-
-@app.cell(hide_code=True)
-def _(chosen_run_name):
-    if chosen_run_name is None:
-        run_dir = None
-        train_config = None
-    else:
-        run_dir = RUNS_DIR / chosen_run_name
-        if not run_dir.exists():
-            raise ValueError(f"Run dir not found: {run_dir}")
-        train_config = TrainConfig.model_validate(
-            yaml.safe_load((run_dir / "config.yml").read_text())
-        )
-    return run_dir, train_config
-
-
-@app.cell(hide_code=True)
-def _():
-    _pretrained_options = {"(none)": ""}
-    if PRETRAINED_DIR.exists():
-        for ckpt in sorted(PRETRAINED_DIR.glob("**/*.pt")):
-            _pretrained_options[f"{ckpt.parent.name}/{ckpt.name}"] = str(ckpt)
-    pretrained_path_widget = mo.ui.dropdown(
-        options=_pretrained_options, value="(none)", label="Pretrained checkpoint"
-    )
-    pretrained_load_decoder_widget = mo.ui.checkbox(value=False, label="Load decoder weights")
-    pretrained_use_hidden_widget = mo.ui.checkbox(value=True, label="Use hidden decoding state")
-    return (
-        pretrained_load_decoder_widget,
-        pretrained_path_widget,
-        pretrained_use_hidden_widget,
+    method = _build_method(eval_config, torch_device)
+    labels = ", ".join(setting.label for setting in settings)
+    console.print(
+        f"[bold]{eval_config.name}[/bold]  |  method: {eval_config.method.type}  |  "
+        f"device: {torch_device}  |  {labels}"
     )
 
+    summary_rows: list[dict[str, object]] = []
+    curves: dict[str, list[dict[str, object]]] = {}
+    for setting in settings:
+        if isinstance(setting, CVRPLibProblemSetting):
+            summary_rows.append(_run_cvrplib(method, setting, eval_config, torch_device, eval_dir))
+        else:
+            summary_row, curve = _run_synthetic(
+                method, setting, eval_config, torch_device, eval_dir
+            )
+            summary_rows.append(summary_row)
+            curves[setting.label] = curve
 
-@app.cell(hide_code=True)
-def _(
-    method_type,
-    pretrained_load_decoder_widget,
-    pretrained_path_widget,
-    pretrained_use_hidden_widget,
-):
-    mo.vstack(
-        [
-            mo.md("### Pretrained NDS"),
-            pretrained_path_widget,
-            pretrained_load_decoder_widget,
-            pretrained_use_hidden_widget,
-        ]
-    ) if method_type == "nds-pretrained" else None
-    return
+    summary_rows = [row for row in summary_rows if row is not None]
+    write_csv_rows(summary_rows, schema=SUMMARY_SCHEMA, path=eval_dir / "summary.csv")
+    write_config(eval_config.model_dump(mode="json"), path=eval_dir / "config.yml")
+    console.print(f"Wrote results to [bold]{eval_dir}[/bold]")
 
+    if eval_config.logging.wandb_project:
+        _upload_wandb(eval_config, eval_id, eval_dir, summary_rows, curves)
 
-@app.cell(hide_code=True)
-def _():
-    search_defaults = SearchParams(
-        repair_type="greedy_insert",
-        num_improvement_steps=50,
-        num_rollouts=100,
-        deconstruction_size=15,
-        n_repairs=5,
-        improvement_step_type="numba_sequential",
-        n_augmentations=1,
-    )
-    search_form = build_mo_ui_dict(SearchParams, search_defaults, skip={"acceptance"})
-    return (search_form,)
+    _release_gpu(method)
 
 
-@app.cell(hide_code=True)
-def _():
-    acceptance_variants = union_variants(AcceptanceCriterionConfig)
-    acceptance_type_widget = mo.ui.dropdown(
-        list(acceptance_variants), value="sa", label="acceptance"
-    )
-    return acceptance_type_widget, acceptance_variants
+def _select_problems(
+    eval_config: EvaluationConfig, labels: list[str] | None, first: bool
+) -> list[SyntheticProblemSetting | CVRPLibProblemSetting]:
+    settings = list(eval_config.problems)
+    if labels:
+        available = {setting.label for setting in settings}
+        unknown = [label for label in labels if label not in available]
+        if unknown:
+            raise typer.BadParameter(
+                f"Unknown problem label(s): {', '.join(unknown)}. Available: {', '.join(available)}"
+            )
+        wanted = set(labels)
+        settings = [setting for setting in settings if setting.label in wanted]
+    if first:
+        settings = settings[:1]
+    if not settings:
+        raise typer.BadParameter("No problem settings selected.")
+    return settings
 
 
-@app.cell(hide_code=True)
-def _(acceptance_type_widget, acceptance_variants):
-    acceptance_variant_cls = acceptance_variants[acceptance_type_widget.value]
-    acceptance_form = build_mo_ui_dict(acceptance_variant_cls, acceptance_variant_cls())
-    return acceptance_form, acceptance_variant_cls
+def _build_method(eval_config: EvaluationConfig, device: torch.device) -> Method:
+    # NDS generalizes across sizes and the baselines only need problem.name, so the
+    # method is built once and reused across every problem setting.
+    representative_problem = make_problem_config(name=eval_config.problem_name, size=100)
+    return build_method(eval_config.method, problem=representative_problem, device=device)
 
 
-@app.cell(hide_code=True)
-def _(acceptance_form, acceptance_type_widget, search_form):
-    mo.vstack(
-        [
-            mo.md("### Search"),
-            *search_form.values(),
-            acceptance_type_widget,
-            *acceptance_form.values(),
-        ]
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    ## Evaluation config
-    """)
-    return
-
-
-@app.cell
-def _():
-    presets = ["(defaults)"]
-    if EVAL_CONFIGS_DIR.exists():
-        presets += sorted(p.name for p in EVAL_CONFIGS_DIR.glob("*.y*ml"))
-    preset_dropdown_widget = mo.ui.dropdown(presets, value=presets[0], label="Evaluation preset")
-    preset_dropdown_widget
-    return (preset_dropdown_widget,)
-
-
-@app.cell
-def _(cli_eval_yaml: dict, is_script_mode, preset_dropdown_widget):
-    if is_script_mode:
-        preset_yaml = dict(cli_eval_yaml)
-    elif preset_dropdown_widget.value == "(defaults)":
-        preset_yaml = {}
-    else:
-        with open(EVAL_CONFIGS_DIR / preset_dropdown_widget.value) as _f:
-            preset_yaml = yaml.safe_load(_f) or {}
-    preset_defaults = EvaluationConfig.model_validate(preset_yaml)
-    return (preset_defaults,)
-
-
-@app.cell(hide_code=True)
-def _(preset_defaults):
-    problem_name_widget = mo.ui.dropdown(
-        ["cvrp", "tsp"], value=preset_defaults.problem.name, label="problem.name"
-    )
-    _sizes = [20, 50, 100]
-    problem_size_widget = mo.ui.dropdown(
-        _sizes,
-        value=preset_defaults.problem.size if preset_defaults.problem.size in _sizes else 100,
-        label="problem.size",
-    )
-    wandb_project_widget = mo.ui.text(
-        value=preset_defaults.wandb_project, label="wandb_project (empty = no upload)"
-    )
-    num_test_instances_widget = mo.ui.number(
-        0, 10000, value=preset_defaults.num_test_instances, step=100, label="num_test_instances"
-    )
-    batch_size_widget = mo.ui.number(value=preset_defaults.batch_size, label="batch_size")
-    test_seed_widget = mo.ui.number(0, value=preset_defaults.test_seed, step=1, label="test_seed")
-    _initial_path = (
-        str(Path(preset_defaults.dataset_path).parent)
-        if preset_defaults.dataset_path
-        else str(Path(__file__).parent.parent / "data")
-    )
-    dataset_path_widget = mo.ui.file_browser(
-        initial_path=_initial_path,
-        multiple=False,
-        label="dataset_path (select nothing = random sampling)",
-    )
-    num_plot_instances_widget = mo.ui.number(
-        0, 100, value=preset_defaults.num_plot_instances, step=1, label="num_plot_instances"
-    )
-    mo.vstack(
-        [
-            problem_name_widget,
-            problem_size_widget,
-            num_test_instances_widget,
-            batch_size_widget,
-            test_seed_widget,
-            dataset_path_widget,
-            num_plot_instances_widget,
-            wandb_project_widget,
-        ]
-    )
-    return (
-        batch_size_widget,
-        dataset_path_widget,
-        num_plot_instances_widget,
-        num_test_instances_widget,
-        problem_name_widget,
-        problem_size_widget,
-        test_seed_widget,
-        wandb_project_widget,
-    )
-
-
-@app.cell
-def _(
-    batch_size_widget,
-    dataset_path_widget,
-    is_script_mode,
-    num_plot_instances_widget,
-    num_test_instances_widget,
-    preset_defaults,
-    problem_name_widget,
-    problem_size_widget,
-    test_seed_widget,
-    wandb_project_widget,
-):
-    if is_script_mode:
-        eval_config = preset_defaults
-    else:
-        eval_config = preset_defaults.model_copy(
-            update={
-                "problem": make_problem_config(
-                    name=problem_name_widget.value, size=int(problem_size_widget.value)
-                ),
-                "num_test_instances": num_test_instances_widget.value,
-                "batch_size": batch_size_widget.value,
-                "test_seed": test_seed_widget.value,
-                "dataset_path": dataset_path_widget.value[0].path
-                if dataset_path_widget.value
-                else None,
-                "num_plot_instances": num_plot_instances_widget.value,
-                "wandb_project": wandb_project_widget.value,
-            }
-        )
-    return (eval_config,)
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    ## Evaluate
-    """)
-    return
-
-
-@app.cell
-def _(acceptance_form, acceptance_variant_cls, search_form):
-    acceptance = acceptance_variant_cls(**acceptance_form.value)
-    search_params = SearchParams.model_validate({**search_form.value, "acceptance": acceptance})
-    return (search_params,)
-
-
-@app.cell
-def _(
-    device,
-    eval_config,
-    is_script_mode,
-    method_type,
-    pretrained_load_decoder_widget,
-    pretrained_path_widget,
-    pretrained_use_hidden_widget,
-    random_destroy_seed_widget,
-    run_dir,
-    search_params,
-):
-    generate_start = generate_initial_solution
-
-    if method_type == "random-destroy":
-        method_config = RandomDestroyMethodConfig(
-            search=search_params, seed=int(random_destroy_seed_widget.value)
-        )
-        method: Method = RandomDestroyMethod.build(
-            method_config, problem=eval_config.problem, generate_start_solution=generate_start
-        )
-    elif method_type == "nds-trained":
-        if run_dir is None:
-            raise ValueError("nds-trained requires a selected run.")
-        method_config = NDSTrainedConfig(run_dir=run_dir, search=search_params)
-        method = NDSTrainedMethod.build(
-            method_config, generate_start_solution=generate_start, device=device
-        )
-    elif method_type == "nds-pretrained":
-        ckpt_path = pretrained_path_widget.value
-        if not ckpt_path:
-            raise ValueError("Select a pretrained checkpoint.")
-        method_config = NDSPretrainedConfig(
-            checkpoint_path=Path(ckpt_path),
-            load_decoder=pretrained_load_decoder_widget.value,
-            model=JointModelParams(
-                encoder=EncoderConfig(
-                    encoding_order=ORIGINAL_NDS_ENCODING_ORDER,
-                    route_aggregation=ORIGINAL_NDS_ROUTE_AGGREGATION,
-                ),
-                decoder=AutoregressiveDecoderConfig(
-                    use_hidden_decoding_state=pretrained_use_hidden_widget.value
-                ),
-            ),
-            search=search_params,
-        )
-        method = NDSPretrainedMethod.build(
-            method_config,
-            problem=eval_config.problem,
-            generate_start_solution=generate_start,
-            device=device,
-        )
-        print(f"Loaded pretrained encoder weights from {ckpt_path}")
-        if pretrained_load_decoder_widget.value == True:
-            print(f"Loaded pretrained decoder weights from {ckpt_path}")
-        print(f"Using hidden state: {pretrained_use_hidden_widget.value}")
-    else:
-        raise ValueError(f"Unknown method type: {method_type}")
-
-    run_eval_button = mo.ui.run_button(label="Run evaluation")
-    run_eval_button if not is_script_mode else None
-    return method, method_config, run_eval_button
-
-
-@app.cell
-def _(device, eval_config, is_script_mode, method: Method, run_eval_button):
-    if not is_script_mode:
-        mo.stop(not run_eval_button.value, mo.md("Click **Run evaluation** to start."))
-    plot_snapshot_cb = PlotSnapshotCallback(num_plot_instances=eval_config.num_plot_instances)
-    if is_script_mode:
-        batch_progress = lambda it: tqdm(it, desc="Batches")
-        step_progress = lambda it: tqdm(it, desc="Improvement steps", leave=False)
-    else:
-        batch_progress = lambda it: mo.status.progress_bar(it, title="Batches", remove_on_exit=True)
-        step_progress = lambda it: mo.status.progress_bar(
-            it, title="Improvement steps", remove_on_exit=True
-        )
+def _run_synthetic(
+    method: Method,
+    setting: SyntheticProblemSetting,
+    eval_config: EvaluationConfig,
+    device: torch.device,
+    eval_dir: Path,
+) -> tuple[dict[str, object], list[dict[str, object]]]:
+    console.rule(f"[bold]{setting.label}[/bold] (synthetic)")
+    plot_cb = PlotSnapshotCallback(num_plot_instances=eval_config.num_plot_instances)
     evaluator = Evaluator(
-        on_step=[plot_snapshot_cb.on_step],
-        batch_progress=batch_progress,
-        step_progress=step_progress,
+        on_step=[plot_cb.on_step] if eval_config.num_plot_instances else None,
+        batch_progress=lambda it: tqdm(it, desc="Batches"),
+        step_progress=lambda it: tqdm(it, desc="Improvement steps", leave=False),
         device=device,
     )
-    result = evaluator.evaluate(eval_config, method)
+    result = evaluator.evaluate(setting, method)
+    _report_synthetic(result)
 
-    # Free GPU memory
-    _model = getattr(method.improvement_step, "_model", None)
-    if _model is not None:
-        _model.to("cpu")
-        torch.cuda.empty_cache()
-
-    print("Finished evaluation!")
-    return plot_snapshot_cb, result
-
-
-@app.cell
-def _():
-    eval_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return (eval_id,)
-
-
-@app.cell
-def _(eval_config):
-    problem_tag = f"{eval_config.problem.name}{eval_config.problem.size}"
-    return (problem_tag,)
-
-
-@app.cell
-def _(method: Method, run_dir):
-    artifacts_root = run_dir if run_dir is not None else RUNS_DIR / method.name
-    artifacts_root.mkdir(parents=True, exist_ok=True)
-    return (artifacts_root,)
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    Aggregated results
-    """)
-    return
-
-
-@app.cell
-def _(result):
-    _obj = result.objective_per_step
-    summary_df = pl.DataFrame(
-        {
-            "method": [result.method_name],
-            "n_instances": [_obj.shape[1]],
-            "n_steps": [_obj.shape[0] - 1],
-            "obj_initial_mean": [_obj[0].mean().item()],
-            "obj_final_mean": [_obj[-1].mean().item()],
-            "improvement_mean": [(_obj[0] - _obj[-1]).mean().item()],
-            "improvement_std": [(_obj[0] - _obj[-1]).std().item()],
-        }
+    write_csv_rows(
+        synthetic_instance_rows(config=eval_config.name, setting=setting, result=result),
+        schema=SYNTHETIC_INSTANCE_SCHEMA,
+        path=eval_dir / f"{setting.label}_instances.csv",
     )
-    return (summary_df,)
-
-
-@app.cell
-def _(summary_df):
-    mo.ui.table(summary_df, selection=None)
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    Results per instance
-    """)
-    return
-
-
-@app.cell
-def _(result):
-    _po = result.objective_per_step
-    per_instance_df = pl.DataFrame(
-        {
-            "instance": list(range(_po.shape[1])),
-            "obj_initial": _po[0].tolist(),
-            "obj_final": _po[-1].tolist(),
-            "improvement": (_po[0] - _po[-1]).tolist(),
-        }
+    curve = synthetic_curve_rows(result)
+    write_csv_rows(
+        curve, schema=SYNTHETIC_CURVE_SCHEMA, path=eval_dir / f"{setting.label}_curve.csv"
     )
-    return (per_instance_df,)
+    _save_synthetic_plots(setting, result, plot_cb, eval_dir)
 
-
-@app.cell
-def _(per_instance_df):
-    mo.ui.table(per_instance_df, selection=None)
-    return
-
-
-@app.cell
-def _(result):
-    result.objective_per_step.mean(dim=1)
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    Search progress
-    """)
-    return
-
-
-@app.cell
-def _(result):
-    _po = result.objective_per_step
-    _fig, _ax = plt.subplots(figsize=(8, 4))
-    _ax.plot(result.step_labels, _po.mean(dim=1).tolist(), label="mean")
-    _ax.fill_between(
-        result.step_labels,
-        (_po.mean(dim=1) - _po.std(dim=1)).tolist(),
-        (_po.mean(dim=1) + _po.std(dim=1)).tolist(),
-        alpha=0.2,
-        label="+/- 1 std",
+    summary_row = synthetic_summary_row(
+        config=eval_config.name, method_type=eval_config.method.type, setting=setting, result=result
     )
-    _ax.set_xlabel("Improvement step")
-    _ax.set_ylabel("Objective")
-    _ax.set_title(f"{result.method_name}: objective vs step")
-    _ax.legend()
-    _fig.tight_layout()
-    _fig
-    return
+    return summary_row, curve
 
 
-@app.cell(disabled=True)
-def _(artifacts_root, eval_config, eval_id, problem_tag, result):
-    rows = [
-        {
-            "method": result.method_name,
-            "instance_id": f"{problem_tag}-seed{eval_config.test_seed}-{i:04d}",
-            "seed": eval_config.test_seed,
-            "lns_step": step,
-            "objective": float(result.objective_per_step[step_idx, i].item()),
-            "time_s": 0.0,
-            "initial_objective": float(result.objective_per_step[0, i].item()),
-        }
-        for step_idx, step in enumerate(result.step_labels)
-        for i in range(result.objective_per_step.shape[1])
-    ]
-    parquet_path = write_eval_results(artifacts_root, eval_run_id=eval_id, rows=rows)
-    return (parquet_path,)
+def _save_synthetic_plots(
+    setting: SyntheticProblemSetting,
+    result: EvaluationResult,
+    plot_cb: PlotSnapshotCallback,
+    eval_dir: Path,
+) -> None:
+    plots_dir = eval_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    mean = result.objective_per_step.mean(dim=1).tolist()
+    std = result.objective_per_step.std(dim=1).tolist()
+    fig = plot_objective_curve(result.step_labels, mean, std, title=f"{setting.label}: objective")
+    fig.savefig(plots_dir / f"{setting.label}_progress.pdf", bbox_inches="tight")
+    plt.close(fig)
+
+    for idx, snapshots in enumerate(plot_cb.snapshots):
+        fig = plot_search_progress(snapshots, result.step_labels, epoch=0)
+        fig.savefig(plots_dir / f"{setting.label}_routes_{idx:02d}.pdf", bbox_inches="tight")
+        plt.close(fig)
 
 
-@app.cell(disabled=True)
-def _(artifacts_root, eval_id, plot_snapshot_cb, result):
-    plots_dir = artifacts_root / "results" / "eval" / f"{eval_id}-plots"
-    if plot_snapshot_cb.snapshots:
-        plots_dir.mkdir(parents=True, exist_ok=True)
-        for plot_idx, snapshots in enumerate(plot_snapshot_cb.snapshots):
-            _fig = plot_search_progress(snapshots, result.step_labels, epoch=0)
-            _fig.savefig(plots_dir / f"instance_{plot_idx:04d}.pdf", bbox_inches="tight")
-            plt.close(_fig)
-    return (plots_dir,)
+def _report_synthetic(result: EvaluationResult) -> None:
+    objective = result.objective_per_step
+    initial, final = objective[0], objective[-1]
+    improvement = initial - final
+
+    table = Table(show_header=True)
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+    table.add_row("Instances", str(objective.shape[1]))
+    table.add_row("Steps", str(objective.shape[0] - 1))
+    table.add_row("Initial mean", f"{initial.mean().item():.4f}")
+    table.add_row("Final mean", f"{final.mean().item():.4f}")
+    table.add_row("Improvement mean", f"{improvement.mean().item():.4f}")
+    table.add_row("Improvement std", f"{improvement.std().item():.4f}")
+    table.add_row("Total time (s)", f"{result.total_time_s:.2f}")
+    console.print(table)
 
 
-@app.cell(disabled=True)
-def _(
-    chosen_run_name,
-    eval_config,
-    eval_id,
+def _run_cvrplib(
     method: Method,
-    method_config,
-    method_type,
-    parquet_path,
-    plot_snapshot_cb,
-    plots_dir,
-    train_config,
-):
-    if train_config is not None and train_config.logging.wandb_project:
-        wandb_project = train_config.logging.wandb_project
-        wandb_run_name = f"eval-{train_config.run_name}-{eval_id}"
-        wandb_group = train_config.run_name
-        artifact_run_name = train_config.run_name
-        link_checkpoint_alias: str | None = "final"
-        extra_config = {
-            "source_run": train_config.run_name,
-            "source_run_dir": chosen_run_name,
-            "train_config": train_config.model_dump(),
-        }
-    elif eval_config.wandb_project:
-        wandb_project = eval_config.wandb_project
-        wandb_run_name = f"eval-{method.name}-{eval_id}"
-        wandb_group = method.name
-        artifact_run_name = method.name
-        link_checkpoint_alias = None
-        extra_config = {}
-    else:
-        wandb_project = None
+    setting: CVRPLibProblemSetting,
+    eval_config: EvaluationConfig,
+    device: torch.device,
+    eval_dir: Path,
+) -> dict[str, object] | None:
+    console.rule(f"[bold]{setting.label}[/bold] (CVRPLIB)")
+    vrp_paths = _cvrplib_paths(setting)
+    console.print(f"{len(vrp_paths)} instances selected from set {setting.set_name}.")
+    if not vrp_paths:
+        return None
 
-    if wandb_project:
-        wandb.init(
-            project=wandb_project,
-            name=wandb_run_name,
-            job_type="eval",
-            group=wandb_group,
-            config={
-                "eval": eval_config.model_dump(),
-                "method_type": method_type,
-                "method": method.name,
-                "method_config": method_config.model_dump(mode="json"),
-                **extra_config,
-            },
+    rows: list[dict[str, object]] = []
+    start = time.perf_counter()
+    for vrp_path in tqdm(vrp_paths, desc="Instances"):
+        instance = load_cvrplib_instance(vrp_path).unsqueeze(0).to(device)
+        bks = load_cvrplib_solution_bks(vrp_path.with_suffix(".sol"))
+
+        with torch.no_grad():
+            final_solution = solve(method, instance)
+
+        our_cost = int(final_solution.total_distance(rounded=True).item())
+        rows.append(
+            {
+                "instance": vrp_path.stem,
+                "n_customers": instance.num_customers,
+                "bks": bks,
+                "our_cost": our_cost,
+                "gap_pct": round((our_cost - bks) / bks * 100, 2),
+            }
         )
-        upload_eval_results(
-            run_name=artifact_run_name,
-            eval_parquet_path=parquet_path,
-            eval_id=eval_id,
-            metadata={
-                "eval_id": eval_id,
-                "method": method.name,
-                "method_type": method_type,
-                "num_test_instances": eval_config.num_test_instances,
-                "test_seed": eval_config.test_seed,
-                "num_improvement_steps": method.search.num_improvement_steps,
-            },
-            link_checkpoint_alias=link_checkpoint_alias,
+    elapsed = time.perf_counter() - start
+
+    _report_cvrplib(pl.DataFrame(rows))
+    write_csv_rows(
+        rows, schema=CVRPLIB_INSTANCE_SCHEMA, path=eval_dir / f"{setting.label}_instances.csv"
+    )
+    write_csv_rows(
+        cvrplib_bucket_rows(rows),
+        schema=CVRPLIB_BUCKET_SCHEMA,
+        path=eval_dir / f"{setting.label}_buckets.csv",
+    )
+    return cvrplib_summary_row(
+        config=eval_config.name,
+        method_type=eval_config.method.type,
+        setting=setting,
+        instance_rows=rows,
+        total_time_s=elapsed,
+    )
+
+
+def _report_cvrplib(results: pl.DataFrame) -> None:
+    columns = ("instance", "n_customers", "bks", "our_cost", "gap_pct")
+    table = Table(show_header=True)
+    for column in columns:
+        table.add_column(column, justify="left" if column == "instance" else "right")
+    for row in results.iter_rows(named=True):
+        table.add_row(*(str(row[column]) for column in columns))
+    console.print(table)
+
+    summary = results.select(
+        pl.col("gap_pct").mean().round(3).alias("mean_gap_pct"),
+        pl.col("gap_pct").median().round(3).alias("median_gap_pct"),
+        pl.len().alias("n_instances"),
+    ).row(0, named=True)
+    console.print(
+        f"[bold]mean gap[/bold] {summary['mean_gap_pct']}%  |  "
+        f"median {summary['median_gap_pct']}%  |  n={summary['n_instances']}"
+    )
+
+
+def _cvrplib_paths(setting: CVRPLibProblemSetting) -> list[Path]:
+    set_dir = CVRPLIB_DIR / setting.set_name
+    if not set_dir.exists():
+        raise typer.BadParameter(f"CVRPLIB set dir not found: {set_dir}")
+    return [
+        path
+        for path in sorted(set_dir.glob("*.vrp"))
+        if setting.min_customers <= _n_customers_from_stem(path.stem) <= setting.max_customers
+    ]
+
+
+def _n_customers_from_stem(stem: str) -> int:
+    # e.g. "X-n101-k25" -> 100
+    try:
+        return int(stem.split("-n")[1].split("-")[0]) - 1
+    except (IndexError, ValueError):
+        return -1
+
+
+def _upload_wandb(
+    eval_config: EvaluationConfig,
+    eval_id: str,
+    eval_dir: Path,
+    summary_rows: list[dict[str, object]],
+    curves: dict[str, list[dict[str, object]]],
+) -> None:
+    import wandb
+    from core.results.wandb_artifacts import upload_eval_dir
+
+    trained = isinstance(eval_config.method, NDSTrainedConfig)
+    source_run_name = Path(eval_config.method.run_dir).name if trained else None
+    problem_labels = [str(row["problem_label"]) for row in summary_rows]
+
+    wandb.init(
+        project=eval_config.logging.wandb_project,
+        name=f"eval-{eval_config.name}-{eval_id}",
+        job_type="eval",
+        group=source_run_name if trained else eval_config.name,
+        tags=[eval_config.method.type, *problem_labels],
+        config={"eval_config": eval_config.model_dump(mode="json"), "eval_id": eval_id},
+    )
+    for row in summary_rows:
+        label = row["problem_label"]
+        for key, value in row.items():
+            if isinstance(value, (int, float)) and key not in {"n_instances", "size"}:
+                wandb.summary[f"{label}/{key}"] = value
+    for label, curve in curves.items():
+        table = wandb.Table(
+            columns=["step", "obj_mean", "obj_std"],
+            data=[[r["lns_step"], r["obj_mean"], r["obj_std"]] for r in curve],
         )
-        if plot_snapshot_cb.snapshots and plots_dir.exists():
-            upload_eval_plots(run_name=artifact_run_name, eval_id=eval_id, plots_dir=plots_dir)
-        wandb.finish()
-    return
+        wandb.log({f"{label}/progress": wandb.plot.line(table, "step", "obj_mean", title=label)})
+
+    upload_eval_dir(
+        run_name=source_run_name or eval_config.name,
+        eval_dir=eval_dir,
+        eval_id=eval_id,
+        metadata={
+            "eval_id": eval_id,
+            "config": eval_config.name,
+            "method_type": eval_config.method.type,
+        },
+        link_checkpoint_alias="final" if trained else None,
+    )
+    wandb.finish()
+
+
+def _release_gpu(method: Method) -> None:
+    model = getattr(method.improvement_step, "_model", None)
+    if model is not None:
+        model.to("cpu")
+        torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
-    app.run()
+    app()

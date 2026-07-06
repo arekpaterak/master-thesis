@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 
 from core.lns.acceptance_criterion import GreedyAcceptanceConfig
 from core.lns.config import SearchParams
+from core.logging_config import LoggingConfig
 from core.models.nds.baseline import (
     BaselineConfig,
     SharedBaselineConfig,
@@ -163,16 +164,6 @@ class TrainerParams(BaseModel):
             "the trainer rounds the batch count up so every batch has the same "
             "size"
         ),
-    )
-
-
-class LoggingConfig(BaseModel):
-    """Configuration for logging and experiment tracking."""
-
-    wandb_project: str = Field(
-        default="nds",
-        title="W&B project (empty to skip)",
-        description="W&B project name (empty to skip).",
     )
 
 

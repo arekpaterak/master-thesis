@@ -1,17 +1,60 @@
-from .nds_pretrained import NDSPretrainedConfig, NDSPretrainedMethod
-from .nds_trained import NDSTrainedConfig, NDSTrainedMethod
-from .random_destroy import (
+from __future__ import annotations
+
+from typing import Annotated
+
+import torch
+from pydantic import Field
+
+from core.methods.base import Method
+from core.methods.nds_pretrained import NDSPretrainedConfig, NDSPretrainedMethod
+from core.methods.nds_trained import NDSTrainedConfig, NDSTrainedMethod
+from core.methods.random_destroy import (
     RANDOM_DESTROY_PRESETS,
     RandomDestroyMethod,
     RandomDestroyMethodConfig,
 )
+from core.problems import ProblemConfig
+from core.problems.solve import generate_initial_solution
+
+MethodConfig = Annotated[
+    NDSTrainedConfig | NDSPretrainedConfig | RandomDestroyMethodConfig,
+    Field(discriminator="type"),
+]
+
+
+def build_method(
+    config: NDSTrainedConfig | NDSPretrainedConfig | RandomDestroyMethodConfig,
+    *,
+    problem: ProblemConfig,
+    device: torch.device,
+) -> Method:
+    """Build a Method from any method config, dispatching on its concrete type."""
+    if isinstance(config, NDSTrainedConfig):
+        return NDSTrainedMethod.build(
+            config, generate_start_solution=generate_initial_solution, device=device
+        )
+    if isinstance(config, NDSPretrainedConfig):
+        return NDSPretrainedMethod.build(
+            config,
+            problem=problem,
+            generate_start_solution=generate_initial_solution,
+            device=device,
+        )
+    if isinstance(config, RandomDestroyMethodConfig):
+        return RandomDestroyMethod.build(
+            config, problem=problem, generate_start_solution=generate_initial_solution
+        )
+    raise TypeError(f"Unknown method config: {type(config).__name__}")
+
 
 __all__ = [
     "RANDOM_DESTROY_PRESETS",
+    "MethodConfig",
     "NDSPretrainedConfig",
     "NDSPretrainedMethod",
     "NDSTrainedConfig",
     "NDSTrainedMethod",
     "RandomDestroyMethod",
     "RandomDestroyMethodConfig",
+    "build_method",
 ]

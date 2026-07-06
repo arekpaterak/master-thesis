@@ -8,16 +8,16 @@ model:
   ff_dim: 512
   poly_dim: 256
   seed_dim: 10
-  encoder_mode: split
-  positional_encoding:
-    dim: 16
-  decoder:
-    type: slot
-    num_slots: 15
   encoder:
-    norm_type: rms
-    pre_norm: true
-    ff_activation: swiglu
+    encoding_order: route_neighbours
+    route_aggregation: sum
+  decoder:
+    type: ar
+    use_hidden_decoding_state: true
+  original_pretrained_weights:
+    path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
+    load_decoder: true
+  freeze_encoder: true
 
 optimizer:
   learning_rate: 1.0e-4
@@ -35,9 +35,9 @@ search:
   num_rollouts: 128
   deconstruction_size: 15
   improvement_step_type: numba_sequential
-  n_repairs: 5
-  first_repair_uses_rollout_order: true
   insert_in_new_routes_only: true
+  first_repair_uses_rollout_order: true
+  n_repairs: 5
   start_solution_params:
     num_improvement_steps: 50
     deconstruction_size: 15
@@ -67,7 +67,6 @@ validation:
     num_rollouts: 100
     deconstruction_size: 15
     improvement_step_type: numba_sequential
-    first_repair_uses_rollout_order: true
     insert_in_new_routes_only: true
     start_solution_params:
       num_improvement_steps: 50

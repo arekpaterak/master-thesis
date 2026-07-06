@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from core.lns.config import SearchParams
@@ -9,6 +11,7 @@ from core.problems import ProblemConfig
 
 
 class RandomDestroyMethodConfig(BaseModel):
+    type: Literal["random-destroy"] = "random-destroy"
     search: SearchParams = Field(default_factory=SearchParams)
     seed: int | None = Field(default=None, description="Optional seed for the random destroy.")
 
@@ -26,22 +29,11 @@ class RandomDestroyMethod:
             config.search, problem_name=problem.name, seed=config.seed
         )
 
-        name = _build_name(config.search)
-
         return Method(
-            name=name,
             search=config.search,
             generate_start_solution=generate_start_solution,
             improvement_step=improvement_step,
         )
-
-
-def _build_name(search: SearchParams) -> str:
-    return (
-        f"random-destroy-{search.deconstruction_size}"
-        f"+{search.repair_type}x{search.n_repairs}"
-        f"-{search.improvement_step_type}x{search.num_improvement_steps}"
-    )
 
 
 RANDOM_DESTROY_PRESETS: dict[str, RandomDestroyMethodConfig] = {

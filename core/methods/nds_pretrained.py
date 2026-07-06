@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 import torch
 from pydantic import BaseModel, Field, model_validator
@@ -9,21 +9,38 @@ from pydantic import BaseModel, Field, model_validator
 from core.lns.config import SearchParams
 from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
-from core.models.nds.config import ModelParams
+from core.models.nds.config import JointModelParams, ModelParams
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
+from core.models.nds.decoders.config import AutoregressiveDecoderConfig
+from core.models.nds.encoders.config import EncoderConfig
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
-from core.models.nds.pretrained.config import validate_encoder_matches_original_nds
+from core.models.nds.pretrained.config import (
+    ORIGINAL_NDS_ENCODING_ORDER,
+    ORIGINAL_NDS_ROUTE_AGGREGATION,
+    validate_encoder_matches_original_nds,
+)
 from core.problems import ProblemConfig
+
+
+def _original_nds_model() -> JointModelParams:
+    """The architecture matching the original NDS pretrained checkpoint."""
+    return JointModelParams(
+        encoder=EncoderConfig(
+            encoding_order=ORIGINAL_NDS_ENCODING_ORDER,
+            route_aggregation=ORIGINAL_NDS_ROUTE_AGGREGATION,
+        ),
+        decoder=AutoregressiveDecoderConfig(),
+    )
 
 
 class NDSPretrainedConfig(BaseModel):
     """Config for evaluating the original NDS pretrained checkpoint as a baseline."""
 
+    type: Literal["nds-pretrained"] = "nds-pretrained"
     checkpoint_path: Path = Field(description="Path to the original NDS .pt checkpoint.")
-    load_decoder: bool = Field(default=False, description="Whether to also load decoder weights.")
     model: ModelParams = Field(
-        default_factory=ModelParams,
+        default_factory=_original_nds_model,
         description="Architecture to instantiate before loading the checkpoint.",
     )
     search: SearchParams = Field(default_factory=SearchParams)
@@ -56,8 +73,7 @@ class NDSPretrainedMethod:
             )
 
         load_original_pretrained_encoder_weights(model.encoder, config.checkpoint_path)
-        if config.load_decoder:
-            load_original_pretrained_decoder_weights(model.decoder, config.checkpoint_path)
+        load_original_pretrained_decoder_weights(model.decoder, config.checkpoint_path)
 
         model.eval()
 
@@ -67,22 +83,8 @@ class NDSPretrainedMethod:
             deconstruction_size=config.search.deconstruction_size,
         )
         improvement_step = build_nds_improvement_step(config.search, model=model, repair=repair)
-        decoder_type = config.model.decoder.type
-        assert decoder_type in ["ar"], "Expected the original decoder"
-        hidden_tag = (
-            ""
-            if (decoder_type != "ar" or config.model.decoder.use_hidden_decoding_state)
-            else "-nohidden"
-        )
-        decoder_tag = "+decoder" if config.load_decoder else ""
-        name = (
-            f"nds-pretrained-{decoder_type}{hidden_tag}{decoder_tag}"
-            f"-d{config.search.deconstruction_size}-r{config.search.n_repairs}"
-            f"-{config.search.improvement_step_type}"
-        )
 
         return Method(
-            name=name,
             search=config.search,
             generate_start_solution=generate_start_solution,
             improvement_step=improvement_step,

@@ -1,0 +1,8 @@
+# Out-of-distribution: 200-customer CVRP.
+kind: synthetic
+problem:
+  name: cvrp
+  size: 200
+num_test_instances: 1000
+batch_size: 100
+test_seed: 2026

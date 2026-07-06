@@ -14,4 +14,3 @@ class Method:
     search: SearchParams
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution]
     improvement_step: ImprovementStep
-    name: str = "unnamed"

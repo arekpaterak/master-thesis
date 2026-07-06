@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import torch
 import yaml
@@ -15,6 +16,7 @@ from core.models.nds.improvement_step import build_nds_improvement_step
 
 
 class NDSTrainedConfig(BaseModel):
+    type: Literal["nds-trained"] = "nds-trained"
     run_dir: Path = Field(description="Path to the training run directory.")
     search: SearchParams = Field(default_factory=SearchParams)
 
@@ -51,14 +53,8 @@ class NDSTrainedMethod:
             deconstruction_size=config.search.deconstruction_size,
         )
         improvement_step = build_nds_improvement_step(config.search, model=model, repair=repair)
-        name = (
-            f"nds-{train_config.model.decoder.type}"
-            f"-d{config.search.deconstruction_size}-r{config.search.n_repairs}"
-            f"-{config.search.improvement_step_type}"
-        )
 
         return Method(
-            name=name,
             search=config.search,
             generate_start_solution=generate_start_solution,
             improvement_step=improvement_step,

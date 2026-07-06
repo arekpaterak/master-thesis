@@ -13,11 +13,14 @@ model:
     dim: 16
   decoder:
     type: ar
-    use_hidden_decoding_state: true
+    use_hidden_decoding_state: false
   encoder:
     norm_type: rms
     pre_norm: true
     ff_activation: swiglu
+  with_fusion_neighbours_encoding: true
+  with_fusion_route_encoding: true
+  num_fusion_attention_layers: 1
 
 optimizer:
   learning_rate: 1.0e-4
