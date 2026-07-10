@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import math
+from datetime import datetime
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, computed_field, model_validator
@@ -263,6 +262,15 @@ class TrainConfig(BaseModel):
     compile: CompileConfig = Field(default_factory=CompileConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
+    run_name: str = Field(
+        default="",
+        description=(
+            "Unique run identifier; also the run directory name. Generated once from the "
+            "problem and a launch timestamp when left empty, so re-running a config never "
+            "collides with a previous run. Persisted in the run's config.yml and reused on "
+            "resume."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -285,14 +293,10 @@ class TrainConfig(BaseModel):
             )
         return self
 
-    @computed_field
-    @property
-    def run_name(self) -> str:
-        config_dict = self.model_dump(
-            exclude={"logging", "validation", "amp", "compile", "run_name"}
-        )
-
-        config_json = json.dumps(config_dict, sort_keys=True)
-        h = hashlib.md5(config_json.encode()).hexdigest()[:7]
-
-        return f"{self.problem.name}{self.problem.size}-{h}"
+    @model_validator(mode="after")
+    def _assign_run_name(self) -> Self:
+        """Generate a unique timestamped run name once, unless one was supplied."""
+        if not self.run_name:
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            self.run_name = f"{self.problem.name}{self.problem.size}-{timestamp}"
+        return self
