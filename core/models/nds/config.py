@@ -151,7 +151,7 @@ class TrainerParams(BaseModel):
         description="Number of gradient-bearing improvement steps per batch.",
     )
     checkpoint_every_n_epochs: int = Field(
-        default=10,
+        default=1,
         title="Checkpoint every N epochs",
         description="Save a checkpoint every N epochs (always saves the last epoch).",
     )
@@ -175,7 +175,7 @@ class ValidationConfig(BaseModel):
     )
     batch_size: int = Field(default=20, title="Batch size", description="Batch size.")
     every_n_epochs: int = Field(
-        default=10, title="Every N epochs", description="Run validation every N training epochs."
+        default=1, title="Every N epochs", description="Run validation every N training epochs."
     )
     seed: int = Field(
         default=42, title="Seed", description="Fixed seed for reproducible validation instances."

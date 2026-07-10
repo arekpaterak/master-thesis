@@ -30,6 +30,23 @@ class SimpleOnePassDecoderConfig(_DecoderConfigBase):
     type: Literal["simple"] = "simple"
 
 
+class SinkhornDeduplicationConfig(BaseModel):
+    iterations: int = Field(
+        default=20,
+        title="Sinkhorn iterations",
+        description="Number of Sinkhorn row/column iterations.",
+    )
+    tau: float = Field(
+        default=0.05,
+        title="Sinkhorn temperature",
+        description="Sinkhorn temperature; smaller sharpens toward a hard distinct assignment.",
+    )
+
+
+# None means no deduplication: slots are sampled independently (duplicates possible).
+DeduplicationConfig = SinkhornDeduplicationConfig | None
+
+
 class SlotDecoderConfig(_DecoderConfigBase):
     type: Literal["slot"] = "slot"
     num_slots: int = Field(
@@ -43,6 +60,15 @@ class SlotDecoderConfig(_DecoderConfigBase):
         description=(
             "Where to apply self-attention among slot queries: disabled, before node "
             "cross-attention, or after node cross-attention."
+        ),
+    )
+    deduplication: DeduplicationConfig = Field(
+        default_factory=SinkhornDeduplicationConfig,
+        title="Slot deduplication",
+        description=(
+            "How to couple slots so they select distinct nodes. null samples each slot "
+            "independently (duplicates possible); a Sinkhorn config normalizes the "
+            "per-slot score matrix so slots compete for distinct nodes."
         ),
     )
 

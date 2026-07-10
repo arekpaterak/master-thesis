@@ -34,7 +34,7 @@ trainer:
 
 search:
   repair_type: greedy_insert
-  num_improvement_steps: 0
+  num_improvement_steps: 10
   num_rollouts: 128
   deconstruction_size: 15
   improvement_step_type: numba_sequential
@@ -42,7 +42,7 @@ search:
   insert_in_new_routes_only: true
   first_repair_uses_rollout_order: true
   start_solution_params:
-    num_improvement_steps: 0
+    num_improvement_steps: 50
     deconstruction_size: 15
   acceptance:
     type: greedy
@@ -71,7 +71,7 @@ validation:
     improvement_step_type: numba_sequential
     insert_in_new_routes_only: true
     start_solution_params:
-      num_improvement_steps: 0
+      num_improvement_steps: 50
       deconstruction_size: 15
     n_repairs: 5
     acceptance:

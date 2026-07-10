@@ -1,8 +1,12 @@
 import pytest
 import torch
 
-from core.models.nds.decoders.config import SlotDecoderConfig
+from core.models.nds.decoders.config import (
+    SinkhornDeduplicationConfig,
+    SlotDecoderConfig,
+)
 from core.models.nds.decoders.factory import build_decoder
+from core.models.nds.decoders.one_pass.deduplication import SinkhornDeduplicator
 from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
 from core.models.nds.decoders.one_pass.slot import SlotDecoder
 
@@ -23,7 +27,7 @@ def _simple(with_poly=True):
     ), {}
 
 
-def _slot(slot_self_attention="post", with_poly=True):
+def _slot(slot_self_attention="post", with_poly=True, deduplication=None):
     return SlotDecoder(
         hidden_dim=HIDDEN_DIM,
         seed_dim=SEED_DIM,
@@ -31,13 +35,19 @@ def _slot(slot_self_attention="post", with_poly=True):
         num_heads=NUM_HEADS,
         num_slots=M,
         slot_self_attention=slot_self_attention,
+        deduplication=deduplication,
         with_poly=with_poly,
     ), {}
+
+
+def _slot_sinkhorn(with_poly=True):
+    return _slot(with_poly=with_poly, deduplication=SinkhornDeduplicationConfig())
 
 
 DECODERS = [
     pytest.param(_simple, id="gumbel"),
     pytest.param(_slot, id="slot"),
+    pytest.param(_slot_sinkhorn, id="slot_sinkhorn"),
 ]
 
 
@@ -132,3 +142,57 @@ def test_slot_self_attention_config_is_wired_to_factory(slot_self_attention):
 
     assert isinstance(decoder, SlotDecoder)
     assert decoder.slot_self_attention == slot_self_attention
+
+
+def test_sinkhorn_deduplication_config_is_wired_to_factory():
+    decoder = build_decoder(
+        SlotDecoderConfig(
+            num_slots=M,
+            deduplication=SinkhornDeduplicationConfig(iterations=10, tau=0.1),
+        ),
+        hidden_dim=HIDDEN_DIM,
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+        num_heads=NUM_HEADS,
+    )
+
+    assert isinstance(decoder, SlotDecoder)
+    assert isinstance(decoder.deduplicator, SinkhornDeduplicator)
+    assert decoder.deduplicator.iterations == 10
+    assert decoder.deduplicator.tau == 0.1
+
+
+def test_no_deduplication_config_is_wired_to_factory():
+    decoder = build_decoder(
+        SlotDecoderConfig(num_slots=M, deduplication=None),
+        hidden_dim=HIDDEN_DIM,
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+        num_heads=NUM_HEADS,
+    )
+
+    assert isinstance(decoder, SlotDecoder)
+    assert decoder.deduplicator is None
+
+
+def test_sinkhorn_reduces_duplicate_selections():
+    torch.manual_seed(0)
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    def duplicate_count(decoder):
+        actions = decoder.rollout(
+            h_nodes=h_nodes,
+            seed=seed,
+            action_mask=action_mask,
+            deconstruction_size=M,
+            greedy=True,
+        ).actions  # (B, R, M)
+        return sum(M - row.unique().numel() for row in actions.reshape(-1, M))
+
+    baseline, _ = _slot()
+    sinkhorn, _ = _slot_sinkhorn()
+    sinkhorn.load_state_dict(baseline.state_dict())  # share weights, isolate coupling
+
+    assert duplicate_count(sinkhorn) <= duplicate_count(baseline)

@@ -39,6 +39,7 @@ class CompatibilityScorer(nn.Module):
         h_nodes: torch.Tensor,
         mask: torch.Tensor,
         temperature: float = 1.0,
+        log_softmax: bool = True,
     ) -> torch.Tensor:
         """
         Scores queries from the context against per-instance keys (the nodes).
@@ -57,9 +58,12 @@ class CompatibilityScorer(nn.Module):
             h_nodes: Node embeddings used as keys, (B, num_nodes, d).
             mask: Boolean mask broadcastable to (B, *q, num_nodes); True = masked out.
             temperature (float): Softmax temperature. Defaults to 1.0.
+            log_softmax (bool): If True (default), return log-probabilities. If False,
+                return the raw masked logits (masked entries at -inf) without the final
+                log_softmax, for callers that renormalize themselves .
 
         Returns:
-            Log-probabilities, (B, *q, num_nodes).
+            Log-probabilities if ``log_softmax`` else raw masked logits, (B, *q, num_nodes).
         """
         Q = self.W_Q(h_context)  # (B, *q, d)
         K = self.W_K(h_nodes)  # (B, num_nodes, d)
@@ -87,4 +91,6 @@ class CompatibilityScorer(nn.Module):
         u = self.C * torch.tanh(u)  # (B, *q, num_nodes)
         u = u / temperature
         u = u.masked_fill(mask, float("-inf"))  # broadcast mask, fill forbidden keys
+        if not log_softmax:
+            return u  # (B, *q, num_nodes) raw masked logits
         return F.log_softmax(u, dim=-1)  # (B, *q, num_nodes)

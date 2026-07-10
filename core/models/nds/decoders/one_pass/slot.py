@@ -8,9 +8,11 @@ import torch.nn as nn
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
+from core.models.nds.decoders.config import DeduplicationConfig
 from core.models.rollout import Rollout
 
 from .base import OnePassDestroyDecoder
+from .deduplication import build_deduplicator
 
 
 class SlotDecoder(OnePassDestroyDecoder):
@@ -34,6 +36,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         num_heads: int,
         num_slots: int,
         slot_self_attention: Literal["none", "pre", "post"] = "post",
+        deduplication: DeduplicationConfig = None,
         with_poly: bool = True,
         C: float = 10.0,
     ):
@@ -43,6 +46,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         self._seed_dim = seed_dim
         self.num_slots = num_slots
         self.slot_self_attention = slot_self_attention
+        self.deduplicator = build_deduplicator(deduplication)
         self.with_poly = with_poly
 
         self.slot_queries = nn.Parameter(torch.empty(num_slots, hidden_dim))
@@ -107,9 +111,14 @@ class SlotDecoder(OnePassDestroyDecoder):
 
         # Nodes are shared across rollouts and slots: pass them un-expanded and let the
         # scorer fold (R, M) into its query axes. The mask broadcasts via (B, 1, 1, N).
-        return self.scorer(
-            h_context=context, h_nodes=h_nodes, mask=action_mask[:, None, None]
+        node_mask = action_mask[:, None, None]  # (B, 1, 1, N)
+        if self.deduplicator is None:
+            return self.scorer(h_context=context, h_nodes=h_nodes, mask=node_mask)  # (B, R, M, N)
+
+        raw_logits = self.scorer(
+            h_context=context, h_nodes=h_nodes, mask=node_mask, log_softmax=False
         )  # (B, R, M, N)
+        return self.deduplicator(raw_logits, node_mask=node_mask)  # (B, R, M, N)
 
     def rollout(
         self,
