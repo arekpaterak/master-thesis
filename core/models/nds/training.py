@@ -18,6 +18,7 @@ from core.models.nds.factory import NDSModel
 from core.models.nds.models.split import SplitNDSModel
 from core.models.nds.policy_loss import PolicyLoss
 from core.models.nds.reward import Reward
+from core.models.nds.utils import diversity_overlap, unique_rollouts
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -92,6 +93,8 @@ class BatchTrainSummary(BaseModel):
     reward_std: float
     acceptance_rate: float
     unique_actions_ratio: float
+    diversity_overlap: float
+    unique_rollouts: float
     objective_start: float
     objective_before: float
     objective_after: float
@@ -113,11 +116,14 @@ class EpochTrainSummary(BaseModel):
     reward_std: float
     acceptance_rate: float
     unique_actions_ratio: float
+    diversity_overlap: float
+    unique_rollouts: float
     objective_start: float
     objective_before: float
     objective_after: float
     grad_norm: float
     batch_time_sec: float
+    epoch_time_sec: float
     instances_per_sec: float
 
     @computed_field
@@ -141,6 +147,8 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_reward_std = 0.0
         self._total_acceptance_rate = 0.0
         self._total_unique_actions_ratio = 0.0
+        self._total_diversity_overlap = 0.0
+        self._total_unique_rollouts = 0.0
         self._total_objective_start = 0.0
         self._total_objective_before = 0.0
         self._total_objective_after = 0.0
@@ -161,6 +169,8 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_reward_std += summary.reward_std * n
         self._total_acceptance_rate += summary.acceptance_rate * n
         self._total_unique_actions_ratio += summary.unique_actions_ratio * n
+        self._total_diversity_overlap += summary.diversity_overlap * n
+        self._total_unique_rollouts += summary.unique_rollouts * n
         self._total_objective_start += summary.objective_start * n
         self._total_objective_before += summary.objective_before * n
         self._total_objective_after += summary.objective_after * n
@@ -179,11 +189,14 @@ class EpochTrainAccumulator(EpochAccumulator):
             reward_std=self._total_reward_std / n,
             acceptance_rate=self._total_acceptance_rate / n,
             unique_actions_ratio=self._total_unique_actions_ratio / n,
+            diversity_overlap=self._total_diversity_overlap / n,
+            unique_rollouts=self._total_unique_rollouts / n,
             objective_start=self._total_objective_start / n,
             objective_before=self._total_objective_before / n,
             objective_after=self._total_objective_after / n,
             grad_norm=self._total_grad_norm / n,
             batch_time_sec=self._total_batch_time / self._total_batches,
+            epoch_time_sec=self._total_batch_time,
             instances_per_sec=self._total_instances / self._total_time,
         )
 
@@ -244,6 +257,8 @@ def configure_training_step(
         total_reward_std = 0.0
         total_acceptance_rate = 0.0
         total_unique_actions_ratio = 0.0
+        total_diversity_overlap = 0.0
+        total_unique_rollouts = 0.0
 
         # Encode the static instance once and reuse it across improvement steps, or
         # recompute it every step. See EncodeOncePass / RecomputePass.
@@ -313,6 +328,8 @@ def configure_training_step(
             total_unique_actions_ratio += (
                 is_unique.float().sum(dim=-1).mean().item() / deconstruction_size
             )
+            total_diversity_overlap += diversity_overlap(rollout.actions)
+            total_unique_rollouts += unique_rollouts(rollout.actions)
 
         encoder_pass.finish()
 
@@ -341,6 +358,8 @@ def configure_training_step(
             reward_std=total_reward_std / num_main_improvement_steps,
             acceptance_rate=total_acceptance_rate / num_main_improvement_steps,
             unique_actions_ratio=total_unique_actions_ratio / num_main_improvement_steps,
+            diversity_overlap=total_diversity_overlap / num_main_improvement_steps,
+            unique_rollouts=total_unique_rollouts / num_main_improvement_steps,
             objective_start=objective_start,
             objective_before=objective_before,
             objective_after=objective_after,

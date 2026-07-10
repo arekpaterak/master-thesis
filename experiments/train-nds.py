@@ -800,6 +800,7 @@ def _(config, is_script_mode, model, resume_run_dir, run_button):
             allow_val_change=True,
         )
         wandb.define_metric("val/*", step_metric="epoch")
+        wandb.define_metric("train/epoch_time_sec", step_metric="epoch")
     return find_latest_checkpoint, initial_epoch, run_dir
 
 
@@ -852,6 +853,8 @@ def _(
             wandb.log({f"train/{k}": v for k, v in summary.model_dump().items()})
 
     def on_epoch_train_end(summary: EpochTrainSummary):
+        if config.logging.wandb_project:
+            wandb.log({"train/epoch_time_sec": summary.epoch_time_sec, "epoch": summary.epoch})
         is_last = summary.epoch == config.trainer.epochs - 1
         is_checkpoint = (summary.epoch + 1) % config.trainer.checkpoint_every_n_epochs == 0
         if is_last or is_checkpoint:
@@ -884,8 +887,11 @@ def _(
                 "val/improvement": val_summary.improvement,
                 "val/relative_improvement": val_summary.relative_improvement,
                 "val/batch_time_sec": val_summary.batch_time_sec,
+                "val/epoch_time_sec": val_summary.epoch_time_sec,
                 "val/instances_per_sec": val_summary.instances_per_sec,
                 "val/steps_to_best": val_summary.steps_to_best,
+                "val/diversity_overlap": val_summary.diversity_overlap,
+                "val/unique_rollouts": val_summary.unique_rollouts,
                 "val/objective_curve": wandb.plot.line_series(
                     xs=val_summary.step_labels,
                     ys=[val_summary.objective_curve],

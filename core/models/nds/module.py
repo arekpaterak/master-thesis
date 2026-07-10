@@ -24,6 +24,7 @@ from core.models.nds.training import (
     EpochTrainAccumulator,
     configure_training_step,
 )
+from core.models.nds.utils import RolloutMetricsRecorder
 from core.models.nds.validation import (
     BatchValidationSummary,
     EpochValidationAccumulator,
@@ -121,8 +122,12 @@ class NDSModule(Module):
             improvement_step_progress=improvement_step_progress,
         )
 
+        validation_rollout_recorder = RolloutMetricsRecorder()
         validation_improvement_step = build_nds_improvement_step(
-            config.validation.search, model=model, repair=repair
+            config.validation.search,
+            model=model,
+            repair=repair,
+            recorder=validation_rollout_recorder,
         )
 
         self._validation_step_fn = configure_validation_step(
@@ -133,6 +138,7 @@ class NDSModule(Module):
             amp_enabled=amp_enabled,
             amp_dtype=amp_dtype,
             step_progress=validation_improvement_step_progress,
+            rollout_recorder=validation_rollout_recorder,
         )
 
     def parameters(self) -> Iterator[nn.Parameter]:

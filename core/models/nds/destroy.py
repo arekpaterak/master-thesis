@@ -4,6 +4,7 @@ import torch
 
 from core.lns.operators.destroy.base import NodeDestroyOperator
 from core.models.nds.factory import NDSModel
+from core.models.nds.utils import RolloutMetricsRecorder
 from core.problems.solution import BaseSolution
 
 
@@ -13,6 +14,7 @@ class ModelNodeDestroy[S: BaseSolution](NodeDestroyOperator[S]):
     ``select_nodes`` runs the model forward pass and returns all rollouts at once
     as ``[*batch_size, R, M]``. ``__call__`` is not supported; improvement steps
     must use ``select_nodes`` directly.
+    An optional ``recorder`` captures the rollout actions.
     """
 
     def __init__(
@@ -20,10 +22,12 @@ class ModelNodeDestroy[S: BaseSolution](NodeDestroyOperator[S]):
         model: NDSModel,
         deconstruction_size: int,
         stitch: bool = False,
+        recorder: RolloutMetricsRecorder | None = None,
     ) -> None:
         self._model = model
         self._deconstruction_size = deconstruction_size
         self.stitch = stitch
+        self._recorder = recorder
 
     @torch.no_grad()
     def select_nodes(self, solution: S, num_rollouts: int) -> torch.Tensor:
@@ -35,6 +39,8 @@ class ModelNodeDestroy[S: BaseSolution](NodeDestroyOperator[S]):
             deconstruction_size=self._deconstruction_size,
             greedy=False,
         )
+        if self._recorder is not None:
+            self._recorder.record(rollout.actions)
         return rollout.actions
 
     def __call__(self, solution: S) -> S:

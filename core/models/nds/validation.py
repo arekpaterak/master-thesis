@@ -11,6 +11,7 @@ from core.lns.improvement_step import ImprovementStep
 from core.methods.base import Method
 from core.models.module import EpochAccumulator
 from core.models.nds.models import NDSModel
+from core.models.nds.utils import RolloutMetricsRecorder
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 from core.solve import solve
@@ -27,6 +28,8 @@ class BatchValidationSummary(BaseModel):
     objective_curve: list[float]
     step_labels: list[int]
     snapshots: list[BaseSolution]
+    diversity_overlap: float
+    unique_rollouts: float
 
 
 class EpochValidationSummary(BaseModel):
@@ -36,10 +39,13 @@ class EpochValidationSummary(BaseModel):
     objective_initial: float
     objective_final: float
     batch_time_sec: float
+    epoch_time_sec: float
     instances_per_sec: float
     objective_curve: list[float]
     step_labels: list[int]
     snapshots: list[BaseSolution]
+    diversity_overlap: float
+    unique_rollouts: float
 
     @computed_field
     @property
@@ -67,6 +73,8 @@ class EpochValidationAccumulator(EpochAccumulator):
         self._total_objective_initial = 0.0
         self._total_objective_final = 0.0
         self._total_batch_time = 0.0
+        self._total_diversity_overlap = 0.0
+        self._total_unique_rollouts = 0.0
         self._weighted_curve: list[float] = []
         self._step_labels: list[int] = []
         self._snapshots: list[BaseSolution] = []
@@ -78,6 +86,8 @@ class EpochValidationAccumulator(EpochAccumulator):
         self._total_objective_initial += summary.objective_initial * n
         self._total_objective_final += summary.objective_final * n
         self._total_batch_time += summary.batch_time_sec
+        self._total_diversity_overlap += summary.diversity_overlap * n
+        self._total_unique_rollouts += summary.unique_rollouts * n
         if not self._weighted_curve:
             self._weighted_curve = [v * n for v in summary.objective_curve]
             self._step_labels = summary.step_labels
@@ -93,10 +103,13 @@ class EpochValidationAccumulator(EpochAccumulator):
             objective_initial=self._total_objective_initial / n,
             objective_final=self._total_objective_final / n,
             batch_time_sec=self._total_batch_time / self._total_batches,
+            epoch_time_sec=self._total_batch_time,
             instances_per_sec=self._total_instances / self._total_batch_time,
             objective_curve=[v / n for v in self._weighted_curve],
             step_labels=self._step_labels,
             snapshots=self._snapshots,
+            diversity_overlap=self._total_diversity_overlap / n,
+            unique_rollouts=self._total_unique_rollouts / n,
         )
 
 
@@ -109,6 +122,7 @@ def configure_validation_step(
     amp_enabled: bool = False,
     amp_dtype: torch.dtype = torch.float16,
     step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
+    rollout_recorder: RolloutMetricsRecorder | None = None,
 ) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
     snapshot_step_set = {0}
     if capture_snapshots_every_n_improvement_steps is not None:
@@ -148,6 +162,9 @@ def configure_validation_step(
                 snapshots.append(_unbatch_first(solution))
                 objective_curve.append(solution.objective().mean().item())
 
+        if rollout_recorder is not None:
+            rollout_recorder.reset()
+
         start = time.perf_counter()
         with (
             torch.no_grad(),
@@ -165,6 +182,8 @@ def configure_validation_step(
             objective_curve=objective_curve,
             step_labels=sorted(snapshot_step_set),
             snapshots=snapshots,
+            diversity_overlap=rollout_recorder.diversity_overlap if rollout_recorder else 0.0,
+            unique_rollouts=rollout_recorder.unique_rollouts if rollout_recorder else 0.0,
         )
 
     return validation_step

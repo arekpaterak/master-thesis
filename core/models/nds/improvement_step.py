@@ -9,6 +9,7 @@ from core.lns.improvement_step import (
 )
 from core.lns.operators.repair.base import RepairOperator
 from core.models.nds.factory import NDSModel
+from core.models.nds.utils import RolloutMetricsRecorder
 
 
 def build_nds_improvement_step(
@@ -17,6 +18,7 @@ def build_nds_improvement_step(
     model: NDSModel,
     repair: RepairOperator,
     seed: int = 0,
+    recorder: RolloutMetricsRecorder | None = None,
 ) -> ImprovementStep:
     """Create a :class:`ModelNodeDestroy` and wire it to the appropriate LNS improvement step."""
     from core.models.nds.destroy import ModelNodeDestroy
@@ -25,6 +27,7 @@ def build_nds_improvement_step(
         model=model,
         deconstruction_size=search.deconstruction_size,
         stitch=repair.requires_stitch,
+        recorder=recorder,
     )
     match search.improvement_step_type:
         case "sequential":
