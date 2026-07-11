@@ -40,7 +40,6 @@ def build_decoder(
                 **shared,
                 num_slots=decoder_config.num_slots,
                 slot_self_attention=decoder_config.slot_self_attention,
-                deduplication=decoder_config.deduplication,
             )
         case _:
             raise ValueError(f"Unknown decoder config: {type(decoder_config).__name__}")

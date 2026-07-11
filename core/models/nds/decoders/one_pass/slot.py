@@ -8,23 +8,22 @@ import torch.nn as nn
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
-from core.models.nds.decoders.config import DeduplicationConfig
 from core.models.rollout import Rollout
 
 from .base import OnePassDestroyDecoder
-from .deduplication import build_deduplicator
 
 
 class SlotDecoder(OnePassDestroyDecoder):
-    """Destroy decoder using M independent learned slot queries conditioned on the seed.
+    """Destroy decoder using M learned slot queries conditioned on the seed.
 
     Each slot has a dedicated learned query vector (nn.Parameter) that specialises
     during training. The seed is incorporated via poly_net as a residual after MHA,
     adding stochastic conditioning per rollout - the same pattern as SimpleOnePassDecoder.
 
-    Slots attend to all nodes independently and each samples one node (Categorical),
-    so selections are with replacement and duplicates can occur. The joint
-    log-probability is the sum of M independent per-slot log-probabilities.
+    The M slots score all nodes in one pass, then ``rollout`` samples them sequentially:
+    each slot draws from its own softmax over the still-available nodes, and the chosen
+    node is masked out for the later slots. This yields M distinct nodes with an
+    autoregressive joint log-probability.
     """
 
     def __init__(
@@ -36,7 +35,6 @@ class SlotDecoder(OnePassDestroyDecoder):
         num_heads: int,
         num_slots: int,
         slot_self_attention: Literal["none", "pre", "post"] = "post",
-        deduplication: DeduplicationConfig = None,
         with_poly: bool = True,
         C: float = 10.0,
     ):
@@ -46,7 +44,6 @@ class SlotDecoder(OnePassDestroyDecoder):
         self._seed_dim = seed_dim
         self.num_slots = num_slots
         self.slot_self_attention = slot_self_attention
-        self.deduplicator = build_deduplicator(deduplication)
         self.with_poly = with_poly
 
         self.slot_queries = nn.Parameter(torch.empty(num_slots, hidden_dim))
@@ -111,14 +108,11 @@ class SlotDecoder(OnePassDestroyDecoder):
 
         # Nodes are shared across rollouts and slots: pass them un-expanded and let the
         # scorer fold (R, M) into its query axes. The mask broadcasts via (B, 1, 1, N).
+        # Return raw scores; rollout normalizes each slot over the still-available nodes.
         node_mask = action_mask[:, None, None]  # (B, 1, 1, N)
-        if self.deduplicator is None:
-            return self.scorer(h_context=context, h_nodes=h_nodes, mask=node_mask)  # (B, R, M, N)
-
-        raw_logits = self.scorer(
+        return self.scorer(
             h_context=context, h_nodes=h_nodes, mask=node_mask, log_softmax=False
         )  # (B, R, M, N)
-        return self.deduplicator(raw_logits, node_mask=node_mask)  # (B, R, M, N)
 
     def rollout(
         self,
@@ -133,28 +127,34 @@ class SlotDecoder(OnePassDestroyDecoder):
         # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
         assert deconstruction_size == self.num_slots
 
-        logits_per_slot = self.forward(
+        scores = self.forward(
             h_nodes=h_nodes, seed=seed, action_mask=action_mask
-        )  # (B, R, M, N)
+        )  # (B, R, M, N) raw, forbidden nodes at -inf
+        B, R, M, N = scores.shape
 
-        if greedy:
-            selected = logits_per_slot.argmax(dim=-1)  # (B, R, M)
-        else:
-            # Sample one node per slot (independent Categorical, with possible duplicates)
-            selected = torch.distributions.Categorical(
-                logits=logits_per_slot.detach()
-            ).sample()  # (B, R, M)
+        # Sample slots sequentially, masking each chosen node out of the later slots so the
+        # selected nodes are distinct. The joint log-prob is the autoregressive sum.
+        already_selected = torch.zeros(B, R, N, dtype=torch.bool, device=scores.device)
+        selected, log_probs, entropies, entropies_norm = [], [], [], []
+        for slot in range(M):
+            log_p = torch.log_softmax(
+                scores[:, :, slot, :].masked_fill(already_selected, float("-inf")), dim=-1
+            )  # (B, R, N)
+            if greedy:
+                idx = log_p.argmax(dim=-1)  # (B, R)
+            else:
+                idx = torch.distributions.Categorical(logits=log_p).sample()  # (B, R)
 
-        log_p_of_selected = logits_per_slot.gather(-1, selected.unsqueeze(-1)).squeeze(
-            -1
-        )  # (B, R, M)
-
-        # Mean entropy across slots, each slot has an independent distribution over N nodes
-        per_slot_entropy = entropy(logits_per_slot)  # (B, R, M)
+            selected.append(idx)
+            log_probs.append(log_p.gather(-1, idx.unsqueeze(-1)).squeeze(-1))  # (B, R)
+            step_entropy = entropy(log_p)
+            entropies.append(step_entropy.entropy.detach())
+            entropies_norm.append(step_entropy.entropy_norm.detach())
+            already_selected = already_selected.scatter(-1, idx.unsqueeze(-1), True)
 
         return Rollout.create(
-            actions=selected,
-            log_prob=log_p_of_selected.sum(dim=-1),
-            entropy=per_slot_entropy.entropy.mean(dim=-1).detach(),
-            entropy_norm=per_slot_entropy.entropy_norm.mean(dim=-1).detach(),
+            actions=torch.stack(selected, dim=-1),  # (B, R, M)
+            log_prob=torch.stack(log_probs, dim=-1).sum(dim=-1),  # (B, R)
+            entropy=torch.stack(entropies, dim=-1).mean(dim=-1),
+            entropy_norm=torch.stack(entropies_norm, dim=-1).mean(dim=-1),
         )
