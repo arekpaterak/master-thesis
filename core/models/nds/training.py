@@ -9,10 +9,8 @@ from pydantic import BaseModel, computed_field
 
 from core.lns.acceptance_criterion import GreedyAcceptance
 from core.lns.improvement_step import ImprovementStep
-from core.lns.operators.repair import RepairOperator
-from core.lns.utils import best_repair
 from core.models.module import EpochAccumulator
-from core.models.nds.apply_rollout import apply_rollout as default_apply_rollout
+from core.models.nds.apply_and_repair import ApplyAndRepair
 from core.models.nds.baseline import Baseline
 from core.models.nds.factory import NDSModel
 from core.models.nds.models.split import SplitNDSModel
@@ -102,6 +100,18 @@ class BatchTrainSummary(BaseModel):
     batch_time_sec: float
     instances_per_sec: float
 
+    @computed_field
+    @property
+    def improvement(self) -> float:
+        return self.objective_start - self.objective_after
+
+    @computed_field
+    @property
+    def relative_improvement(self) -> float:
+        if self.objective_start == 0.0:
+            return 0.0
+        return self.improvement / self.objective_start
+
 
 class EpochTrainSummary(BaseModel):
     model_config = {"frozen": True}
@@ -129,7 +139,14 @@ class EpochTrainSummary(BaseModel):
     @computed_field
     @property
     def improvement(self) -> float:
-        return self.objective_before - self.objective_after
+        return self.objective_start - self.objective_after
+
+    @computed_field
+    @property
+    def relative_improvement(self) -> float:
+        if self.objective_start == 0.0:
+            return 0.0
+        return self.improvement / self.objective_start
 
 
 class EpochTrainAccumulator(EpochAccumulator):
@@ -208,12 +225,10 @@ def configure_training_step(
     deconstruction_size: int,
     generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
     improvement_step: ImprovementStep,
-    apply_rollout: Callable[[BaseSolution, Rollout], BaseSolution] | None = None,
+    apply_and_repair: ApplyAndRepair,
     compute_reward: Reward,
     policy_loss: PolicyLoss,
     baseline: Baseline,
-    repair: RepairOperator,
-    n_repairs: int = 1,
     rollouts_per_solution: int = 1,
     amp_enabled: bool = False,
     amp_dtype: torch.dtype = torch.float16,
@@ -221,8 +236,6 @@ def configure_training_step(
     encode_once: bool = False,
     improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> Callable[[NDSModel, optim.Optimizer, BaseProblemInstance], BatchTrainSummary]:
-    _apply_rollout = default_apply_rollout if apply_rollout is None else apply_rollout
-
     def training_step(
         model: NDSModel,
         optimizer: optim.Optimizer,
@@ -276,9 +289,8 @@ def configure_training_step(
                     greedy=False,
                 )
 
-                solution_deconstructed = _apply_rollout(solution, rollout)
-                assert solution_deconstructed.batch_dims == 2
-                solution_prime = best_repair(repair, solution_deconstructed, n_repairs)
+                solution_prime = apply_and_repair(solution, rollout)
+                assert solution_prime.batch_dims == 2
 
                 step_objective_before = solution.objective()
                 objective_after = solution_prime.objective()

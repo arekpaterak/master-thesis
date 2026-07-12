@@ -4,7 +4,7 @@ import torch
 
 from core.lns.acceptance_criterion import GreedyAcceptance, SimulatedAnnealingAcceptance
 from core.lns.improvement_step import NumbaSequentialImprovementStep
-from core.lns.numba_kernels.cvrp_sequential_improvement_step import run_with_removals
+from core.lns.numba_kernels.cvrp_apply_and_repair import apply_and_repair_sequential
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
 from core.problems.cvrp import CVRP, CVRPSampler
@@ -122,14 +122,16 @@ def _two_route_problem() -> dict:
 
 class TestInsertInNewRoutesOnly:
     def test_unrestricted_pulls_customer_into_untouched_route(self) -> None:
-        next_out, _ = run_with_removals(**_two_route_problem(), insert_in_new_routes_only=False)
+        next_out, _ = apply_and_repair_sequential(
+            **_two_route_problem(), insert_in_new_routes_only=False
+        )
 
         # Geometry check: without the restriction, customer 1 lands next to customer 3,
         # i.e. inside the route it did not come from.
         assert next_out[0, 1] == 3
 
     def test_restricted_keeps_customer_out_of_untouched_route(self) -> None:
-        next_out, prev_out = run_with_removals(
+        next_out, prev_out = apply_and_repair_sequential(
             **_two_route_problem(), insert_in_new_routes_only=True
         )
 

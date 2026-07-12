@@ -71,6 +71,11 @@ class SearchParams(BaseModel):
         title="Improvement step type",
         description="Improvement step variant.",
     )
+    apply_and_repair_backend: Literal["torch", "numba"] = Field(
+        default="numba",
+        title="Apply-and-repair backend",
+        description=("Backend for the training deconstruct+repair of each rollout."),
+    )
     insert_in_new_routes_only: bool = Field(
         default=False,
         title="Insert in new routes only",

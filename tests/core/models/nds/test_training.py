@@ -43,6 +43,36 @@ def test_train():
     assert seen_epochs == [0, 1]
 
 
+def test_train_with_numba_apply_and_repair_backend():
+    """End-to-end training step with the numba apply-and-repair backend."""
+    B, R, N = 4, 10, 20
+    sampler = CVRPSampler(CVRP.for_n(N))
+    model = JointNDSModel(problem_name="cvrp")
+
+    nds_module = NDSModule(
+        config=TrainConfig(
+            trainer=TrainerParams(
+                num_main_improvement_steps=3,
+            ),
+            search=SearchParams(
+                repair_type="greedy_insert",
+                num_improvement_steps=0,
+                num_rollouts=R,
+                deconstruction_size=15,
+                apply_and_repair_backend="numba",
+                start_solution_params=StartSolutionParams(num_improvement_steps=0),
+            ),
+        ),
+        model=model,
+    )
+    optimizer = torch.optim.AdamW(nds_module.parameters())
+
+    summary = nds_module.training_step(optimizer=optimizer, instance=sampler(B))
+
+    assert summary.loss == summary.loss  # not NaN
+    assert summary.objective_after > 0
+
+
 def test_train_with_amp_enabled():
     B, R, N = 4, 10, 20
     sampler = CVRPSampler(CVRP.for_n(N))

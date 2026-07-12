@@ -158,13 +158,13 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         accept_kind: int,
         temperature: float,
     ) -> CVRPGraphSolution:
-        from core.lns.numba_kernels.cvrp_sequential_improvement_step import (
-            run_with_removals as cvrp_improvement_step,
+        from core.lns.numba_kernels.cvrp_apply_and_repair import (
+            apply_and_repair_sequential as cvrp_apply_and_repair_sequential,
         )
         from core.problems.cvrp.graph_solution import CVRPGraphSolution
 
         next_np, prev_np, locations, demand, capacity = solution.to_numpy_arrays()
-        next_out, prev_out = cvrp_improvement_step(
+        next_out, prev_out = cvrp_apply_and_repair_sequential(
             next=next_np,
             prev=prev_np,
             nodes_to_remove=nodes_to_remove,
@@ -194,8 +194,8 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         accept_kind: int,
         temperature: float,
     ) -> TSPGraphSolution:
-        from core.lns.numba_kernels.tsp_sequential_improvement_step import (
-            run_with_removals as tsp_improvement_step,
+        from core.lns.numba_kernels.tsp_apply_and_repair import (
+            apply_and_repair_sequential as tsp_apply_and_repair_sequential,
         )
         from core.problems.tsp.graph_solution import TSPGraphSolution
 
@@ -206,7 +206,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
             )
 
         next_np, prev_np, locations = solution.to_numpy_arrays()
-        next_out, prev_out = tsp_improvement_step(
+        next_out, prev_out = tsp_apply_and_repair_sequential(
             next=next_np,
             prev=prev_np,
             nodes_to_remove=nodes_to_remove,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 from collections.abc import Callable, Iterable, Iterator
 
 import torch
@@ -10,7 +9,7 @@ import torch.optim as optim
 from core.lns.operators.repair import RepairOperator
 from core.lns.start_solution import with_warmup
 from core.models.module import Module
-from core.models.nds.apply_rollout import apply_rollout
+from core.models.nds.apply_and_repair import build_apply_and_repair
 from core.models.nds.baseline import build_baseline
 from core.models.nds.config import TrainConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
@@ -92,12 +91,6 @@ class NDSModule(Module):
                 config.validation.search.deconstruction_size,
             ),
         )
-        apply_rollout_fn = (
-            functools.partial(apply_rollout, stitch=True)
-            if repair.requires_stitch
-            else apply_rollout
-        )
-
         training_improvement_step = build_nds_improvement_step(
             config.search, model=model, repair=repair
         )
@@ -109,12 +102,10 @@ class NDSModule(Module):
             deconstruction_size=config.search.deconstruction_size,
             generate_start_solution=generate_training_start_solution,
             improvement_step=training_improvement_step,
-            apply_rollout=apply_rollout_fn,
+            apply_and_repair=build_apply_and_repair(config.search, repair=repair),
             compute_reward=build_reward(config.reward),
             policy_loss=build_policy_loss(config.loss),
             baseline=build_baseline(config.baseline),
-            repair=repair,
-            n_repairs=config.search.n_repairs,
             amp_enabled=amp_enabled,
             amp_dtype=amp_dtype,
             scaler=self._scaler,

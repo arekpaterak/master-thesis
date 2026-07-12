@@ -170,13 +170,13 @@ def configure_validation_step(
             torch.no_grad(),
             torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled),
         ):
-            final = solve(method, instance, on_step=on_step, step_progress=step_progress)
+            solution_final = solve(method, instance, on_step=on_step, step_progress=step_progress)
         elapsed = time.perf_counter() - start
 
         return BatchValidationSummary(
             batch_size=batch_size,
             objective_initial=objective_curve[0],
-            objective_final=final.objective().mean().item(),
+            objective_final=solution_final.objective().mean().item(),
             batch_time_sec=elapsed,
             instances_per_sec=batch_size / elapsed,
             objective_curve=objective_curve,
