@@ -4,6 +4,11 @@ num_rollouts: 100
 deconstruction_size: 15
 n_repairs: 5
 improvement_step_type: numba_sequential
+first_repair_uses_rollout_order: true
+insert_in_new_routes_only: true
+start_solution_params:
+    num_improvement_steps: 50
+    deconstruction_size: 15
 n_augmentations: 1
 acceptance:
   type: sa

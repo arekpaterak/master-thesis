@@ -6,7 +6,11 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
-from core.lns.acceptance_criterion import GreedyAcceptanceConfig
+from core.lns.acceptance_criterion import (
+    AcceptanceCriterionConfig,
+    GreedyAcceptanceConfig,
+    UnconditionalAcceptanceConfig,
+)
 from core.lns.config import SearchParams
 from core.logging_config import LoggingConfig
 from core.models.nds.baseline import (
@@ -21,7 +25,7 @@ from core.models.nds.pretrained.config import (
     OriginalPretrainedConfig,
     validate_encoder_matches_original_nds,
 )
-from core.models.nds.reward import RelativeRewardConfig, RewardConfig
+from core.models.nds.reward import AbsoluteRewardConfig, RewardConfig
 from core.problems import CVRPConfig, ProblemConfig
 
 
@@ -164,6 +168,23 @@ class TrainerParams(BaseModel):
             "size"
         ),
     )
+    training_rollout_selection: Literal["reward", "objective"] = Field(
+        default="objective",
+        description="Whether to pick the best candidate rollout by argmax(reward) or argmin(objective).",
+    )
+    training_acceptance: AcceptanceCriterionConfig = Field(
+        default_factory=UnconditionalAcceptanceConfig,
+        description="Acceptance criterion used for the main RL training loop.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_training_acceptance(self) -> Self:
+        match self.training_acceptance:
+            case UnconditionalAcceptanceConfig() | GreedyAcceptanceConfig():
+                pass
+            case _:
+                raise ValueError("Unsupported training acceptance criterion.")
+        return self
 
 
 class ValidationConfig(BaseModel):
@@ -253,7 +274,7 @@ class TrainConfig(BaseModel):
     optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
     loss: PolicyLossConfig = Field(default_factory=BestRolloutLossConfig)
     baseline: BaselineConfig = Field(default_factory=SharedBaselineConfig)
-    reward: RewardConfig = Field(default_factory=RelativeRewardConfig)
+    reward: RewardConfig = Field(default_factory=AbsoluteRewardConfig)
     trainer: TrainerParams = Field(default_factory=TrainerParams)
     search: SearchParams = Field(
         default_factory=lambda: SearchParams(acceptance=GreedyAcceptanceConfig()),

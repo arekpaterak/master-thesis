@@ -34,6 +34,13 @@ class GreedyAcceptance(AcceptanceCriterion):
         return candidate.objective() < current.objective()
 
 
+class UnconditionalAcceptance(AcceptanceCriterion):
+    """Unconditionally accepts the candidate solution."""
+
+    def _accept(self, *, current: BaseSolution, candidate: BaseSolution) -> torch.Tensor:
+        return torch.ones_like(current.objective(), dtype=torch.bool)
+
+
 class SimulatedAnnealingAcceptance(AcceptanceCriterion):
     """Simulated annealing acceptance with exponential temperature decay.
 
@@ -91,6 +98,10 @@ class GreedyAcceptanceConfig(BaseModel):
     type: Literal["greedy"] = "greedy"
 
 
+class UnconditionalAcceptanceConfig(BaseModel):
+    type: Literal["unconditional"] = "unconditional"
+
+
 class SimulatedAnnealingAcceptanceConfig(BaseModel):
     type: Literal["sa"] = "sa"
     temperature_start: float = Field(
@@ -102,15 +113,17 @@ class SimulatedAnnealingAcceptanceConfig(BaseModel):
 
 
 AcceptanceCriterionConfig = Annotated[
-    GreedyAcceptanceConfig | SimulatedAnnealingAcceptanceConfig,
+    GreedyAcceptanceConfig | SimulatedAnnealingAcceptanceConfig | UnconditionalAcceptanceConfig,
     Field(discriminator="type"),
 ]
 
 
-def build_criterion(config: AcceptanceCriterionConfig, *, n_steps: int) -> AcceptanceCriterion:
+def build_criterion(config: AcceptanceCriterionConfig, *, n_steps: int = 1) -> AcceptanceCriterion:
     match config:
         case GreedyAcceptanceConfig():
             return GreedyAcceptance()
+        case UnconditionalAcceptanceConfig():
+            return UnconditionalAcceptance()
         case SimulatedAnnealingAcceptanceConfig():
             return SimulatedAnnealingAcceptance.from_range(
                 temperature_start=config.temperature_start,

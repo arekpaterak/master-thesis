@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from core.lns.acceptance_criterion import build_criterion
 from core.lns.operators.repair import RepairOperator
 from core.lns.start_solution import with_warmup
 from core.models.module import Module
@@ -111,6 +112,11 @@ class NDSModule(Module):
             scaler=self._scaler,
             encode_once=getattr(config.model, "encode_once_in_training", False),
             improvement_step_progress=improvement_step_progress,
+            rollout_selection=config.trainer.training_rollout_selection,
+            acceptance=build_criterion(
+                config.trainer.training_acceptance,
+                n_steps=config.trainer.num_main_improvement_steps,
+            ),
         )
 
         validation_rollout_recorder = RolloutMetricsRecorder()

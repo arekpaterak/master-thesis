@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Iterable
+from typing import Literal
 
 import torch
 import torch.optim as optim
 from pydantic import BaseModel, computed_field
 
-from core.lns.acceptance_criterion import GreedyAcceptance
+from core.lns.acceptance_criterion import (
+    AcceptanceCriterion,
+    GreedyAcceptance,
+    UnconditionalAcceptance,
+)
 from core.lns.improvement_step import ImprovementStep
+from core.lns.utils import select_solution
 from core.models.module import EpochAccumulator
 from core.models.nds.apply_and_repair import ApplyAndRepair
 from core.models.nds.baseline import Baseline
@@ -235,6 +241,8 @@ def configure_training_step(
     scaler: torch.amp.GradScaler | None = None,
     encode_once: bool = False,
     improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
+    rollout_selection: Literal["reward", "objective"] = "objective",
+    acceptance: AcceptanceCriterion = UnconditionalAcceptance(),
 ) -> Callable[[NDSModel, optim.Optimizer, BaseProblemInstance], BatchTrainSummary]:
     def training_step(
         model: NDSModel,
@@ -300,7 +308,11 @@ def configure_training_step(
                 )
                 baseline_reward = baseline(reward)
                 reward_mean = reward.mean(dim=1, keepdim=True)
-                best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
+
+                if rollout_selection == "reward":
+                    best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
+                else:
+                    best_rollout_idx = torch.argmin(objective_after, dim=1, keepdim=True)
 
                 best_reward = reward.gather(1, best_rollout_idx)
                 best_log_p = rollout.log_p.gather(1, best_rollout_idx)
@@ -313,7 +325,9 @@ def configure_training_step(
 
             encoder_pass.after_backward()
 
-            solution = solution_prime.gather(1, best_rollout_idx).squeeze(1)
+            best_solution_prime = solution_prime.gather(1, best_rollout_idx).squeeze(1)
+            mask = acceptance(solution, best_solution_prime)
+            solution = select_solution(mask, best_solution_prime, solution)
 
             sorted_actions = rollout.actions.sort(dim=-1).values
             is_unique = torch.cat(

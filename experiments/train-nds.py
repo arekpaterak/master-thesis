@@ -349,13 +349,30 @@ def _(defaults):
     trainer_form = build_mo_ui_dict(
         TrainerParams,
         defaults.trainer,
+        skip={"training_acceptance"},
         hints={
             "batch_size": {"options": [8, 16, 32, 64, 128, 256, 512]},
             "num_main_improvement_steps": {"start": 10, "stop": 200, "step": 10},
         },
     )
-    mo.vstack([mo.md("### Trainer"), *trainer_form.values()])
-    return (trainer_form,)
+    trainer_acceptance_type, trainer_acceptance_forms = build_union_selector(
+        AcceptanceCriterionConfig, defaults.trainer.training_acceptance
+    )
+    return trainer_acceptance_forms, trainer_acceptance_type, trainer_form
+
+
+@app.cell(hide_code=True)
+def _(trainer_acceptance_forms, trainer_acceptance_type, trainer_form):
+    mo.vstack(
+        [
+            mo.md("### Trainer"),
+            *trainer_form.values(),
+            mo.md("#### Training acceptance"),
+            trainer_acceptance_type,
+            *trainer_acceptance_forms[trainer_acceptance_type.value].values(),
+        ]
+    )
+    return
 
 
 @app.cell(hide_code=True)
@@ -567,6 +584,8 @@ def _(
     run_button,
     search_form,
     start_solution_form,
+    trainer_acceptance_forms,
+    trainer_acceptance_type,
     trainer_form,
     val_acceptance_forms,
     val_acceptance_type,
@@ -621,7 +640,12 @@ def _(
             reward=collect_union_value(RewardConfig, reward_type, reward_forms),
             amp=AmpConfig(**amp_form.value),
             compile=CompileConfig(**compile_form.value),
-            trainer=TrainerParams(**trainer_form.value),
+            trainer=TrainerParams(
+                **trainer_form.value,
+                training_acceptance=collect_union_value(
+                    AcceptanceCriterionConfig, trainer_acceptance_type, trainer_acceptance_forms
+                ),
+            ),
             search=SearchParams(
                 **search_form.value,
                 start_solution_params=StartSolutionParams(**start_solution_form.value),
