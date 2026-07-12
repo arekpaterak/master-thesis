@@ -10,7 +10,7 @@ from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solution import TSPSolution
 
 
-def apply_nodes(
+def remove_nodes(
     solution: BaseSolution, nodes: torch.Tensor, *, stitch: bool = False
 ) -> BaseSolution:
     """Remove ``nodes`` from ``solution``.
@@ -26,7 +26,7 @@ def apply_nodes(
         case TSPGraphSolution() as s:
             return s.remove_nodes(nodes, stitch=stitch)
         case _:
-            raise NotImplementedError(f"apply_nodes not implemented for {type(solution)}")
+            raise NotImplementedError(f"remove_nodes not implemented for {type(solution)}")
 
 
 def best_repair(repair: RepairOperator, deconstructed: BaseSolution, n: int) -> BaseSolution:

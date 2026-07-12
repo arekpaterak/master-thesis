@@ -139,15 +139,12 @@ def _run_for_single(
         for i in range(n_repairs):
             repaired_next[:] = deconstructed_next
             repaired_prev[:] = deconstructed_prev
+            order = None
             if first_repair_uses_order and i == 0:
-                _greedy_insert_repair(
-                    nxt=repaired_next,
-                    prv=repaired_prev,
-                    locations=locations,
-                    order=nodes_to_remove[r],
-                )
-            else:
-                _greedy_insert_repair(nxt=repaired_next, prv=repaired_prev, locations=locations)
+                order = nodes_to_remove[r]
+            _greedy_insert_repair(
+                nxt=repaired_next, prv=repaired_prev, locations=locations, order=order
+            )
             objective = _objective(nxt=repaired_next, locations=locations)
             if objective < best_repaired_objective:
                 best_repaired_objective = objective

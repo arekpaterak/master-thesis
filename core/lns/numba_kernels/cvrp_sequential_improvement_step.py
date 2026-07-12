@@ -97,7 +97,7 @@ def _run_for_batch(
     prev_out = prev.copy()
     for global_idx in prange(global_size):
         np.random.seed(seed_for(base_seed, global_idx, global_size))
-        _run_for_single(
+        _run_for_single_sequentially(
             next_out=next_out[global_idx],
             prev_out=prev_out[global_idx],
             nodes_to_remove=nodes_to_remove[global_idx],
@@ -115,7 +115,7 @@ def _run_for_batch(
 
 
 @njit
-def _run_for_single(
+def _run_for_single_sequentially(
     next_out: np.ndarray,
     prev_out: np.ndarray,
     nodes_to_remove: np.ndarray,
@@ -184,29 +184,21 @@ def _run_for_single(
             repaired_next[:] = deconstructed_next
             repaired_prev[:] = deconstructed_prev
             insertable[:] = base_insertable
+
+            order = None
             if first_repair_uses_order and i == 0:
-                _greedy_insert_repair(
-                    nxt=repaired_next,
-                    prv=repaired_prev,
-                    locations=locations,
-                    demand=demand,
-                    capacity=capacity,
-                    num_customers=num_customers,
-                    route_demand=route_demand,
-                    insertable=insertable,
-                    order=nodes_to_remove[r],
-                )
-            else:
-                _greedy_insert_repair(
-                    nxt=repaired_next,
-                    prv=repaired_prev,
-                    locations=locations,
-                    demand=demand,
-                    capacity=capacity,
-                    num_customers=num_customers,
-                    route_demand=route_demand,
-                    insertable=insertable,
-                )
+                order = nodes_to_remove[r]
+            _greedy_insert_repair(
+                nxt=repaired_next,
+                prv=repaired_prev,
+                locations=locations,
+                demand=demand,
+                capacity=capacity,
+                num_customers=num_customers,
+                route_demand=route_demand,
+                insertable=insertable,
+                order=order,
+            )
             objective = _objective(
                 nxt=repaired_next,
                 prv=repaired_prev,

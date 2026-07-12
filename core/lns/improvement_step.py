@@ -15,7 +15,7 @@ from .acceptance_criterion import (
 )
 from .operators.destroy.base import NodeDestroyOperator
 from .operators.repair.base import RepairOperator
-from .utils import apply_nodes, best_repair, select_solution
+from .utils import best_repair, remove_nodes, select_solution
 
 if TYPE_CHECKING:
     from core.problems.cvrp.graph_solution import CVRPGraphSolution
@@ -52,7 +52,7 @@ class SequentialImprovementStep(ImprovementStep):
         nodes = self._destroy.select_nodes(solution, self._num_rollouts)  # [*B, R, M]
         current = solution
         for r in range(self._num_rollouts):
-            deconstructed = apply_nodes(current, nodes[..., r, :], stitch=self._destroy.stitch)
+            deconstructed = remove_nodes(current, nodes[..., r, :], stitch=self._destroy.stitch)
             candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)
             current = select_solution(mask, candidate, current)
@@ -75,7 +75,7 @@ class ParallelImprovementStep(ImprovementStep):
 
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
         nodes = self._destroy.select_nodes(solution, self._num_rollouts)  # [*B, R, M]
-        deconstructed = apply_nodes(solution, nodes, stitch=self._destroy.stitch)
+        deconstructed = remove_nodes(solution, nodes, stitch=self._destroy.stitch)
         candidate = best_repair(self._repair, deconstructed, self._n_repairs)
         best_idx = candidate.objective().argmin(dim=-1, keepdim=True)
         best_from_candidate = candidate.gather(-1, best_idx).squeeze(-1)
