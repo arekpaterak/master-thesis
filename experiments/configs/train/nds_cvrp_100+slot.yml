@@ -12,12 +12,8 @@ model:
     encoding_order: route_neighbours
     route_aggregation: sum
   decoder:
-    type: ar
-    use_hidden_decoding_state: false
-  original_pretrained_weights:
-    path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
-    load_decoder: false
-  freeze_encoder: true
+    type: slot
+    num_slots: 15
 
 optimizer:
   learning_rate: 1.0e-4
@@ -63,7 +59,7 @@ validation:
   plot_save_to_disk: true
   search:
     repair_type: greedy_insert
-    num_improvement_steps: 5
+    num_improvement_steps: 50
     num_rollouts: 100
     deconstruction_size: 15
     improvement_step_type: numba_sequential

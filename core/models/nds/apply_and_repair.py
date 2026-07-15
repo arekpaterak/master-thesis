@@ -166,7 +166,6 @@ class NumbaApplyAndRepair(ApplyAndRepair):
 def build_apply_and_repair(
     search: SearchParams, *, repair: RepairOperator, seed: int = 0
 ) -> ApplyAndRepair:
-    """Build the training apply-and-repair op for the configured backend."""
     match search.apply_and_repair_backend:
         case "torch":
             return TorchApplyAndRepair(

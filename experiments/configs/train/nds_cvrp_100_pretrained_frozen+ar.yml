@@ -12,8 +12,8 @@ model:
     encoding_order: route_neighbours
     route_aggregation: sum
   decoder:
-    type: slot
-    num_slots: 15
+    type: ar
+    use_hidden_decoding_state: true
   original_pretrained_weights:
     path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
     load_decoder: false
@@ -35,9 +35,9 @@ search:
   num_rollouts: 128
   deconstruction_size: 15
   improvement_step_type: numba_sequential
-  n_repairs: 5
   insert_in_new_routes_only: true
   first_repair_uses_rollout_order: true
+  n_repairs: 5
   start_solution_params:
     num_improvement_steps: 50
     deconstruction_size: 15

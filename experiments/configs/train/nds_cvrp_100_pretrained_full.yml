@@ -17,7 +17,7 @@ model:
   original_pretrained_weights:
     path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
     load_decoder: true
-  freeze_encoder: true
+  freeze_encoder: false
 
 optimizer:
   learning_rate: 1.0e-4

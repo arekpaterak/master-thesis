@@ -14,6 +14,8 @@ model:
   decoder:
     type: ar
     use_hidden_decoding_state: true
+  positional_encoding:
+    dim: 16
 
 optimizer:
   learning_rate: 1.0e-4
@@ -48,7 +50,7 @@ logging:
   wandb_project: nds
 
 validation:
-  validate_before_training: true
+  validate_before_training: false
   num_instances: 1000
   batch_size: 100
   every_n_epochs: 1

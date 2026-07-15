@@ -1,6 +1,6 @@
 problem:
   name: cvrp
-  size: 500
+  size: 100
 
 model:
   hidden_dim: 128
@@ -8,19 +8,13 @@ model:
   ff_dim: 512
   poly_dim: 256
   seed_dim: 10
-  encoder_mode: joint
+  encoder:
+    encoding_order: route_neighbours
+    route_aggregation: sum
+  decoder:
+    type: simple
   positional_encoding:
     dim: 16
-  decoder:
-    type: ar
-    use_hidden_decoding_state: true
-  encoder:
-    norm_type: rms
-    pre_norm: true
-    ff_activation: swiglu
-  with_fusion_neighbours_encoding: true
-  with_fusion_route_encoding: true
-  num_fusion_attention_layers: 1
 
 optimizer:
   learning_rate: 1.0e-4
@@ -39,8 +33,8 @@ search:
   deconstruction_size: 15
   improvement_step_type: numba_sequential
   n_repairs: 5
-  first_repair_uses_rollout_order: true
   insert_in_new_routes_only: true
+  first_repair_uses_rollout_order: true
   start_solution_params:
     num_improvement_steps: 50
     deconstruction_size: 15
@@ -60,7 +54,7 @@ validation:
   batch_size: 100
   every_n_epochs: 1
   seed: 42
-  dataset_path: data/nds/cvrp/vrp500_valid_seed1233.pkl
+  dataset_path: data/nds/cvrp/vrp100_valid_seed1233.pkl
   plot_enabled: true
   plot_every_n_improvement_steps: 5
   plot_save_to_disk: true

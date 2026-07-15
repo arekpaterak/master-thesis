@@ -172,7 +172,7 @@ class TrainerParams(BaseModel):
     )
     # TODO: It should not be under TrainerParams
     training_acceptance: AcceptanceCriterionConfig = Field(
-        default_factory=UnconditionalAcceptanceConfig,
+        default_factory=GreedyAcceptanceConfig,
         description="Acceptance criterion used for the main training loop.",
     )
 
