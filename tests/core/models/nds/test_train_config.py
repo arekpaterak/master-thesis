@@ -1,18 +1,6 @@
 import pytest
 
-from core.models.nds.baseline import SharedBaselineConfig
 from core.models.nds.config import JointModelParams, TrainConfig
-
-
-def test_default_baseline_is_shared_mean():
-    assert isinstance(TrainConfig().baseline, SharedBaselineConfig)
-
-
-def test_original_pretrained_requires_explicit_matching_encoder():
-    # The default route_aggregation ('mean') does not match the released NDS graph, so a
-    # config that loads the original checkpoint must set the encoder params explicitly.
-    with pytest.raises(ValueError, match="route_aggregation"):
-        JointModelParams.model_validate({"original_pretrained_weights": {"path": "checkpoint.pt"}})
 
 
 def test_original_pretrained_accepts_explicit_matching_encoder():

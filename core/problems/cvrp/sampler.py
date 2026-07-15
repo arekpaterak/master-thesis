@@ -45,10 +45,9 @@ class CVRPSampler(Sampler[CVRPInstance]):
 
         locations = torch.cat([depot_location, customer_locations], dim=1)  # (batch, n+1, 2)
 
-        demand = self._sample_demand(batch_size)  # (batch, n+1)
+        demand = self._sample_demand(batch_size)  # (batch, n+1), raw
 
-        # After normalisation of the demands, the effective capacity is 1.0
-        capacity = torch.ones(batch_size, 1)
+        capacity = torch.full((batch_size, 1), float(cfg.vehicle_capacity_raw))
 
         return CVRPInstance.create(locations=locations, demand=demand, capacity=capacity)
 
@@ -56,6 +55,7 @@ class CVRPSampler(Sampler[CVRPInstance]):
         cfg = self._config
         g = self._generator
 
+        # Raw integer demands in [min_demand_raw, max_demand_raw]
         demand = torch.randint(
             cfg.min_demand_raw,
             cfg.max_demand_raw + 1,
@@ -66,10 +66,7 @@ class CVRPSampler(Sampler[CVRPInstance]):
             generator=g,
         ).float()
 
-        # Normalised demands from (0.0, 1.0]
-        norm_demand = demand / cfg.vehicle_capacity_raw
-
         # Depot does not have a demand
         depot_demand = torch.zeros(batch_size, 1)
 
-        return torch.cat([depot_demand, norm_demand], dim=1)  # (batch, n+1)
+        return torch.cat([depot_demand, demand], dim=1)  # (batch, n+1)

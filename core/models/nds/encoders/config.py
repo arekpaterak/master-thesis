@@ -45,7 +45,7 @@ class EncoderConfig(BaseModel):
         description="Order of the structural encoding layers.",
     )
     route_aggregation: Literal["mean", "sum"] = Field(
-        default="mean",
+        default="sum",
         title="Route aggregation",
         description="Pooling used to aggregate customer embeddings into a per-route "
         "embedding in the route encoding layer.",

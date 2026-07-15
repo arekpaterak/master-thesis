@@ -41,13 +41,20 @@ def test_sampler_value_range():
     ), "Expected all sample locations to be within the specified coordinate range"
 
     assert torch.all(sample.demand[:, 0] == 0), "Expected depot demand to be exactly 0"
-    assert torch.all(
-        sample.demand[:, 1:] >= (config.min_demand_raw / config.vehicle_capacity_raw)
-    ) and torch.all(
-        sample.demand[:, 1:] <= (config.max_demand_raw / config.vehicle_capacity_raw)
-    ), "Expected customer demands to be within the configured normalized demand range"
+    # Demand is stored raw now; the encoder derives normalised demand on the fly.
+    assert torch.all(sample.demand[:, 1:] >= config.min_demand_raw) and torch.all(
+        sample.demand[:, 1:] <= config.max_demand_raw
+    ), "Expected customer demands to be within the configured raw demand range"
 
-    assert torch.all(sample.capacity == 1.0), "Expected normalized capacities to be 1.0"
+    assert torch.all(sample.capacity == config.vehicle_capacity_raw), (
+        "Expected raw capacities to equal the configured vehicle capacity"
+    )
+
+    # The derived normalised demand must land in (0, 1] for the network.
+    normalized = sample.normalized_customer_demands
+    assert torch.all(normalized > 0) and torch.all(normalized <= 1.0), (
+        "Expected derived normalised customer demands in (0, 1]"
+    )
 
 
 def test_sampler_determinism():

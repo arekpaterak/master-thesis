@@ -5,6 +5,7 @@ from typing import Protocol
 import torch
 from tensordict.tensorclass import TensorClass
 
+from core.constants import EPS
 from core.problems.cvrp.instance import CVRPInstance
 from core.problems.features import InstanceFeatureExtractor, SolutionFeatureExtractor
 
@@ -67,10 +68,14 @@ class CVRPInstanceFeatureExtractor(InstanceFeatureExtractor[CVRPInstance, CVRPIn
         self._with_positional = with_positional
 
     def __call__(self, instance: CVRPInstance) -> CVRPInstanceFeatures:
+        normalized_customer_demand = instance.normalized_customer_demands.unsqueeze(-1)
+        assert bool((normalized_customer_demand <= 1.0 + EPS).all()), (
+            "CVRP encoder demand must be capacity-normalised (<= 1); got raw demand."
+        )
         return CVRPInstanceFeatures(
             depot_location=instance.depot_location,
             customer_locations=instance.customer_locations,
-            customer_demand=instance.customer_demands.unsqueeze(-1),
+            customer_demand=normalized_customer_demand,
             depot_angle=instance.depot_anchored_polar_angle() if self._with_positional else None,
             batch_size=instance.batch_size,
         )

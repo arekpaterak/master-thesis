@@ -7,6 +7,7 @@ from core.lns.acceptance_criterion import (
     AcceptanceCriterionConfig,
     GreedyAcceptanceConfig,
     SimulatedAnnealingAcceptanceConfig,
+    UnconditionalAcceptanceConfig,
 )
 from core.lns.config import SearchParams
 from core.ui.forms import (
@@ -40,6 +41,7 @@ class TestUnionVariants:
         assert variants == {
             "greedy": GreedyAcceptanceConfig,
             "sa": SimulatedAnnealingAcceptanceConfig,
+            "unconditional": UnconditionalAcceptanceConfig,
         }
 
 
@@ -120,8 +122,8 @@ class TestUnionSelector:
     def test_returns_type_dropdown_and_variant_forms(self) -> None:
         type_dropdown, variant_forms = build_union_selector(AcceptanceCriterionConfig)
 
-        assert set(type_dropdown.options) == {"greedy", "sa"}
-        assert set(variant_forms) == {"greedy", "sa"}
+        assert set(type_dropdown.options) == {"greedy", "sa", "unconditional"}
+        assert set(variant_forms) == {"greedy", "sa", "unconditional"}
 
     def test_seeds_default_from_matching_instance(self) -> None:
         default = SimulatedAnnealingAcceptanceConfig(temperature_start=0.5, temperature_min=0.01)

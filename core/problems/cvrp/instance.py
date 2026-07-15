@@ -7,16 +7,15 @@ from core.problems.augmentations import apply_d4_transforms
 from core.problems.instance import BaseProblemInstance
 
 
-# TODO: Enable viewing also unnormalized demand and capacity
 class CVRPInstance(BaseProblemInstance):
     """Canonical, generator-agnostic representation of a single or batched CVRP instance."""
 
     locations: torch.Tensor
     """(B, N+1, 2) or (N+1, 2)"""
     demand: torch.Tensor
-    """(B, N+1) or (N+1,)"""
+    """(B, N+1) or (N+1,) - raw (unnormalised) demand, depot entry is 0."""
     capacity: torch.Tensor
-    """(B, 1) or (1,)"""
+    """(B, 1) or (1,) - raw (unnormalised) vehicle capacity."""
     coordinate_scale: torch.Tensor
     """(B, 1) or (1,) - cumulative scale factor applied by normalize_(). 1.0 for sampler instances."""
 
@@ -85,7 +84,18 @@ class CVRPInstance(BaseProblemInstance):
 
     @property
     def customer_demands(self) -> torch.Tensor:
+        """(..., N) raw customer demands (excludes the depot)."""
         return self.demand[..., 1:]
+
+    @property
+    def normalized_demand(self) -> torch.Tensor:
+        """(..., N+1) demand normalised by capacity, in [0, 1] (depot is 0)."""
+        return self.demand / self.capacity
+
+    @property
+    def normalized_customer_demands(self) -> torch.Tensor:
+        """(..., N) capacity-normalised customer demands in (0, 1] (excludes the depot)."""
+        return self.customer_demands / self.capacity
 
     def distances(self) -> torch.Tensor:
         """(..., N+1, N+1) pairwise Euclidean distances between all nodes (depot + customers)."""
@@ -129,11 +139,9 @@ class CVRPInstance(BaseProblemInstance):
 
     @property
     def customer_features(self) -> torch.Tensor:
-        """
-        (B, N, 3) or (N, 3)
-        """
+        """(B, N, 3) or (N, 3) content features [x, y, normalized_demand] for the encoder."""
         customer_locations = self.locations[..., 1:, :]
-        customer_demands = self.demand[..., 1:].unsqueeze(-1)
+        customer_demands = self.normalized_customer_demands.unsqueeze(-1)
         return torch.cat([customer_locations, customer_demands], dim=-1)
 
     def depot_anchored_polar_angle(self) -> torch.Tensor:
@@ -151,7 +159,14 @@ class CVRPInstance(BaseProblemInstance):
         min_coordinate: float | None = None,
         max_coordinate: float | None = None,
         ax: Axes | None = None,
+        with_normalized_demand: bool = True,
     ) -> None:
         from .render import render_instance
 
-        render_instance(self, min_coordinate=min_coordinate, max_coordinate=max_coordinate, ax=ax)
+        render_instance(
+            self,
+            min_coordinate=min_coordinate,
+            max_coordinate=max_coordinate,
+            ax=ax,
+            with_normalized_demand=with_normalized_demand,
+        )

@@ -21,6 +21,7 @@ def render_instance(
     min_coordinate: float | None = None,
     max_coordinate: float | None = None,
     ax: Axes | None = None,
+    with_normalized_demand: bool = True,
 ) -> None:
     if instance.batch_size.numel() > 1:
         raise ValueError(
@@ -38,7 +39,15 @@ def render_instance(
         ax = plt.gca()
 
     customer_locations = instance.customer_locations.cpu().numpy()
-    customer_demands = instance.customer_demands.cpu().numpy()
+    customer_demands = (
+        (
+            instance.normalized_customer_demands
+            if with_normalized_demand
+            else instance.customer_demands
+        )
+        .cpu()
+        .numpy()
+    )
     depot = instance.depot_location.cpu().numpy()
 
     if min_coordinate is None or max_coordinate is None:
@@ -53,7 +62,7 @@ def render_instance(
         cmap="Reds",
         s=100,
         vmin=0,
-        vmax=customer_demands.max(),
+        vmax=1.0 if with_normalized_demand else float(customer_demands.max()),
         edgecolors="black",
         linewidths=1,
         zorder=2,
@@ -71,7 +80,9 @@ def render_instance(
         zorder=3,
     )
 
-    plt.colorbar(scatter, ax=ax, label="Demand (normalised)")
+    plt.colorbar(
+        scatter, ax=ax, label="Demand (normalised)" if with_normalized_demand else "Demand (raw)"
+    )
     ax.set_xlim(min_coordinate - 0.1, max_coordinate + 0.1)
     ax.set_ylim(min_coordinate - 0.1, max_coordinate + 0.1)
     ax.set_aspect("equal", adjustable="box")
@@ -151,7 +162,8 @@ def render_solution(
             else route.cpu().numpy()
         ]
 
-        route_demand = instance.demand[route].sum().item()
+        # Normalised route load (fraction of capacity); raw demand is exact on the instance.
+        route_demand = instance.normalized_demand[route].sum().item()
         route_label = f"R{r_idx + 1}, #{route.numel()}, c={route_demand:.2f}"
         if is_complete:
             route_dist = (

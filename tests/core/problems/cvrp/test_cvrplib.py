@@ -73,16 +73,17 @@ def test_load_cvrplib_instance_shape(tiny_vrp: Path):
 def test_load_cvrplib_instance_normalized(tiny_vrp: Path):
     instance = load_cvrplib_instance(tiny_vrp)
 
+    # Coordinates are normalised in-place; demand/capacity are kept raw.
     assert instance.locations.max() <= 1.0 + 1e-6
-    assert torch.all(instance.capacity == 1.0)
+    assert torch.all(instance.capacity == 100.0)
     assert torch.all(instance.demand[:1] == 0.0)  # depot demand is 0
 
 
 def test_load_cvrplib_instance_demand_normalized(tiny_vrp: Path):
     instance = load_cvrplib_instance(tiny_vrp)
 
-    # capacity=100, demands=[30,40,50] -> normalized [0.3, 0.4, 0.5]
-    assert torch.allclose(instance.demand[1:], torch.tensor([0.3, 0.4, 0.5]))
+    assert torch.allclose(instance.demand[1:], torch.tensor([30.0, 40.0, 50.0]))
+    assert torch.allclose(instance.normalized_demand[1:], torch.tensor([0.3, 0.4, 0.5]))
 
 
 def test_load_cvrplib_instance_coordinate_scale(tiny_vrp: Path):

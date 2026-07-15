@@ -37,11 +37,13 @@ def test_load_cvrp_dataset_shape_and_normalization(tmp_path: Path):
     assert instance.demand.shape == (4, 4)
     assert instance.capacity.shape == (4, 1)
 
-    # Depot is prepended and demand is normalized by the raw capacity (10.0).
+    # Depot is prepended; demand and capacity are kept raw (capacity 10.0).
     assert torch.allclose(instance.locations[0, 0], torch.tensor([0.0, 0.0]))
     assert torch.all(instance.demand[:, 0] == 0.0)
-    assert torch.allclose(instance.demand[0, 1:], torch.tensor([0.1, 0.2, 0.3]))
-    assert torch.all(instance.capacity == 1.0)
+    assert torch.allclose(instance.demand[0, 1:], torch.tensor([1.0, 2.0, 3.0]))
+    assert torch.all(instance.capacity == 10.0)
+    # Normalisation is derived on the fly for the network.
+    assert torch.allclose(instance.normalized_demand[0, 1:], torch.tensor([0.1, 0.2, 0.3]))
 
 
 def test_load_cvrp_dataset_inconsistent_size_raises(tmp_path: Path):

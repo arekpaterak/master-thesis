@@ -119,8 +119,8 @@ class AttentionModel(nn.Module):
                 actions = [previous_actions[:, i] for i in range(previous_actions.shape[1])]
         elif self.problem_name == "cvrp":
             state = CVRPConstructiveState.initial(
-                demand=instance.demand,
-                capacity=instance.capacity,
+                demand=instance.normalized_demand,
+                capacity=torch.ones_like(instance.capacity),
             )
             actions = []
         else:

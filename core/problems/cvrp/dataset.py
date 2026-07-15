@@ -13,12 +13,7 @@ def load_cvrp_dataset(path: str | Path) -> CVRPInstance:
     """Load a benchmark CVRP dataset file into a single batched ``CVRPInstance``.
 
     The file is a pickle holding a list of ``(depot, locations, demand, capacity)``
-    tuples, where demand and capacity are unnormalised. Demands are normalised by
-    the capacity (depot demand set to 0) and the effective capacity becomes 1.0,
-    matching the convention produced by ``CVRPSampler``.
-
-    The returned instance lives on the CPU; callers move per-batch slices to the
-    target device.
+    tuples, where demand and capacity are unnormalised.
     """
     with open(path, "rb") as f:
         raw = pickle.load(f)
@@ -61,12 +56,12 @@ def load_cvrp_dataset(path: str | Path) -> CVRPInstance:
             )
 
         depot_demand = torch.zeros(1)
-        normalised_demand = torch.cat([depot_demand, demand_tensor / capacity_value])
+        raw_demand = torch.cat([depot_demand, demand_tensor])
 
         depots.append(depot_tensor)
         locations.append(torch.cat([depot_tensor, customer_tensor], dim=0))
-        demands.append(normalised_demand)
-        capacities.append(torch.ones(1))
+        demands.append(raw_demand)
+        capacities.append(torch.tensor([capacity_value]))
 
     return CVRPInstance.create(
         locations=torch.stack(locations, dim=0),
@@ -79,8 +74,7 @@ def load_cvrplib_instance(path: str | Path) -> CVRPInstance:
     """Load a single CVRPLIB instance from a .vrp file into an unbatched CVRPInstance.
 
     Coordinates are normalized in-place via normalize_(), with the original scale
-    recorded in coordinate_scale. Demands are normalized by the vehicle capacity
-    (effective capacity becomes 1.0), matching the CVRPSampler convention.
+    recorded in coordinate_scale.
 
     Assumes CVRP format (EUC_2D edge weights, single depot at index 0).
     """
@@ -90,8 +84,8 @@ def load_cvrplib_instance(path: str | Path) -> CVRPInstance:
     capacity = float(raw["capacity"])
     instance = CVRPInstance.create(
         locations=coords,
-        demand=demand / capacity,
-        capacity=torch.ones(1),
+        demand=demand,
+        capacity=torch.tensor([capacity]),
     )
     instance.normalize_()
     return instance
