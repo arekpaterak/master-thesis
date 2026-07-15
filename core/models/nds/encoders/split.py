@@ -191,6 +191,7 @@ class SolutionFusionEncoder(nn.Module):
     ) -> None:
         super().__init__()
         _config = encoder_config or EncoderConfig()
+        self.encoding_order = _config.encoding_order
         self.projection = nn.Linear(hidden_dim + pe_dim, hidden_dim)
         self.neighbours = (
             NeighboursEncodingLayer(
@@ -256,10 +257,24 @@ class SolutionFusionEncoder(nn.Module):
         )
         fused_customers = self.projection(projection_input)
         h = torch.cat([h_nodes[:, :offset], fused_customers], dim=1)
-        if self.neighbours is not None:
-            h = self.neighbours(h, neighbours_index=neighbours_index)
-        if self.route is not None:
-            h = self.route(h, route_index=route_index)
+
+        def apply_neighbours(h: torch.Tensor) -> torch.Tensor:
+            if self.neighbours is None:
+                return h
+            return self.neighbours(h, neighbours_index=neighbours_index)
+
+        def apply_route(h: torch.Tensor) -> torch.Tensor:
+            if self.route is None:
+                return h
+            return self.route(h, route_index=route_index)
+
+        if self.encoding_order == "route_neighbours":
+            h = apply_route(h)
+            h = apply_neighbours(h)
+        else:
+            h = apply_neighbours(h)
+            h = apply_route(h)
+
         for layer in self.attention_layers:
             h = layer(h)
         if self.final_norm is not None:

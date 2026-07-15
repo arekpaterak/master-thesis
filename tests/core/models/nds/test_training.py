@@ -1,11 +1,12 @@
 import torch
 
 from core.lns.config import SearchParams, StartSolutionParams
-from core.models.nds.config import AmpConfig, SplitModelConfig, TrainConfig, TrainerParams
+from core.models.nds.config import SplitModelConfig, TrainConfig, TrainerParams
 from core.models.nds.decoders.config import SimpleOnePassDecoderConfig
 from core.models.nds.factory import build_model
 from core.models.nds.models.joint import JointNDSModel
 from core.models.nds.module import NDSModule
+from core.models.runtime import AmpConfig
 from core.models.trainer import Trainer
 from core.problems.cvrp import CVRP, CVRPSampler
 

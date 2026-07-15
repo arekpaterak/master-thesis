@@ -25,8 +25,6 @@ with app.setup(hide_code=True):
     from core.lns.config import SearchParams, StartSolutionParams
     from core.models.nds.baseline import BaselineConfig
     from core.models.nds.config import (
-        AmpConfig,
-        CompileConfig,
         EncoderConfig,
         JointModelConfig,
         LoggingConfig,
@@ -49,6 +47,7 @@ with app.setup(hide_code=True):
     from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
     from core.models.nds.validation import EpochValidationSummary
     from core.models.optimizer import OptimizerConfig, build_optimizer
+    from core.models.runtime import AmpConfig, CompileConfig
     from core.models.trainer import Trainer
     from core.models.utils import load_checkpoint
     from core.problems import make_problem_config
