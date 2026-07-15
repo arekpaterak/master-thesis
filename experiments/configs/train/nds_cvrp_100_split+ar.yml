@@ -14,10 +14,10 @@ model:
   decoder:
     type: ar
     use_hidden_decoding_state: true
-  encoder:
-    norm_type: rms
-    pre_norm: true
-    ff_activation: swiglu
+#  encoder:
+#    norm_type: rms
+#    pre_norm: true
+#    ff_activation: swiglu
   with_fusion_neighbours_encoding: true
   with_fusion_route_encoding: true
   num_fusion_attention_layers: 1
@@ -60,7 +60,7 @@ validation:
   batch_size: 100
   every_n_epochs: 1
   seed: 42
-  dataset_path: data/nds/cvrp/vrp100_valid_seed1233.pkl
+  dataset_path: data/synthetic/cvrp/vrp100_valid_seed1233.pkl
   plot_enabled: true
   plot_every_n_improvement_steps: 5
   plot_save_to_disk: true

@@ -8,6 +8,7 @@ import torch
 from core.problems.cvrp.dataset import load_cvrp_dataset
 from core.problems.instance import BaseProblemInstance
 from core.problems.sampler import Sampler
+from core.problems.tsp.dataset import load_tsp_dataset
 
 DatasetLoader = Callable[[str | Path], BaseProblemInstance]
 
@@ -15,6 +16,7 @@ DatasetLoader = Callable[[str | Path], BaseProblemInstance]
 # batched instance. New problems register their loader here.
 _DATASET_LOADERS: dict[str, DatasetLoader] = {
     "cvrp": load_cvrp_dataset,
+    "tsp": load_tsp_dataset,
 }
 
 

@@ -34,6 +34,5 @@ wandb/
 .claude
 
 data/*/*
-!data/NOTE.md
-!data/nds/.gitkeep
+!data/synthetic/.gitkeep
 !data/cvrplib/.gitkeep
