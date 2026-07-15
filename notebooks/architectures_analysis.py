@@ -11,8 +11,8 @@ with app.setup:
 
     from core.models.nds.config import (
         EncoderConfig,
-        JointModelParams,
-        SplitModelParams,
+        JointModelConfig,
+        SplitModelConfig,
     )
     from core.models.nds.decoders.config import (
         AutoregressiveDecoderConfig,
@@ -115,11 +115,11 @@ def _():
             decoder=decoder,
         )
         if encoder_mode == "joint":
-            model_params = JointModelParams(**shared)
+            model_params = JointModelConfig(**shared)
         else:
             # Route encoding is a CVRP-only signal; the split encoder rejects it for TSP.
             extra = {} if problem == "cvrp" else dict(with_fusion_route_encoding=False)
-            model_params = SplitModelParams(**shared, **extra)
+            model_params = SplitModelConfig(**shared, **extra)
         return build_model(model_params, problem)
 
     def variant_stats(encoder_mode, decoder_type, settings, problem, *, dims):

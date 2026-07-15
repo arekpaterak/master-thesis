@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 from core.lns.config import SearchParams
 from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
-from core.models.nds.config import JointModelParams, ModelParams
+from core.models.nds.config import JointModelConfig, ModelConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig
 from core.models.nds.encoders.config import EncoderConfig
@@ -23,9 +23,9 @@ from core.models.nds.pretrained.config import (
 from core.problems import ProblemConfig
 
 
-def _original_nds_model() -> JointModelParams:
+def _original_nds_model() -> JointModelConfig:
     """The architecture matching the original NDS pretrained checkpoint."""
-    return JointModelParams(
+    return JointModelConfig(
         encoder=EncoderConfig(
             encoding_order=ORIGINAL_NDS_ENCODING_ORDER,
             route_aggregation=ORIGINAL_NDS_ROUTE_AGGREGATION,
@@ -39,7 +39,7 @@ class NDSPretrainedConfig(BaseModel):
 
     type: Literal["nds-pretrained"] = "nds-pretrained"
     checkpoint_path: Path = Field(description="Path to the original NDS .pt checkpoint.")
-    model: ModelParams = Field(
+    model: ModelConfig = Field(
         default_factory=_original_nds_model,
         description="Architecture to instantiate before loading the checkpoint.",
     )

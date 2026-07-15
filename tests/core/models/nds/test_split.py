@@ -1,6 +1,6 @@
 import torch
 
-from core.models.nds.config import SplitModelParams
+from core.models.nds.config import SplitModelConfig
 from core.models.nds.decoders.config import (
     SimpleOnePassDecoderConfig,
 )
@@ -14,7 +14,7 @@ from core.problems.tsp.graph_solution import TSPGraphSolution
 
 
 def _cvrp_model() -> SplitNDSModel:
-    return build_model(SplitModelParams(decoder=SimpleOnePassDecoderConfig()), "cvrp")
+    return build_model(SplitModelConfig(decoder=SimpleOnePassDecoderConfig()), "cvrp")
 
 
 def _cvrp_solution(B: int = 4, N: int = 20) -> CVRPGraphSolution:
@@ -51,7 +51,7 @@ def test_cvrp_rollout_shape_and_distinctness() -> None:
 
 def test_tsp_rollout_shape() -> None:
     R, M = 4, 5
-    model = build_model(SplitModelParams(decoder=SimpleOnePassDecoderConfig()), "tsp").eval()
+    model = build_model(SplitModelConfig(decoder=SimpleOnePassDecoderConfig()), "tsp").eval()
     solution = _tsp_solution(B=3, N=20)
 
     rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
@@ -61,8 +61,8 @@ def test_tsp_rollout_shape() -> None:
 
 def test_fusion_route_encoding_defaults_to_problem() -> None:
     # None resolves to a problem-specific default: on for CVRP, off for TSP.
-    cvrp = build_model(SplitModelParams(decoder=SimpleOnePassDecoderConfig()), "cvrp")
-    tsp = build_model(SplitModelParams(decoder=SimpleOnePassDecoderConfig()), "tsp")
+    cvrp = build_model(SplitModelConfig(decoder=SimpleOnePassDecoderConfig()), "cvrp")
+    tsp = build_model(SplitModelConfig(decoder=SimpleOnePassDecoderConfig()), "tsp")
 
     assert cvrp.encoder.fusion.route is not None
     assert tsp.encoder.fusion.route is None
@@ -72,7 +72,7 @@ def test_positional_encoding_can_be_disabled_with_structural_layers_on() -> None
     # No positional encoding, but neighbours/route encoding still active: the solution
     # must reach the model purely through the structural fusion layers.
     model = build_model(
-        SplitModelParams(
+        SplitModelConfig(
             decoder=SimpleOnePassDecoderConfig(),
             positional_encoding=None,
             with_fusion_neighbours_encoding=True,
@@ -94,7 +94,7 @@ def test_positional_encoding_can_be_disabled_with_structural_layers_on() -> None
 
 def test_positional_encoding_enabled_widens_fusion_projection() -> None:
     model = build_model(
-        SplitModelParams(
+        SplitModelConfig(
             decoder=SimpleOnePassDecoderConfig(),
             positional_encoding=PositionalEncodingConfig(dim=16),
         ),
@@ -102,7 +102,7 @@ def test_positional_encoding_enabled_widens_fusion_projection() -> None:
     )
 
     # CVRP fuses IPE + XPE, so the projection input is hidden_dim + 2 * pe_dim.
-    default_hidden_dim = SplitModelParams().hidden_dim
+    default_hidden_dim = SplitModelConfig().hidden_dim
     assert model.encoder.fusion.projection.in_features == default_hidden_dim + 2 * 16
 
 

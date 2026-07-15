@@ -1,7 +1,7 @@
 import torch
 
 from core.lns.config import SearchParams, StartSolutionParams
-from core.models.nds.config import AmpConfig, SplitModelParams, TrainConfig, TrainerParams
+from core.models.nds.config import AmpConfig, SplitModelConfig, TrainConfig, TrainerParams
 from core.models.nds.decoders.config import SimpleOnePassDecoderConfig
 from core.models.nds.factory import build_model
 from core.models.nds.models.joint import JointNDSModel
@@ -110,7 +110,7 @@ def test_encode_once_matches_recompute():
 
     def build_config(encode_once: bool) -> TrainConfig:
         return TrainConfig(
-            model=SplitModelParams(
+            model=SplitModelConfig(
                 decoder=SimpleOnePassDecoderConfig(),
                 encode_once_in_training=encode_once,
             ),

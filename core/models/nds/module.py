@@ -22,13 +22,13 @@ from core.models.nds.reward import build_reward
 from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,
-    configure_training_step,
+    NDSTrainingStep,
 )
 from core.models.nds.utils import RolloutMetricsRecorder
 from core.models.nds.validation import (
     BatchValidationSummary,
     EpochValidationAccumulator,
-    configure_validation_step,
+    NDSValidationStep,
 )
 from core.problems.instance import BaseProblemInstance
 from core.problems.solve import generate_initial_solution
@@ -96,7 +96,7 @@ class NDSModule(Module):
             config.search, model=model, repair=repair
         )
 
-        self._training_step_fn = configure_training_step(
+        self._training_step = NDSTrainingStep(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
             rollouts_per_solution=config.search.num_rollouts,
             num_initial_improvement_steps=config.search.num_improvement_steps,
@@ -127,7 +127,7 @@ class NDSModule(Module):
             recorder=validation_rollout_recorder,
         )
 
-        self._validation_step_fn = configure_validation_step(
+        self._validation_step = NDSValidationStep(
             generate_start_solution=generate_validation_start_solution,
             improvement_step=validation_improvement_step,
             search_params=config.validation.search,
@@ -148,11 +148,11 @@ class NDSModule(Module):
         instance: BaseProblemInstance,
         **_,
     ) -> BatchTrainSummary:
-        return self._training_step_fn(self.model, optimizer, instance)
+        return self._training_step(self.model, optimizer, instance)
 
     def validation_step(
         self,
         instance: BaseProblemInstance,
         epoch: int,
     ) -> BatchValidationSummary:
-        return self._validation_step_fn(self.model, instance, epoch)
+        return self._validation_step(self.model, instance, epoch)

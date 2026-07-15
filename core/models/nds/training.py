@@ -28,7 +28,7 @@ from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 
 
-class EncoderPass:
+class ModelPass:
     """Strategy for producing per-improvement-step rollouts within a training step.
 
     Subclasses decide whether the instance encoder runs once or every step; the loop
@@ -46,7 +46,7 @@ class EncoderPass:
         pass
 
 
-class RecomputePass(EncoderPass):
+class RecomputePass(ModelPass):
     """Re-encode the instance every improvement step (rebuilds the graph each step)."""
 
     def __init__(self, model: NDSModel) -> None:
@@ -56,7 +56,7 @@ class RecomputePass(EncoderPass):
         return self._model.rollout(solution, **kwargs)
 
 
-class EncodeOncePass(EncoderPass):
+class EncodeOncePass(ModelPass):
     """Encode the instance once and reuse it across improvement steps.
 
     The encoder output is detached into a leaf so each step's backward stays bounded;
@@ -224,27 +224,48 @@ class EpochTrainAccumulator(EpochAccumulator):
         )
 
 
-def configure_training_step(
-    *,
-    num_main_improvement_steps: int,
-    num_initial_improvement_steps: int,
-    deconstruction_size: int,
-    generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-    improvement_step: ImprovementStep,
-    apply_and_repair: ApplyAndRepair,
-    compute_reward: Reward,
-    policy_loss: PolicyLoss,
-    baseline: Baseline,
-    rollouts_per_solution: int = 1,
-    amp_enabled: bool = False,
-    amp_dtype: torch.dtype = torch.float16,
-    scaler: torch.amp.GradScaler | None = None,
-    encode_once: bool = False,
-    improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
-    rollout_selection: Literal["reward", "objective"] = "objective",
-    acceptance: AcceptanceCriterion = UnconditionalAcceptance(),
-) -> Callable[[NDSModel, optim.Optimizer, BaseProblemInstance], BatchTrainSummary]:
-    def training_step(
+class NDSTrainingStep:
+    def __init__(
+        self,
+        *,
+        num_main_improvement_steps: int,
+        num_initial_improvement_steps: int,
+        deconstruction_size: int,
+        generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
+        improvement_step: ImprovementStep,
+        apply_and_repair: ApplyAndRepair,
+        compute_reward: Reward,
+        policy_loss: PolicyLoss,
+        baseline: Baseline,
+        rollouts_per_solution: int = 1,
+        amp_enabled: bool = False,
+        amp_dtype: torch.dtype = torch.float16,
+        scaler: torch.amp.GradScaler | None = None,
+        encode_once: bool = False,
+        improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
+        rollout_selection: Literal["reward", "objective"] = "objective",
+        acceptance: AcceptanceCriterion = UnconditionalAcceptance(),
+    ) -> None:
+        self._num_main_improvement_steps = num_main_improvement_steps
+        self._num_initial_improvement_steps = num_initial_improvement_steps
+        self._deconstruction_size = deconstruction_size
+        self._generate_start_solution = generate_start_solution
+        self._improvement_step = improvement_step
+        self._apply_and_repair = apply_and_repair
+        self._compute_reward = compute_reward
+        self._policy_loss = policy_loss
+        self._baseline = baseline
+        self._rollouts_per_solution = rollouts_per_solution
+        self._amp_enabled = amp_enabled
+        self._amp_dtype = amp_dtype
+        self._scaler = scaler
+        self._encode_once = encode_once
+        self._improvement_step_progress = improvement_step_progress
+        self._rollout_selection = rollout_selection
+        self._acceptance = acceptance
+
+    def __call__(
+        self,
         model: NDSModel,
         optimizer: optim.Optimizer,
         instance: BaseProblemInstance,
@@ -253,17 +274,19 @@ def configure_training_step(
         device = next(model.parameters()).device
         instance = instance.to(device)
 
-        solution = generate_start_solution(instance)
+        solution = self._generate_start_solution(instance)
 
         objective_start = solution.objective().mean().item()
 
         model.eval()
         with (
             torch.no_grad(),
-            torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled),
+            torch.autocast(
+                device_type=device.type, dtype=self._amp_dtype, enabled=self._amp_enabled
+            ),
         ):
-            for _ in range(num_initial_improvement_steps):
-                solution = improvement_step(solution, GreedyAcceptance())
+            for _ in range(self._num_initial_improvement_steps):
+                solution = self._improvement_step(solution, GreedyAcceptance())
 
         model.train()
         optimizer.zero_grad()
@@ -283,50 +306,58 @@ def configure_training_step(
 
         # Encode the static instance once and reuse it across improvement steps, or
         # recompute it every step. See EncodeOncePass / RecomputePass.
-        with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
-            encoder_pass: EncoderPass = (
-                EncodeOncePass(model, solution.instance) if encode_once else RecomputePass(model)
+        with torch.autocast(
+            device_type=device.type, dtype=self._amp_dtype, enabled=self._amp_enabled
+        ):
+            encoder_pass: ModelPass = (
+                EncodeOncePass(model, solution.instance)
+                if self._encode_once
+                else RecomputePass(model)
             )
 
-        for _step in improvement_step_progress(range(num_main_improvement_steps)):
-            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
+        for _step in self._improvement_step_progress(range(self._num_main_improvement_steps)):
+            with torch.autocast(
+                device_type=device.type, dtype=self._amp_dtype, enabled=self._amp_enabled
+            ):
                 rollout = encoder_pass.rollout(
                     solution,
-                    rollouts_per_solution=rollouts_per_solution,
-                    deconstruction_size=deconstruction_size,
+                    rollouts_per_solution=self._rollouts_per_solution,
+                    deconstruction_size=self._deconstruction_size,
                     greedy=False,
                 )
 
-                solution_prime = apply_and_repair(solution, rollout)
+                solution_prime = self._apply_and_repair(solution, rollout)
                 assert solution_prime.batch_dims == 2
 
                 step_objective_before = solution.objective()
                 objective_after = solution_prime.objective()
-                reward = compute_reward(
+                reward = self._compute_reward(
                     objective_before=step_objective_before,
                     objective_after=objective_after,
                 )
-                baseline_reward = baseline(reward)
+                baseline_reward = self._baseline(reward)
                 reward_mean = reward.mean(dim=1, keepdim=True)
 
-                if rollout_selection == "reward":
+                if self._rollout_selection == "reward":
                     best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
                 else:
                     best_rollout_idx = torch.argmin(objective_after, dim=1, keepdim=True)
 
                 best_reward = reward.gather(1, best_rollout_idx)
                 best_log_p = rollout.log_p.gather(1, best_rollout_idx)
-                loss = policy_loss(reward=reward, baseline=baseline_reward, log_p=rollout.log_p)
+                loss = self._policy_loss(
+                    reward=reward, baseline=baseline_reward, log_p=rollout.log_p
+                )
 
-            if scaler is not None:
-                scaler.scale(loss).backward()
+            if self._scaler is not None:
+                self._scaler.scale(loss).backward()
             else:
                 loss.backward()
 
             encoder_pass.after_backward()
 
             best_solution_prime = solution_prime.gather(1, best_rollout_idx).squeeze(1)
-            mask = acceptance(solution, best_solution_prime)
+            mask = self._acceptance(solution, best_solution_prime)
             solution = select_solution(mask, best_solution_prime, solution)
 
             sorted_actions = rollout.actions.sort(dim=-1).values
@@ -352,19 +383,19 @@ def configure_training_step(
             total_reward_std += reward.std(dim=1).mean().item()
             total_acceptance_rate += (best_reward > 0).float().mean().item()
             total_unique_actions_ratio += (
-                is_unique.float().sum(dim=-1).mean().item() / deconstruction_size
+                is_unique.float().sum(dim=-1).mean().item() / self._deconstruction_size
             )
             total_diversity_overlap += diversity_overlap(rollout.actions)
             total_unique_rollouts += unique_rollouts(rollout.actions)
 
         encoder_pass.finish()
 
-        if scaler is not None:
-            scaler.unscale_(optimizer)
+        if self._scaler is not None:
+            self._scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        if scaler is not None:
-            scaler.step(optimizer)
-            scaler.update()
+        if self._scaler is not None:
+            self._scaler.step(optimizer)
+            self._scaler.update()
         else:
             optimizer.step()
 
@@ -375,17 +406,17 @@ def configure_training_step(
 
         return BatchTrainSummary(
             batch_size=batch_size,
-            loss=total_loss / num_main_improvement_steps,
-            reward_best=total_reward_best / num_main_improvement_steps,
-            reward_mean=total_reward_mean / num_main_improvement_steps,
-            entropy=total_entropy / num_main_improvement_steps,
-            entropy_norm=total_entropy_norm / num_main_improvement_steps,
-            log_p=total_log_p / num_main_improvement_steps,
-            reward_std=total_reward_std / num_main_improvement_steps,
-            acceptance_rate=total_acceptance_rate / num_main_improvement_steps,
-            unique_actions_ratio=total_unique_actions_ratio / num_main_improvement_steps,
-            diversity_overlap=total_diversity_overlap / num_main_improvement_steps,
-            unique_rollouts=total_unique_rollouts / num_main_improvement_steps,
+            loss=total_loss / self._num_main_improvement_steps,
+            reward_best=total_reward_best / self._num_main_improvement_steps,
+            reward_mean=total_reward_mean / self._num_main_improvement_steps,
+            entropy=total_entropy / self._num_main_improvement_steps,
+            entropy_norm=total_entropy_norm / self._num_main_improvement_steps,
+            log_p=total_log_p / self._num_main_improvement_steps,
+            reward_std=total_reward_std / self._num_main_improvement_steps,
+            acceptance_rate=total_acceptance_rate / self._num_main_improvement_steps,
+            unique_actions_ratio=total_unique_actions_ratio / self._num_main_improvement_steps,
+            diversity_overlap=total_diversity_overlap / self._num_main_improvement_steps,
+            unique_rollouts=total_unique_rollouts / self._num_main_improvement_steps,
             objective_start=objective_start,
             objective_before=objective_before,
             objective_after=objective_after,
@@ -393,5 +424,3 @@ def configure_training_step(
             batch_time_sec=elapsed,
             instances_per_sec=batch_size / elapsed,
         )
-
-    return training_step

@@ -231,9 +231,9 @@ def _(
     from core.models.attention_model.config import (
         LoggingConfig,
         ModelParams,
-        OptimizerParams,
         TrainerParams,
     )
+    from core.models.optimizer import OptimizerConfig
     from core.problems import make_problem_config
 
     if is_script_mode:
@@ -246,7 +246,7 @@ def _(
         config = TrainConfig(
             problem=make_problem_config(**problem_widgets.value),
             model=ModelParams(**model_widgets.value),
-            optimizer=OptimizerParams(**optimizer_widgets.value),
+            optimizer=OptimizerConfig(**optimizer_widgets.value),
             trainer=TrainerParams(**trainer_widgets.value),
             logging=LoggingConfig(**logging_widgets.value),
         )
@@ -297,6 +297,7 @@ def _(config, model, resume_run_dir, sampler):
     from core.models.attention_model.module import AMModule
     from core.models.attention_model.statistical_test import OneSidedPairedTTestResult
     from core.models.attention_model.training import BatchSummary, EpochSummary
+    from core.models.optimizer import build_optimizer
     from core.models.trainer import Trainer
 
     def _find_latest_checkpoint(run_dir: Path) -> tuple[Path, int] | None:
@@ -342,11 +343,7 @@ def _(config, model, resume_run_dir, sampler):
             )
 
     attention_module = AMModule(model, sampler, on_baseline_sync=on_test_end)
-    optimizer = torch.optim.AdamW(
-        attention_module.parameters(),
-        lr=config.optimizer.learning_rate,
-        weight_decay=0.0,
-    )
+    optimizer = build_optimizer(config.optimizer, attention_module.parameters())
 
     initial_epoch = 0
     _checkpoint_result = _find_latest_checkpoint(run_dir)

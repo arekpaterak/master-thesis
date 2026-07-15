@@ -7,10 +7,10 @@ import yaml
 
 from core.lns.config import SearchParams
 from core.models.nds.config import (
-    JointModelParams,
+    JointModelConfig,
     LoggingConfig,
-    ModelParams,
-    SplitModelParams,
+    ModelConfig,
+    SplitModelConfig,
     TrainConfig,
     TrainerParams,
 )
@@ -20,7 +20,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "train-nds.py"
 
 
-def _minimal_config(model: ModelParams) -> TrainConfig:
+def _minimal_config(model: ModelConfig) -> TrainConfig:
     return TrainConfig(
         problem=CVRPConfig(size=10),
         model=model,
@@ -41,10 +41,10 @@ def _minimal_config(model: ModelParams) -> TrainConfig:
 
 
 _CASES = [
-    ("cvrp", JointModelParams()),
-    ("tsp", JointModelParams()),
-    ("cvrp", SplitModelParams()),
-    ("tsp", SplitModelParams()),
+    ("cvrp", JointModelConfig()),
+    ("tsp", JointModelConfig()),
+    ("cvrp", SplitModelConfig()),
+    ("tsp", SplitModelConfig()),
 ]
 
 

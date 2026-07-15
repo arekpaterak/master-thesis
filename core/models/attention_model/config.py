@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import json
+from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, model_validator
 
+from core.models.optimizer import OptimizerConfig
 from core.problems import ProblemConfig, TSPConfig
 
 
@@ -14,12 +15,6 @@ class ModelParams(BaseModel):
     hidden_dim: int = Field(default=128, description="Hidden dimension.")
     num_heads: int = Field(default=8, description="Number of attention heads.")
     num_layers: int = Field(default=3, description="Number of attention layers.")
-
-
-class OptimizerParams(BaseModel):
-    """Configuration for the optimizer."""
-
-    learning_rate: float = Field(default=1e-4, description="Learning rate.")
 
 
 class TrainerParams(BaseModel):
@@ -49,14 +44,19 @@ class TrainConfig(BaseModel):
 
     problem: ProblemConfig = Field(default_factory=TSPConfig)
     model: ModelParams = Field(default_factory=ModelParams)
-    optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
+    # The attention model trains without weight decay (matches the repro).
+    optimizer: OptimizerConfig = Field(default_factory=lambda: OptimizerConfig(weight_decay=0.0))
     trainer: TrainerParams = Field(default_factory=TrainerParams)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    run_name: str = Field(
+        default="",
+        title="Run name",
+    )
 
-    @computed_field
-    @property
-    def run_name(self) -> str:
-        config_dict = self.model_dump(exclude={"logging", "run_name"})
-        config_json = json.dumps(config_dict, sort_keys=True)
-        h = hashlib.md5(config_json.encode()).hexdigest()[:6]
-        return f"{self.problem.name}{self.problem.size}-{h}"
+    @model_validator(mode="after")
+    def _assign_run_name(self) -> Self:
+        """Generate a unique timestamped run name once, unless one was supplied."""
+        if not self.run_name:
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            self.run_name = f"{self.problem.name}{self.problem.size}-{timestamp}"
+        return self

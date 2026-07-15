@@ -26,10 +26,11 @@ from core.models.nds.pretrained.config import (
     validate_encoder_matches_original_nds,
 )
 from core.models.nds.reward import AbsoluteRewardConfig, RewardConfig
+from core.models.optimizer import OptimizerConfig
 from core.problems import CVRPConfig, ProblemConfig
 
 
-class _ModelParamsBase(BaseModel):
+class _ModelConfigBase(BaseModel):
     """Fields shared by every model variant.
 
     ``encoder_mode`` is the discriminator selecting a concrete variant; see
@@ -53,7 +54,7 @@ class _ModelParamsBase(BaseModel):
     )
 
 
-class JointModelParams(_ModelParamsBase):
+class JointModelConfig(_ModelConfigBase):
     """NDS joint encoder: re-encodes the instance and solution at every step.
 
     Positional encoding, if set, is injected before the encoder. This is the only
@@ -88,7 +89,7 @@ class JointModelParams(_ModelParamsBase):
         return self
 
 
-class SplitModelParams(_ModelParamsBase):
+class SplitModelConfig(_ModelConfigBase):
     """LNS-native split encoder: the instance is encoded once and the solution enters
     via positional encodings fused before the decoder.
 
@@ -124,16 +125,10 @@ class SplitModelParams(_ModelParamsBase):
     )
 
 
-ModelParams = Annotated[JointModelParams | SplitModelParams, Field(discriminator="encoder_mode")]
+ModelConfig = Annotated[JointModelConfig | SplitModelConfig, Field(discriminator="encoder_mode")]
 
 
-class OptimizerParams(BaseModel):
-    """Configuration for the optimizer."""
-
-    learning_rate: float = Field(default=1e-4, title="Learning rate", description="Learning rate.")
-    weight_decay: float = Field(default=1e-6, description="Weight decay.")
-
-
+# TODO: Move outside of nds
 class TrainerParams(BaseModel):
     """Configuration for the training loop (excluding search and model weights)."""
 
@@ -148,10 +143,11 @@ class TrainerParams(BaseModel):
     def batches_per_epoch(self) -> int:
         return math.ceil(self.instances_per_epoch / self.batch_size)
 
+    # TODO: It should not be under TrainerParams
     num_main_improvement_steps: int = Field(
         default=100,
-        title="Main steps",
-        description="Number of gradient-bearing improvement steps per batch.",
+        title="Main improvement steps",
+        description="Number of the main improvement steps per batch.",
     )
     checkpoint_every_n_epochs: int = Field(
         default=1,
@@ -168,15 +164,18 @@ class TrainerParams(BaseModel):
             "size"
         ),
     )
+    # TODO: It should not be under TrainerParams
     training_rollout_selection: Literal["reward", "objective"] = Field(
         default="objective",
         description="Whether to pick the best candidate rollout by argmax(reward) or argmin(objective).",
     )
+    # TODO: It should not be under TrainerParams
     training_acceptance: AcceptanceCriterionConfig = Field(
         default_factory=UnconditionalAcceptanceConfig,
-        description="Acceptance criterion used for the main RL training loop.",
+        description="Acceptance criterion used for the main training loop.",
     )
 
+    # TODO: It should not be under TrainerParams
     @model_validator(mode="after")
     def _validate_training_acceptance(self) -> Self:
         match self.training_acceptance:
@@ -270,8 +269,8 @@ class TrainConfig(BaseModel):
     """Complete configuration for NDS model training."""
 
     problem: ProblemConfig = Field(default_factory=CVRPConfig)
-    model: ModelParams = Field(default_factory=JointModelParams)
-    optimizer: OptimizerParams = Field(default_factory=OptimizerParams)
+    model: ModelConfig = Field(default_factory=JointModelConfig)
+    optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
     loss: PolicyLossConfig = Field(default_factory=BestRolloutLossConfig)
     baseline: BaselineConfig = Field(default_factory=SharedBaselineConfig)
     reward: RewardConfig = Field(default_factory=AbsoluteRewardConfig)
@@ -285,12 +284,7 @@ class TrainConfig(BaseModel):
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
     run_name: str = Field(
         default="",
-        description=(
-            "Unique run identifier; also the run directory name. Generated once from the "
-            "problem and a launch timestamp when left empty, so re-running a config never "
-            "collides with a previous run. Persisted in the run's config.yml and reused on "
-            "resume."
-        ),
+        title="Run name",
     )
 
     @model_validator(mode="before")

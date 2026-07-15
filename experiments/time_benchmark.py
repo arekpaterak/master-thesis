@@ -41,7 +41,7 @@ from core.lns.acceptance_criterion import (
 from core.lns.config import SearchParams
 from core.lns.improvement_step import ImprovementStep, build_random_destroy_step
 from core.lns.operators.repair import RepairOperator
-from core.models.nds.config import JointModelParams, ModelParams, SplitModelParams
+from core.models.nds.config import JointModelConfig, ModelConfig, SplitModelConfig
 from core.models.nds.decoders.config import (
     AutoregressiveDecoderConfig,
     SimpleOnePassDecoderConfig,
@@ -93,7 +93,7 @@ class MethodSpec:
     """A destroy method to benchmark. ``model_params is None`` means random destroy."""
 
     name: str
-    model_params: ModelParams | None
+    model_params: ModelConfig | None
 
 
 def _method_specs(deconstruction_size: int) -> list[MethodSpec]:
@@ -101,22 +101,22 @@ def _method_specs(deconstruction_size: int) -> list[MethodSpec]:
         MethodSpec("random-destroy", None),
         MethodSpec(
             "joint-ar",
-            JointModelParams(decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=True)),
+            JointModelConfig(decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=True)),
         ),
         MethodSpec(
             "joint-ar-no-gru",
-            JointModelParams(decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=False)),
+            JointModelConfig(decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=False)),
         ),
-        MethodSpec("joint-simple", JointModelParams(decoder=SimpleOnePassDecoderConfig())),
+        MethodSpec("joint-simple", JointModelConfig(decoder=SimpleOnePassDecoderConfig())),
         MethodSpec(
-            "joint-slot", JointModelParams(decoder=SlotDecoderConfig(num_slots=deconstruction_size))
+            "joint-slot", JointModelConfig(decoder=SlotDecoderConfig(num_slots=deconstruction_size))
         ),
-        MethodSpec("split-simple", SplitModelParams(decoder=SimpleOnePassDecoderConfig())),
+        MethodSpec("split-simple", SplitModelConfig(decoder=SimpleOnePassDecoderConfig())),
         MethodSpec(
             "split-slot",
-            SplitModelParams(decoder=SlotDecoderConfig(num_slots=deconstruction_size)),
+            SplitModelConfig(decoder=SlotDecoderConfig(num_slots=deconstruction_size)),
         ),
-        MethodSpec("split-ar", SplitModelParams(decoder=AutoregressiveDecoderConfig())),
+        MethodSpec("split-ar", SplitModelConfig(decoder=AutoregressiveDecoderConfig())),
     ]
 
 

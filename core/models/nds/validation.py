@@ -113,37 +113,46 @@ class EpochValidationAccumulator(EpochAccumulator):
         )
 
 
-def configure_validation_step(
-    *,
-    generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
-    improvement_step: ImprovementStep,
-    search_params: SearchParams,
-    capture_snapshots_every_n_improvement_steps: int | None = 1,
-    amp_enabled: bool = False,
-    amp_dtype: torch.dtype = torch.float16,
-    step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
-    rollout_recorder: RolloutMetricsRecorder | None = None,
-) -> Callable[[NDSModel, BaseProblemInstance, int], BatchValidationSummary]:
-    snapshot_step_set = {0}
-    if capture_snapshots_every_n_improvement_steps is not None:
-        assert capture_snapshots_every_n_improvement_steps > 0, (
-            "Expected capture_snapshots_every_n_improvement_steps > 0"
-        )
-        snapshot_step_set |= set(
-            range(
-                capture_snapshots_every_n_improvement_steps,
-                search_params.num_improvement_steps + 1,
-                capture_snapshots_every_n_improvement_steps,
+class NDSValidationStep:
+    def __init__(
+        self,
+        *,
+        generate_start_solution: Callable[[BaseProblemInstance], BaseSolution],
+        improvement_step: ImprovementStep,
+        search_params: SearchParams,
+        capture_snapshots_every_n_improvement_steps: int | None = 1,
+        amp_enabled: bool = False,
+        amp_dtype: torch.dtype = torch.float16,
+        step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
+        rollout_recorder: RolloutMetricsRecorder | None = None,
+    ) -> None:
+        self._amp_enabled = amp_enabled
+        self._amp_dtype = amp_dtype
+        self._step_progress = step_progress
+        self._rollout_recorder = rollout_recorder
+
+        snapshot_step_set = {0}
+        if capture_snapshots_every_n_improvement_steps is not None:
+            assert capture_snapshots_every_n_improvement_steps > 0, (
+                "Expected capture_snapshots_every_n_improvement_steps > 0"
             )
+            snapshot_step_set |= set(
+                range(
+                    capture_snapshots_every_n_improvement_steps,
+                    search_params.num_improvement_steps + 1,
+                    capture_snapshots_every_n_improvement_steps,
+                )
+            )
+        self._snapshot_step_set = snapshot_step_set
+
+        self._method = Method(
+            search=search_params,
+            generate_start_solution=generate_start_solution,
+            improvement_step=improvement_step,
         )
 
-    method = Method(
-        search=search_params,
-        generate_start_solution=generate_start_solution,
-        improvement_step=improvement_step,
-    )
-
-    def validation_step(
+    def __call__(
+        self,
         model: NDSModel,
         instance: BaseProblemInstance,
         epoch: int,
@@ -158,21 +167,26 @@ def configure_validation_step(
         objective_curve: list[float] = []
 
         def on_step(step: int, solution: BaseSolution) -> None:
-            if step in snapshot_step_set:
+            if step in self._snapshot_step_set:
                 snapshots.append(_unbatch_first(solution))
                 objective_curve.append(solution.objective().mean().item())
 
-        if rollout_recorder is not None:
-            rollout_recorder.reset()
+        if self._rollout_recorder is not None:
+            self._rollout_recorder.reset()
 
         start = time.perf_counter()
         with (
             torch.no_grad(),
-            torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled),
+            torch.autocast(
+                device_type=device.type, dtype=self._amp_dtype, enabled=self._amp_enabled
+            ),
         ):
-            solution_final = solve(method, instance, on_step=on_step, step_progress=step_progress)
+            solution_final = solve(
+                self._method, instance, on_step=on_step, step_progress=self._step_progress
+            )
         elapsed = time.perf_counter() - start
 
+        recorder = self._rollout_recorder
         return BatchValidationSummary(
             batch_size=batch_size,
             objective_initial=objective_curve[0],
@@ -180,13 +194,11 @@ def configure_validation_step(
             batch_time_sec=elapsed,
             instances_per_sec=batch_size / elapsed,
             objective_curve=objective_curve,
-            step_labels=sorted(snapshot_step_set),
+            step_labels=sorted(self._snapshot_step_set),
             snapshots=snapshots,
-            diversity_overlap=rollout_recorder.diversity_overlap if rollout_recorder else 0.0,
-            unique_rollouts=rollout_recorder.unique_rollouts if rollout_recorder else 0.0,
+            diversity_overlap=recorder.diversity_overlap if recorder else 0.0,
+            unique_rollouts=recorder.unique_rollouts if recorder else 0.0,
         )
-
-    return validation_step
 
 
 def _unbatch_first(solution: BaseSolution) -> BaseSolution:

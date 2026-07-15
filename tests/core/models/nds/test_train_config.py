@@ -1,10 +1,10 @@
 import pytest
 
-from core.models.nds.config import JointModelParams, TrainConfig
+from core.models.nds.config import JointModelConfig, TrainConfig
 
 
 def test_original_pretrained_accepts_explicit_matching_encoder():
-    model = JointModelParams.model_validate(
+    model = JointModelConfig.model_validate(
         {
             "original_pretrained_weights": {"path": "checkpoint.pt"},
             "encoder": {"encoding_order": "route_neighbours", "route_aggregation": "sum"},
@@ -15,7 +15,7 @@ def test_original_pretrained_accepts_explicit_matching_encoder():
 
 def test_original_pretrained_rejects_conflicting_encoder():
     with pytest.raises(ValueError, match="route_aggregation"):
-        JointModelParams.model_validate(
+        JointModelConfig.model_validate(
             {
                 "original_pretrained_weights": {"path": "checkpoint.pt"},
                 "encoder": {"encoding_order": "route_neighbours", "route_aggregation": "mean"},

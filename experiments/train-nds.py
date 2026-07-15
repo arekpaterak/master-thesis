@@ -13,7 +13,6 @@ with app.setup(hide_code=True):
     import matplotlib.pyplot as plt
     import torch
     import torch.nn
-    import torch.optim as optim
     import yaml
     from dotenv import load_dotenv
     from rich.console import Console
@@ -29,12 +28,11 @@ with app.setup(hide_code=True):
         AmpConfig,
         CompileConfig,
         EncoderConfig,
-        JointModelParams,
+        JointModelConfig,
         LoggingConfig,
-        OptimizerParams,
         OriginalPretrainedConfig,
         PositionalEncodingConfig,
-        SplitModelParams,
+        SplitModelConfig,
         TrainConfig,
         TrainerParams,
         ValidationConfig,
@@ -50,6 +48,7 @@ with app.setup(hide_code=True):
     from core.models.nds.reward import RewardConfig
     from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
     from core.models.nds.validation import EpochValidationSummary
+    from core.models.optimizer import OptimizerConfig, build_optimizer
     from core.models.trainer import Trainer
     from core.models.utils import load_checkpoint
     from core.problems import make_problem_config
@@ -233,8 +232,8 @@ def _(defaults, encoder_mode_widget):
     if encoder_mode_widget.value == "split":
         _skip.add("with_neighbours_encoding")
     model_form = build_mo_ui_dict(
-        JointModelParams,
-        defaults.model if isinstance(defaults.model, JointModelParams) else JointModelParams(),
+        JointModelConfig,
+        defaults.model if isinstance(defaults.model, JointModelConfig) else JointModelConfig(),
         skip=_skip,
         hints={
             "hidden_dim": {"options": [64, 128, 256, 512]},
@@ -449,7 +448,7 @@ def _(acceptance_forms, acceptance_type, search_form, start_solution_form):
 
 @app.cell(hide_code=True)
 def _(defaults):
-    optimizer_form = build_mo_ui_dict(OptimizerParams, defaults.optimizer)
+    optimizer_form = build_mo_ui_dict(OptimizerConfig, defaults.optimizer)
     mo.vstack([mo.md("### Optimizer"), *optimizer_form.values()])
     return (optimizer_form,)
 
@@ -613,10 +612,10 @@ def _(
             init_weights=init_weights_widget.value.strip() or None,
         )
         if encoder_mode_widget.value == "split":
-            _model = SplitModelParams(**_shared_model_kwargs)
+            _model = SplitModelConfig(**_shared_model_kwargs)
         else:
             _pretrained_path = pretrained_path_widget.value
-            _model = JointModelParams(
+            _model = JointModelConfig(
                 **_shared_model_kwargs,
                 original_pretrained_weights=(
                     OriginalPretrainedConfig(
@@ -634,7 +633,7 @@ def _(
                 size=problem_size.value,
             ),
             model=_model,
-            optimizer=OptimizerParams(**optimizer_form.value),
+            optimizer=OptimizerConfig(**optimizer_form.value),
             loss=collect_union_value(PolicyLossConfig, loss_type, loss_forms),
             baseline=collect_union_value(BaselineConfig, baseline_type, baseline_forms),
             reward=collect_union_value(RewardConfig, reward_type, reward_forms),
@@ -740,7 +739,7 @@ def _(config):
 
     # original_pretrained_weights / freeze_encoder are joint-only; the split model
     # cannot initialise from a pretrained NDS encoder.
-    _is_joint = isinstance(config.model, JointModelParams)
+    _is_joint = isinstance(config.model, JointModelConfig)
     if _is_joint and config.model.original_pretrained_weights:
         _pretrained = config.model.original_pretrained_weights
         load_original_pretrained_encoder_weights(model.encoder, _pretrained.path)
@@ -931,12 +930,7 @@ def _(
         if fig is not None:
             plt.close(fig)
 
-    optimizer = optim.AdamW(
-        nds_module.parameters(),
-        lr=config.optimizer.learning_rate,
-        weight_decay=config.optimizer.weight_decay,
-        fused=True,
-    )
+    optimizer = build_optimizer(config.optimizer, nds_module.parameters())
 
     if resume_run_dir:
         _checkpoint_path, _ = find_latest_checkpoint(resume_run_dir)
