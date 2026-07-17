@@ -18,7 +18,7 @@ model:
   with_fusion_route_encoding: true
   num_fusion_attention_layers: 1
   encoder:
-    norm_type: rms
+    norm_type: instance
     pre_norm: true
     ff_activation: swiglu
 

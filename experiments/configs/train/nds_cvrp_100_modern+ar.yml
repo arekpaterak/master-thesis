@@ -11,7 +11,7 @@ model:
   encoder:
     encoding_order: route_neighbours
     route_aggregation: sum
-    norm_type: rms
+    norm_type: instance
     pre_norm: true
     ff_activation: swiglu
   decoder:

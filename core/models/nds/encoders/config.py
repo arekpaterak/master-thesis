@@ -8,10 +8,11 @@ from pydantic import BaseModel, Field, model_validator
 class EncoderConfig(BaseModel):
     """Architecture choices for the transformer encoder layers."""
 
-    norm_type: Literal["instance", "rms"] = Field(
+    norm_type: Literal["instance", "layer", "rms"] = Field(
         default="instance",
         title="Norm type",
-        description="Normalization. 'instance' = InstanceNorm1d (AM default), 'rms' = RMSNorm.",
+        description="Normalization. 'instance' = InstanceNorm across nodes (AM default), "
+        "'layer' = LayerNorm across features, 'rms' = RMSNorm across features.",
     )
     pre_norm: bool = Field(
         default=False,

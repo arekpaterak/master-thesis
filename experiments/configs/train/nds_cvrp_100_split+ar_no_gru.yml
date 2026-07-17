@@ -15,7 +15,7 @@ model:
     type: ar
     use_hidden_decoding_state: false
   encoder:
-    norm_type: rms
+    norm_type: instance
     pre_norm: true
     ff_activation: swiglu
   with_fusion_neighbours_encoding: true

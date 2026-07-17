@@ -14,10 +14,10 @@ model:
   decoder:
     type: ar
     use_hidden_decoding_state: true
-#  encoder:
-#    norm_type: rms
-#    pre_norm: true
-#    ff_activation: swiglu
+  encoder:
+    norm_type: instance
+    pre_norm: true
+    ff_activation: swiglu
   with_fusion_neighbours_encoding: true
   with_fusion_route_encoding: true
   num_fusion_attention_layers: 1

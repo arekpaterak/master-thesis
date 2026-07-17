@@ -4,16 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-class InstanceNorm(nn.Module):
-    """InstanceNorm1d for (..., N, D) tensors without manual transpose at call sites."""
-
-    def __init__(self, hidden_dim: int) -> None:
-        super().__init__()
-        self.norm = nn.InstanceNorm1d(hidden_dim, affine=True)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.norm(x.transpose(-1, -2)).transpose(-1, -2)
+from core.models.nds.encoders.norm import build_norm
 
 
 class SwiGLUFeedForward(nn.Module):
@@ -40,14 +31,6 @@ class SwiGLUFeedForward(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.out_proj(F.silu(self.gate_proj(x)) * self.value_proj(x))
-
-
-def build_norm(norm_type: str, hidden_dim: int) -> nn.Module:
-    if norm_type == "instance":
-        return InstanceNorm(hidden_dim)
-    if norm_type == "rms":
-        return nn.RMSNorm(hidden_dim)
-    raise ValueError(f"Unknown norm_type: {norm_type!r}")
 
 
 def _build_feedforward(ff_activation: str, hidden_dim: int, ff_dim: int) -> nn.Module:

@@ -3,7 +3,7 @@ import torch
 from core.models.embeddings import CVRPInitialEmbedding
 from core.models.nds.encoders.config import EncoderConfig
 from core.models.nds.encoders.joint import JointEncoder
-from core.models.nds.encoders.layers import InstanceNorm
+from core.models.nds.encoders.norm import InstanceNorm
 from core.models.nds.encoders.split import SplitNDSEncoder
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.features import (
