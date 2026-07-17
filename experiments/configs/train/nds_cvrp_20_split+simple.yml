@@ -22,7 +22,7 @@ optimizer:
   weight_decay: 1.0e-6
 
 trainer:
-  epochs: 25
+  epochs: 100
   instances_per_epoch: 1500
   batch_size: 256
   num_main_improvement_steps: 10
@@ -70,3 +70,4 @@ validation:
     n_repairs: 5
     acceptance:
       type: greedy
+    n_augmentations: 8

@@ -65,7 +65,8 @@ class TestConfigForm:
             SimulatedAnnealingAcceptanceConfig, SimulatedAnnealingAcceptanceConfig()
         )
 
-        assert set(form.value) == {"temperature_start", "temperature_min"}  # no "type"
+        # no "type"
+        assert set(form.value) == {"temperature_start", "temperature_min", "augmented_exchange"}
         assert (
             SimulatedAnnealingAcceptanceConfig(**form.value) == SimulatedAnnealingAcceptanceConfig()
         )

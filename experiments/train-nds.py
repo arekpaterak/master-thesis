@@ -414,7 +414,7 @@ def _(defaults):
     search_form = build_mo_ui_dict(
         SearchParams,
         defaults.search,
-        skip={"acceptance", "augmented_threshold_factor", "start_solution_params"},
+        skip={"acceptance", "start_solution_params"},
         hints={
             "num_improvement_steps": {"label": "Initial steps"},
             "deconstruction_size": {"start": 5, "stop": 25, "step": 5},
@@ -505,7 +505,7 @@ def _(defaults):
     val_search_form = build_mo_ui_dict(
         SearchParams,
         defaults.validation.search,
-        skip={"acceptance", "augmented_threshold_factor", "start_solution_params"},
+        skip={"acceptance", "start_solution_params"},
         hints={"num_rollouts": {"label": "Rollouts per improvement step"}},
     )
     val_start_solution_form = build_mo_ui_dict(
@@ -923,6 +923,8 @@ def _(
                 ),
                 "epoch": val_summary.epoch,
             }
+            if val_summary.objective_final_augmented is not None:
+                _log["val/objective_final_augmented"] = val_summary.objective_final_augmented
             if fig is not None:
                 _log["val/search_progress"] = wandb.Image(fig)
             wandb.log(_log)

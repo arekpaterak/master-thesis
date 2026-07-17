@@ -4,11 +4,7 @@ import torch
 
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
 from core.lns.improvement_step import NoopImprovementStep
-from core.lns.search import (
-    _exchange_above_threshold,
-    build_augmentation_synchronizer,
-    search,
-)
+from core.lns.search import AugmentationExchange, search
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
 
@@ -33,7 +29,7 @@ def test_exchange_above_threshold_replaces_only_bad_with_good():
     threshold = torch.tensor([[2.0]] * B)
 
     torch.manual_seed(123)
-    new_solution = _exchange_above_threshold(solution, costs, threshold)
+    new_solution = AugmentationExchange._exchange_above_threshold(solution, costs, threshold)
 
     # All slots remain valid CVRP graph solutions (route IDs stay >= 0 for customers).
     assert (new_solution.route_ids[..., 1:] >= 0).all()
@@ -55,27 +51,27 @@ def test_exchange_with_no_good_solutions_keeps_existing_solutions():
     costs = torch.tensor([[5.0, 5.0, 5.0]] * B)
     threshold = torch.tensor([[1.0]] * B)
 
-    new_solution = _exchange_above_threshold(solution, costs, threshold)
+    new_solution = AugmentationExchange._exchange_above_threshold(solution, costs, threshold)
     assert torch.equal(new_solution._next, solution._next)
     assert torch.equal(new_solution._prev, solution._prev)
     assert torch.equal(new_solution._route_id, solution._route_id)
 
 
-def test_search_with_sa_synchronizer_preserves_augmentation_dim():
+def test_search_with_augmentation_exchange_preserves_augmentation_dim():
     B, A, N = 2, 4, 6
     instance = _make_instance(B, N, A)
     solution = CVRPGraphSolution.one_customer_per_route(instance)
     criterion = SimulatedAnnealingAcceptance.from_range(
         temperature_start=0.1, temperature_min=0.001, n_steps=5
     )
-    synchronize = build_augmentation_synchronizer(criterion, threshold_factor=15.0)
+    exchange = AugmentationExchange(criterion, threshold_factor=15.0)
 
     result = search(
         solution,
         improvement_step=NoopImprovementStep(),
         criterion=criterion,
         n_iterations=5,
-        synchronize=synchronize,
+        exchange=exchange,
     )
 
     assert result.solution.batch_size == torch.Size([B, A])
@@ -84,7 +80,7 @@ def test_search_with_sa_synchronizer_preserves_augmentation_dim():
     assert torch.isfinite(objective).all()
 
 
-def test_sa_synchronizer_is_noop_when_all_augmented_copies_share_cost():
+def test_augmentation_exchange_is_noop_when_all_augmented_copies_share_cost():
     # D4 augmentations are isometries, so every augmented copy of the same solution
     # has identical cost; no copy exceeds the threshold, so the exchange is a no-op
     # and the run matches plain search.
@@ -95,10 +91,10 @@ def test_sa_synchronizer_is_noop_when_all_augmented_copies_share_cost():
     criterion_plain = SimulatedAnnealingAcceptance.from_range(
         temperature_start=0.1, temperature_min=0.001, n_steps=5
     )
-    criterion_synced = SimulatedAnnealingAcceptance.from_range(
+    criterion_exchanged = SimulatedAnnealingAcceptance.from_range(
         temperature_start=0.1, temperature_min=0.001, n_steps=5
     )
-    synchronize = build_augmentation_synchronizer(criterion_synced, threshold_factor=15.0)
+    exchange = AugmentationExchange(criterion_exchanged, threshold_factor=15.0)
 
     plain = search(
         solution,
@@ -106,13 +102,13 @@ def test_sa_synchronizer_is_noop_when_all_augmented_copies_share_cost():
         criterion=criterion_plain,
         n_iterations=5,
     )
-    synced = search(
+    exchanged = search(
         solution,
         improvement_step=NoopImprovementStep(),
-        criterion=criterion_synced,
+        criterion=criterion_exchanged,
         n_iterations=5,
-        synchronize=synchronize,
+        exchange=exchange,
     )
 
-    assert torch.equal(plain.solution._next, synced.solution._next)
-    assert torch.equal(plain.solution._prev, synced.solution._prev)
+    assert torch.equal(plain.solution._next, exchanged.solution._next)
+    assert torch.equal(plain.solution._prev, exchanged.solution._prev)

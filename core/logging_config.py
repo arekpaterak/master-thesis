@@ -11,3 +11,4 @@ class LoggingConfig(BaseModel):
         title="W&B project (empty to skip)",
         description="W&B project name (empty to skip).",
     )
+    # TODO: add wandb run_id

@@ -14,7 +14,7 @@ from core.models.nds.models import NDSModel
 from core.models.nds.utils import RolloutMetricsRecorder
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
-from core.solve import solve
+from core.solve import base_augmentation, best_augmentation, solve
 
 
 class BatchValidationSummary(BaseModel):
@@ -30,6 +30,7 @@ class BatchValidationSummary(BaseModel):
     snapshots: list[BaseSolution]
     diversity_overlap: float
     unique_rollouts: float
+    objective_final_augmented: float | None = None
 
 
 class EpochValidationSummary(BaseModel):
@@ -46,6 +47,7 @@ class EpochValidationSummary(BaseModel):
     snapshots: list[BaseSolution]
     diversity_overlap: float
     unique_rollouts: float
+    objective_final_augmented: float | None = None
 
     @computed_field
     @property
@@ -78,6 +80,8 @@ class EpochValidationAccumulator(EpochAccumulator):
         self._weighted_curve: list[float] = []
         self._step_labels: list[int] = []
         self._snapshots: list[BaseSolution] = []
+        self._augmented = False
+        self._total_objective_final_augmented = 0.0
 
     def update(self, summary: BatchValidationSummary) -> None:
         n = summary.batch_size
@@ -95,6 +99,9 @@ class EpochValidationAccumulator(EpochAccumulator):
         else:
             for i, v in enumerate(summary.objective_curve):
                 self._weighted_curve[i] += v * n
+        if summary.objective_final_augmented is not None:
+            self._augmented = True
+            self._total_objective_final_augmented += summary.objective_final_augmented * n
 
     def complete(self, *, epoch: int) -> EpochValidationSummary:
         n = self._total_instances
@@ -110,6 +117,9 @@ class EpochValidationAccumulator(EpochAccumulator):
             snapshots=self._snapshots,
             diversity_overlap=self._total_diversity_overlap / n,
             unique_rollouts=self._total_unique_rollouts / n,
+            objective_final_augmented=(
+                self._total_objective_final_augmented / n if self._augmented else None
+            ),
         )
 
 
@@ -163,13 +173,16 @@ class NDSValidationStep:
         instance = instance.to(device)
         batch_size = instance.batch_size[0]
 
+        augmented = self._method.search.n_augmentations > 1
         snapshots: list[BaseSolution] = []
         objective_curve: list[float] = []
 
         def on_step(step: int, solution: BaseSolution) -> None:
-            if step in self._snapshot_step_set:
-                snapshots.append(_unbatch_first(solution))
-                objective_curve.append(solution.objective().mean().item())
+            if step not in self._snapshot_step_set:
+                return
+            base = base_augmentation(solution) if augmented else solution
+            snapshots.append(_unbatch_first(base))
+            objective_curve.append(base.objective().mean().item())
 
         if self._rollout_recorder is not None:
             self._rollout_recorder.reset()
@@ -182,15 +195,20 @@ class NDSValidationStep:
             ),
         ):
             solution_final = solve(
-                self._method, instance, on_step=on_step, step_progress=self._step_progress
+                self._method,
+                instance,
+                reduce_augmentations=False,
+                on_step=on_step,
+                step_progress=self._step_progress,
             )
         elapsed = time.perf_counter() - start
 
+        base_final = base_augmentation(solution_final) if augmented else solution_final
         recorder = self._rollout_recorder
         return BatchValidationSummary(
             batch_size=batch_size,
             objective_initial=objective_curve[0],
-            objective_final=solution_final.objective().mean().item(),
+            objective_final=base_final.objective().mean().item(),
             batch_time_sec=elapsed,
             instances_per_sec=batch_size / elapsed,
             objective_curve=objective_curve,
@@ -198,6 +216,9 @@ class NDSValidationStep:
             snapshots=snapshots,
             diversity_overlap=recorder.diversity_overlap if recorder else 0.0,
             unique_rollouts=recorder.unique_rollouts if recorder else 0.0,
+            objective_final_augmented=(
+                best_augmentation(solution_final).objective().mean().item() if augmented else None
+            ),
         )
 
 

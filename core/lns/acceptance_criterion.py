@@ -102,6 +102,27 @@ class UnconditionalAcceptanceConfig(BaseModel):
     type: Literal["unconditional"] = "unconditional"
 
 
+class AugmentedExchangeConfig(BaseModel):
+    """Cross-augmentation exchange for augmented simulated annealing search."""
+
+    enabled: bool = Field(
+        default=True,
+        title="Augmentation exchange enabled",
+        description=(
+            "Exchange high-cost augmented copies for good ones when n_augmentations > 1. "
+            "Disable to leave the augmented searches independent of each other."
+        ),
+    )
+    threshold_factor: float = Field(
+        default=15.0,
+        title="Augmentation threshold factor",
+        description=(
+            "Scaling the tolerance band above the best cost. "
+            "Higher = a wider band, so fewer high-cost copies are replaced."
+        ),
+    )
+
+
 class SimulatedAnnealingAcceptanceConfig(BaseModel):
     type: Literal["sa"] = "sa"
     temperature_start: float = Field(
@@ -110,6 +131,7 @@ class SimulatedAnnealingAcceptanceConfig(BaseModel):
     temperature_min: float = Field(
         default=0.001, title="Minimum temperature", description="SA minimum temperature."
     )
+    augmented_exchange: AugmentedExchangeConfig = Field(default_factory=AugmentedExchangeConfig)
 
 
 AcceptanceCriterionConfig = Annotated[

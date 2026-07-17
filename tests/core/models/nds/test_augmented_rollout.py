@@ -6,7 +6,7 @@ import torch
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
 from core.lns.improvement_step import SequentialImprovementStep
 from core.lns.operators.repair import RepairOperator
-from core.lns.search import build_augmentation_synchronizer, search
+from core.lns.search import AugmentationExchange, search
 from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
@@ -81,7 +81,7 @@ def test_augmented_sa_search_with_model_reduces_to_batch_augmentation(model: Joi
         improvement_step=improvement_step,
         criterion=criterion,
         n_iterations=3,
-        synchronize=build_augmentation_synchronizer(criterion, threshold_factor=15.0),
+        exchange=AugmentationExchange(criterion, threshold_factor=15.0),
     )
 
     assert result.solution.batch_size == torch.Size([B, A])

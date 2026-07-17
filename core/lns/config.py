@@ -101,7 +101,3 @@ class SearchParams(BaseModel):
         title="Augmentations",
         description="Number of D4 augmentations per instance (1 = no augmentation).",
     )
-    augmented_threshold_factor: float = Field(
-        default=15.0,
-        title="Augmentation threshold factor",
-    )

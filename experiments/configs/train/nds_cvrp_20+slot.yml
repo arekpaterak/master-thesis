@@ -68,3 +68,4 @@ validation:
     n_repairs: 5
     acceptance:
       type: greedy
+    n_augmentations: 8
