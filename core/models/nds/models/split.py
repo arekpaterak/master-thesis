@@ -121,7 +121,7 @@ class SplitNDSModel(nn.Module):
             batch_size=B, rollout_size=R, seed_dim=self.decoder.seed_dim, device=device
         )
 
-        h_nodes = self.encoder.fuse(cache, solution)
+        h_nodes = self.encoder(cache, solution)
 
         N = h_nodes.shape[1]
         action_mask = initial_action_mask(

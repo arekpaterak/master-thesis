@@ -9,7 +9,7 @@ from core.lns.improvement_step import (
 )
 from core.lns.operators.repair.base import RepairOperator
 from core.models.nds.factory import NDSModel
-from core.models.nds.utils import RolloutMetricsRecorder
+from core.models.nds.metrics import RolloutMetricsRecorder
 
 
 def build_nds_improvement_step(

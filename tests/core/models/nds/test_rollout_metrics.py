@@ -2,7 +2,7 @@ import math
 
 import torch
 
-from core.models.nds.utils import (
+from core.models.nds.metrics import (
     RolloutMetricsRecorder,
     diversity_overlap,
     unique_rollouts,

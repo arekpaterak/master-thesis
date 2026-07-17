@@ -37,7 +37,7 @@ class SplitNDSEncoder(nn.Module):
     encoding, and self-attention layers.
 
     The two-phase API mirrors that flow: :meth:`encode_instance` runs the static,
-    solution-independent path once; :meth:`fuse` re-conditions the cached embeddings
+    solution-independent path once; :meth:`forward` re-conditions the cached embeddings
     on a solution every step.
     """
 
@@ -120,8 +120,8 @@ class SplitNDSEncoder(nn.Module):
             xpe=xpe,
         )
 
-    def fuse(self, cache: InstanceCache, solution: BaseSolution) -> torch.Tensor:
-        """Condition the cached instance embeddings on ``solution``.
+    def forward(self, cache: InstanceCache, solution: BaseSolution) -> torch.Tensor:
+        """Condition the cached instance embeddings on ``solution`` (the per-step path).
 
         Returns:
             (B, N+offset, hidden_dim) node embeddings ready for the decoder.

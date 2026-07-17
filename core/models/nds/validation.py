@@ -10,8 +10,8 @@ from core.lns.config import SearchParams
 from core.lns.improvement_step import ImprovementStep
 from core.methods.base import Method
 from core.models.module import EpochAccumulator
+from core.models.nds.metrics import RolloutMetricsRecorder
 from core.models.nds.models import NDSModel
-from core.models.nds.utils import RolloutMetricsRecorder
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 from core.solve import base_augmentation, best_augmentation, solve

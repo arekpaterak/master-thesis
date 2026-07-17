@@ -4,7 +4,7 @@ import torch
 
 from core.lns.operators.destroy.base import NodeDestroyOperator
 from core.models.nds.factory import NDSModel
-from core.models.nds.utils import RolloutMetricsRecorder
+from core.models.nds.metrics import RolloutMetricsRecorder
 from core.problems.solution import BaseSolution
 
 

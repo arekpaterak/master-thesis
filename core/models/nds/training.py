@@ -19,11 +19,12 @@ from core.models.module import EpochAccumulator
 from core.models.nds.apply_and_repair import ApplyAndRepair
 from core.models.nds.baseline import Baseline
 from core.models.nds.factory import NDSModel
+from core.models.nds.metrics import EncoderMetricsRecorder, diversity_overlap, unique_rollouts
 from core.models.nds.models.split import SplitNDSModel
 from core.models.nds.policy_loss import PolicyLoss
 from core.models.nds.reward import Reward
-from core.models.nds.utils import diversity_overlap, unique_rollouts
 from core.models.rollout import Rollout
+from core.problems import depot_offset
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 
@@ -95,10 +96,12 @@ class BatchTrainSummary(BaseModel):
     entropy_norm: float
     log_p: float
     reward_std: float
+    # TODO: Rename because different acceptance criteria might be used
     acceptance_rate: float
     unique_actions_ratio: float
     diversity_overlap: float
     unique_rollouts: float
+    embeddings_cos_sim: float
     objective_start: float
     objective_before: float
     objective_after: float
@@ -134,6 +137,7 @@ class EpochTrainSummary(BaseModel):
     unique_actions_ratio: float
     diversity_overlap: float
     unique_rollouts: float
+    embeddings_cos_sim: float
     objective_start: float
     objective_before: float
     objective_after: float
@@ -172,6 +176,7 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_unique_actions_ratio = 0.0
         self._total_diversity_overlap = 0.0
         self._total_unique_rollouts = 0.0
+        self._total_embeddings_cos_sim = 0.0
         self._total_objective_start = 0.0
         self._total_objective_before = 0.0
         self._total_objective_after = 0.0
@@ -194,6 +199,7 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._total_unique_actions_ratio += summary.unique_actions_ratio * n
         self._total_diversity_overlap += summary.diversity_overlap * n
         self._total_unique_rollouts += summary.unique_rollouts * n
+        self._total_embeddings_cos_sim += summary.embeddings_cos_sim * n
         self._total_objective_start += summary.objective_start * n
         self._total_objective_before += summary.objective_before * n
         self._total_objective_after += summary.objective_after * n
@@ -214,6 +220,7 @@ class EpochTrainAccumulator(EpochAccumulator):
             unique_actions_ratio=self._total_unique_actions_ratio / n,
             diversity_overlap=self._total_diversity_overlap / n,
             unique_rollouts=self._total_unique_rollouts / n,
+            embeddings_cos_sim=self._total_embeddings_cos_sim / n,
             objective_start=self._total_objective_start / n,
             objective_before=self._total_objective_before / n,
             objective_after=self._total_objective_after / n,
@@ -315,78 +322,81 @@ class NDSTrainingStep:
                 else RecomputePass(model)
             )
 
-        for _step in self._improvement_step_progress(range(self._num_main_improvement_steps)):
-            with torch.autocast(
-                device_type=device.type, dtype=self._amp_dtype, enabled=self._amp_enabled
-            ):
-                rollout = encoder_pass.rollout(
-                    solution,
-                    rollouts_per_solution=self._rollouts_per_solution,
-                    deconstruction_size=self._deconstruction_size,
-                    greedy=False,
-                )
+        with EncoderMetricsRecorder.attach(
+            model.encoder, offset=depot_offset(model.problem_name)
+        ) as encoder_recorder:
+            for _step in self._improvement_step_progress(range(self._num_main_improvement_steps)):
+                with torch.autocast(
+                    device_type=device.type, dtype=self._amp_dtype, enabled=self._amp_enabled
+                ):
+                    rollout = encoder_pass.rollout(
+                        solution,
+                        rollouts_per_solution=self._rollouts_per_solution,
+                        deconstruction_size=self._deconstruction_size,
+                        greedy=False,
+                    )
 
-                solution_prime = self._apply_and_repair(solution, rollout)
-                assert solution_prime.batch_dims == 2
+                    solution_prime = self._apply_and_repair(solution, rollout)
+                    assert solution_prime.batch_dims == 2
 
-                step_objective_before = solution.objective()
-                objective_after = solution_prime.objective()
-                reward = self._compute_reward(
-                    objective_before=step_objective_before,
-                    objective_after=objective_after,
-                )
-                baseline_reward = self._baseline(reward)
-                reward_mean = reward.mean(dim=1, keepdim=True)
+                    step_objective_before = solution.objective()
+                    objective_after = solution_prime.objective()
+                    reward = self._compute_reward(
+                        objective_before=step_objective_before,
+                        objective_after=objective_after,
+                    )
+                    baseline_reward = self._baseline(reward)
+                    reward_mean = reward.mean(dim=1, keepdim=True)
 
-                if self._rollout_selection == "reward":
-                    best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
+                    if self._rollout_selection == "reward":
+                        best_rollout_idx = torch.argmax(reward, dim=1, keepdim=True)
+                    else:
+                        best_rollout_idx = torch.argmin(objective_after, dim=1, keepdim=True)
+
+                    best_reward = reward.gather(1, best_rollout_idx)
+                    best_log_p = rollout.log_p.gather(1, best_rollout_idx)
+                    loss = self._policy_loss(
+                        reward=reward, baseline=baseline_reward, log_p=rollout.log_p
+                    )
+
+                if self._scaler is not None:
+                    self._scaler.scale(loss).backward()
                 else:
-                    best_rollout_idx = torch.argmin(objective_after, dim=1, keepdim=True)
+                    loss.backward()
 
-                best_reward = reward.gather(1, best_rollout_idx)
-                best_log_p = rollout.log_p.gather(1, best_rollout_idx)
-                loss = self._policy_loss(
-                    reward=reward, baseline=baseline_reward, log_p=rollout.log_p
+                encoder_pass.after_backward()
+
+                best_solution_prime = solution_prime.gather(1, best_rollout_idx).squeeze(1)
+                mask = self._acceptance(solution, best_solution_prime)
+                solution = select_solution(mask, best_solution_prime, solution)
+
+                sorted_actions = rollout.actions.sort(dim=-1).values
+                is_unique = torch.cat(
+                    [
+                        torch.ones(
+                            *sorted_actions.shape[:-1],
+                            1,
+                            dtype=torch.bool,
+                            device=sorted_actions.device,
+                        ),
+                        sorted_actions[..., 1:] != sorted_actions[..., :-1],
+                    ],
+                    dim=-1,
                 )
 
-            if self._scaler is not None:
-                self._scaler.scale(loss).backward()
-            else:
-                loss.backward()
-
-            encoder_pass.after_backward()
-
-            best_solution_prime = solution_prime.gather(1, best_rollout_idx).squeeze(1)
-            mask = self._acceptance(solution, best_solution_prime)
-            solution = select_solution(mask, best_solution_prime, solution)
-
-            sorted_actions = rollout.actions.sort(dim=-1).values
-            is_unique = torch.cat(
-                [
-                    torch.ones(
-                        *sorted_actions.shape[:-1],
-                        1,
-                        dtype=torch.bool,
-                        device=sorted_actions.device,
-                    ),
-                    sorted_actions[..., 1:] != sorted_actions[..., :-1],
-                ],
-                dim=-1,
-            )
-
-            total_loss += loss.item()
-            total_reward_best += best_reward.mean().item()
-            total_reward_mean += reward_mean.mean().item()
-            total_entropy += rollout.mean_entropy
-            total_entropy_norm += rollout.mean_entropy_norm
-            total_log_p += best_log_p.mean().item()
-            total_reward_std += reward.std(dim=1).mean().item()
-            total_acceptance_rate += (best_reward > 0).float().mean().item()
-            total_unique_actions_ratio += (
-                is_unique.float().sum(dim=-1).mean().item() / self._deconstruction_size
-            )
-            total_diversity_overlap += diversity_overlap(rollout.actions)
-            total_unique_rollouts += unique_rollouts(rollout.actions)
+                total_loss += loss.item()
+                total_reward_best += best_reward.mean().item()
+                total_reward_mean += reward_mean.mean().item()
+                total_entropy += rollout.mean_entropy
+                total_entropy_norm += rollout.mean_entropy_norm
+                total_log_p += best_log_p.mean().item()
+                total_reward_std += reward.std(dim=1).mean().item()
+                total_acceptance_rate += (best_reward > 0).float().mean().item()
+                total_unique_actions_ratio += (
+                    is_unique.float().sum(dim=-1).mean().item() / self._deconstruction_size
+                )
+                total_diversity_overlap += diversity_overlap(rollout.actions)
+                total_unique_rollouts += unique_rollouts(rollout.actions)
 
         encoder_pass.finish()
 
@@ -417,6 +427,7 @@ class NDSTrainingStep:
             unique_actions_ratio=total_unique_actions_ratio / self._num_main_improvement_steps,
             diversity_overlap=total_diversity_overlap / self._num_main_improvement_steps,
             unique_rollouts=total_unique_rollouts / self._num_main_improvement_steps,
+            embeddings_cos_sim=encoder_recorder.embeddings_cos_sim,
             objective_start=objective_start,
             objective_before=objective_before,
             objective_after=objective_after,

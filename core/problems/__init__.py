@@ -19,12 +19,24 @@ def make_problem_config(name: str = "cvrp", size: int = 20, **fields: object) ->
     return _problem_config_adapter.validate_python({"name": name, "size": size, **fields})
 
 
+def depot_offset(problem_name: str) -> int:
+    """Number of leading non-customer nodes in a ``(B, N + offset, D)`` node tensor."""
+    match problem_name:
+        case "cvrp":
+            return 1
+        case "tsp":
+            return 0
+        case _:
+            raise ValueError(f"Unsupported problem_name: {problem_name}")
+
+
 __all__ = [
     "CVRP",
     "TSP",
     "CVRPConfig",
     "CVRPSampler",
     "ProblemConfig",
+    "depot_offset",
     "TSPConfig",
     "TSPSampler",
     "generate_initial_solution",

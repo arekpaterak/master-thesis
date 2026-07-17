@@ -17,6 +17,7 @@ from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.encoders.split import SplitNDSEncoder
 from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import build_nds_improvement_step
+from core.models.nds.metrics import RolloutMetricsRecorder
 from core.models.nds.policy_loss import build_policy_loss
 from core.models.nds.reward import build_reward
 from core.models.nds.training import (
@@ -24,7 +25,6 @@ from core.models.nds.training import (
     EpochTrainAccumulator,
     NDSTrainingStep,
 )
-from core.models.nds.utils import RolloutMetricsRecorder
 from core.models.nds.validation import (
     BatchValidationSummary,
     EpochValidationAccumulator,
@@ -52,9 +52,9 @@ class NDSModule(Module):
 
         if config.compile.enabled:
             compile_kwargs = dict(mode=config.compile.mode, fullgraph=config.compile.fullgraph)
-            # SplitNDSEncoder has no single forward (its encode_instance/fuse would run eager
-            # through an OptimizedModule proxy), so compile the static instance encoder it wraps;
-            # the per-step fusion stays eager, matching the pre-refactor behaviour.
+            # SplitNDSEncoder.forward is only the per-step fusion; encode_instance would run eager
+            # through an OptimizedModule proxy. Compile the static instance encoder it wraps and
+            # keep the per-step fusion eager, matching the pre-refactor behaviour.
             if isinstance(self.model.encoder, SplitNDSEncoder):
                 self.model.encoder.instance_encoder = torch.compile(
                     self.model.encoder.instance_encoder, **compile_kwargs
