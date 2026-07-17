@@ -28,6 +28,13 @@ def _find_latest_checkpoint(run_dir: Path) -> Path:
     return checkpoints[-1]
 
 
+def _load_train_config(run_dir: Path, checkpoint: dict) -> TrainConfig:
+    embedded_config = checkpoint.get("config")
+    if embedded_config is not None:
+        return TrainConfig.model_validate(embedded_config)
+    return TrainConfig.model_validate(yaml.safe_load((run_dir / "config.yml").read_text()))
+
+
 class NDSTrainedMethod:
     @classmethod
     def build(
@@ -37,13 +44,11 @@ class NDSTrainedMethod:
         generate_start_solution,
         device: torch.device,
     ) -> Method:
-        train_config = TrainConfig.model_validate(
-            yaml.safe_load((config.run_dir / "config.yml").read_text())
-        )
-        model = build_model(train_config.model, train_config.problem.name).to(device)
         ckpt = torch.load(
             _find_latest_checkpoint(config.run_dir), map_location=device, weights_only=True
         )
+        train_config = _load_train_config(config.run_dir, ckpt)
+        model = build_model(train_config.model, train_config.problem.name).to(device)
         model.load_state_dict(ckpt["model"])
         model.eval()
 

@@ -49,7 +49,7 @@ with app.setup(hide_code=True):
     from core.models.optimizer import OptimizerConfig, build_optimizer
     from core.models.runtime import AmpConfig, CompileConfig
     from core.models.trainer import Trainer
-    from core.models.utils import load_checkpoint
+    from core.models.utils import load_checkpoint, save_checkpoint
     from core.problems import make_problem_config
     from core.problems.dataset import DatasetSampler
     from core.problems.sampler import Sampler
@@ -882,12 +882,12 @@ def _(
         if is_last or is_checkpoint:
             checkpoints_path = run_dir / "checkpoints"
             checkpoints_path.mkdir(exist_ok=True)
-            torch.save(
-                {
-                    "model": nds_module.model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                },
-                checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
+            save_checkpoint(
+                path=checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
+                model=nds_module.model,
+                optimizer=optimizer,
+                epoch=summary.epoch,
+                config=config,
             )
 
     def on_epoch_validation_end(val_summary: EpochValidationSummary):

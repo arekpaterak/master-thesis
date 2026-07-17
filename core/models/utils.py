@@ -1,6 +1,8 @@
 from pathlib import Path
+from typing import Any
 
 import torch
+from pydantic import BaseModel
 from torch import nn as nn
 
 
@@ -14,12 +16,16 @@ def save_checkpoint(
     optimizer: torch.optim.Optimizer | None = None,
     epoch: int | None = None,
     loss: float | None = None,
+    config: BaseModel | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> None:
     checkpoint = {
         "epoch": epoch,
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict() if optimizer is not None else None,
         "loss": loss,
+        "config": config.model_dump() if config is not None else None,
+        **(extra or {}),
     }
     torch.save(checkpoint, path)
 

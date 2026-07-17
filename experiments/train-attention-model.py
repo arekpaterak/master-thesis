@@ -14,6 +14,7 @@ with app.setup:
     from dotenv import load_dotenv
 
     import wandb
+    from core.models.utils import save_checkpoint
 
     load_dotenv(".env")
 
@@ -380,13 +381,13 @@ def _(config, model, resume_run_dir, sampler):
             if is_last or is_checkpoint:
                 checkpoints_path = run_dir / "checkpoints"
                 checkpoints_path.mkdir(exist_ok=True)
-                torch.save(
-                    {
-                        "model": attention_module.model.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                        "baseline": attention_module.baseline.state_dict(),
-                    },
-                    checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
+                save_checkpoint(
+                    path=checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
+                    model=attention_module.model,
+                    optimizer=optimizer,
+                    epoch=summary.epoch,
+                    config=config,
+                    extra={"baseline": attention_module.baseline.state_dict()},
                 )
 
         Trainer(
