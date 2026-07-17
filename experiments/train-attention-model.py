@@ -405,13 +405,5 @@ def _(config, model, resume_run_dir, sampler):
     return
 
 
-@app.cell(column=4, hide_code=True)
-def _():
-    mo.md(r"""
-    ## Evaluation
-    """)
-    return
-
-
 if __name__ == "__main__":
     app.run()

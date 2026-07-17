@@ -16,9 +16,9 @@ def save_checkpoint(
     loss: float | None = None,
 ) -> None:
     checkpoint = {
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict() if optimizer is not None else None,
         "epoch": epoch,
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict() if optimizer is not None else None,
         "loss": loss,
     }
     torch.save(checkpoint, path)
@@ -31,9 +31,9 @@ def load_checkpoint(
 ) -> None:
     device = next(model.parameters()).device
     checkpoint = torch.load(path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+    model.load_state_dict(checkpoint["model"], strict=False)
     if optimizer is not None:
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
 
 
 def get_model_device(

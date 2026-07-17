@@ -1,6 +1,6 @@
 method:
   type: nds-trained
-  run_dir: experiments/runs/featured/nds_cvrp_100_split+decoder_simple
+  run_dir: experiments/runs/featured/nds_cvrp_100_split+simple
   search: search/nds_default.yml
 
 problems:

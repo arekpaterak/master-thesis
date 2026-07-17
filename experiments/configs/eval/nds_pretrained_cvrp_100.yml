@@ -9,4 +9,3 @@ problems:
 
 logging:
   wandb_project: nds
-
