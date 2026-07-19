@@ -9,6 +9,7 @@ from pydantic import BaseModel, computed_field
 from core.lns.config import SearchParams
 from core.lns.improvement_step import ImprovementStep
 from core.methods.base import Method
+from core.models.metric import MeanMetric, MetricCollection, SumMetric
 from core.models.module import EpochAccumulator
 from core.models.nds.metrics import RolloutMetricsRecorder
 from core.models.nds.models import NDSModel
@@ -70,28 +71,40 @@ class EpochValidationSummary(BaseModel):
 
 class EpochValidationAccumulator(EpochAccumulator):
     def __init__(self) -> None:
-        self._total_instances = 0
-        self._total_batches = 0
-        self._total_objective_initial = 0.0
-        self._total_objective_final = 0.0
-        self._total_batch_time = 0.0
-        self._total_diversity_overlap = 0.0
-        self._total_unique_rollouts = 0.0
+        self._means = MetricCollection(
+            {
+                name: MeanMetric()
+                for name in (
+                    "objective_initial",
+                    "objective_final",
+                    "diversity_overlap",
+                    "unique_rollouts",
+                )
+            }
+        )
+        self._instances = SumMetric()
+        self._batches = SumMetric()
+        self._batch_time = SumMetric()
         self._weighted_curve: list[float] = []
         self._step_labels: list[int] = []
         self._snapshots: list[BaseSolution] = []
         self._augmented = False
-        self._total_objective_final_augmented = 0.0
+        self._objective_final_augmented = MeanMetric()
 
     def update(self, summary: BatchValidationSummary) -> None:
         n = summary.batch_size
-        self._total_instances += n
-        self._total_batches += 1
-        self._total_objective_initial += summary.objective_initial * n
-        self._total_objective_final += summary.objective_final * n
-        self._total_batch_time += summary.batch_time_sec
-        self._total_diversity_overlap += summary.diversity_overlap * n
-        self._total_unique_rollouts += summary.unique_rollouts * n
+        self._instances.update(n)
+        self._batches.update(1)
+        self._batch_time.update(summary.batch_time_sec)
+        self._means.update(
+            {
+                "objective_initial": summary.objective_initial,
+                "objective_final": summary.objective_final,
+                "diversity_overlap": summary.diversity_overlap,
+                "unique_rollouts": summary.unique_rollouts,
+            },
+            n,
+        )
         if not self._weighted_curve:
             self._weighted_curve = [v * n for v in summary.objective_curve]
             self._step_labels = summary.step_labels
@@ -101,24 +114,22 @@ class EpochValidationAccumulator(EpochAccumulator):
                 self._weighted_curve[i] += v * n
         if summary.objective_final_augmented is not None:
             self._augmented = True
-            self._total_objective_final_augmented += summary.objective_final_augmented * n
+            self._objective_final_augmented.update(summary.objective_final_augmented, n)
 
     def complete(self, *, epoch: int) -> EpochValidationSummary:
-        n = self._total_instances
+        n = self._instances.compute()
+        total_time = self._batch_time.compute()
         return EpochValidationSummary(
             epoch=epoch,
-            objective_initial=self._total_objective_initial / n,
-            objective_final=self._total_objective_final / n,
-            batch_time_sec=self._total_batch_time / self._total_batches,
-            epoch_time_sec=self._total_batch_time,
-            instances_per_sec=self._total_instances / self._total_batch_time,
+            **self._means.compute(),
+            batch_time_sec=total_time / self._batches.compute(),
+            epoch_time_sec=total_time,
+            instances_per_sec=n / total_time,
             objective_curve=[v / n for v in self._weighted_curve],
             step_labels=self._step_labels,
             snapshots=self._snapshots,
-            diversity_overlap=self._total_diversity_overlap / n,
-            unique_rollouts=self._total_unique_rollouts / n,
             objective_final_augmented=(
-                self._total_objective_final_augmented / n if self._augmented else None
+                self._objective_final_augmented.compute() if self._augmented else None
             ),
         )
 

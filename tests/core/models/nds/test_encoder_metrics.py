@@ -76,14 +76,14 @@ def test_half_precision_input_matches_float_result() -> None:
 
 def test_recorder_averages_over_recorded_steps() -> None:
     recorder = EncoderMetricsRecorder()
-    assert recorder.embeddings_cos_sim == 0.0
+    assert math.isnan(recorder.embeddings_cos_sim)
 
     recorder.record(torch.eye(3).unsqueeze(0))  # 0.0
     recorder.record(torch.ones(1, 3, 4))  # 1.0
     assert math.isclose(recorder.embeddings_cos_sim, 0.5, rel_tol=1e-6)
 
     recorder.reset()
-    assert recorder.embeddings_cos_sim == 0.0
+    assert math.isnan(recorder.embeddings_cos_sim)
 
 
 def test_recorder_offset_drops_leading_nodes() -> None:
@@ -137,7 +137,7 @@ def test_attach_records_once_per_rollout_for_both_models() -> None:
             model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
             model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
 
-        assert recorder._count == 2
+        assert recorder._embeddings_cos_sim._total_weight == 2
         assert -1.0 <= recorder.embeddings_cos_sim <= 1.0
 
 
@@ -147,10 +147,10 @@ def test_attach_detaches_after_the_block() -> None:
 
     with _attach(model) as recorder:
         model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
-    count_after_block = recorder._count
+    count_after_block = recorder._embeddings_cos_sim._total_weight
 
     model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
-    assert recorder._count == count_after_block == 1
+    assert recorder._embeddings_cos_sim._total_weight == count_after_block == 1
 
 
 def test_attach_excludes_the_depot() -> None:

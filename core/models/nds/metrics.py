@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from core.models.metric import MeanMetric
+
 
 def diversity_overlap(actions: torch.Tensor) -> float:
     """Mean node overlap across the ``R`` rollouts of each instance, in ``[0, 1]``."""
@@ -70,7 +72,7 @@ def mean_pairwise_cosine_similarity(embeddings: torch.Tensor) -> float:
 class EncoderMetricsRecorder:
     def __init__(self, offset: int = 0) -> None:
         self._offset = offset
-        self.reset()
+        self._embeddings_cos_sim = MeanMetric()
 
     @classmethod
     @contextmanager
@@ -90,42 +92,39 @@ class EncoderMetricsRecorder:
             handle.remove()
 
     def reset(self) -> None:
-        self._embeddings_cos_sim_sum = 0.0
-        self._count = 0
+        self._embeddings_cos_sim.reset()
 
     def record(self, embeddings: torch.Tensor) -> None:
         # no_grad keeps the diagnostic off the autograd graph; the hook fires mid-forward with
         # grad enabled. No autocast guard is needed -- the metric has no matmul, so its .float()
         # is not downcast (autocast only lowers matmul/linear/conv).
         with torch.no_grad():
-            self._embeddings_cos_sim_sum += mean_pairwise_cosine_similarity(
-                embeddings[:, self._offset :]
+            self._embeddings_cos_sim.update(
+                mean_pairwise_cosine_similarity(embeddings[:, self._offset :])
             )
-        self._count += 1
 
     @property
     def embeddings_cos_sim(self) -> float:
-        return self._embeddings_cos_sim_sum / self._count if self._count else 0.0
+        return self._embeddings_cos_sim.compute()
 
 
 class RolloutMetricsRecorder:
     def __init__(self) -> None:
-        self.reset()
+        self._diversity_overlap = MeanMetric()
+        self._unique_rollouts = MeanMetric()
 
     def reset(self) -> None:
-        self._diversity_overlap_sum = 0.0
-        self._unique_rollouts_sum = 0.0
-        self._count = 0
+        self._diversity_overlap.reset()
+        self._unique_rollouts.reset()
 
     def record(self, actions: torch.Tensor) -> None:
-        self._diversity_overlap_sum += diversity_overlap(actions)
-        self._unique_rollouts_sum += unique_rollouts(actions)
-        self._count += 1
+        self._diversity_overlap.update(diversity_overlap(actions))
+        self._unique_rollouts.update(unique_rollouts(actions))
 
     @property
     def diversity_overlap(self) -> float:
-        return self._diversity_overlap_sum / self._count if self._count else 0.0
+        return self._diversity_overlap.compute()
 
     @property
     def unique_rollouts(self) -> float:
-        return self._unique_rollouts_sum / self._count if self._count else 0.0
+        return self._unique_rollouts.compute()

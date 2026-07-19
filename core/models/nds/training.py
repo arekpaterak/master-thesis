@@ -15,6 +15,7 @@ from core.lns.acceptance_criterion import (
 )
 from core.lns.improvement_step import ImprovementStep
 from core.lns.utils import select_solution
+from core.models.metric import MeanMetric, MetricCollection, SumMetric
 from core.models.module import EpochAccumulator
 from core.models.nds.apply_and_repair import ApplyAndRepair
 from core.models.nds.baseline import Baseline
@@ -161,73 +162,69 @@ class EpochTrainSummary(BaseModel):
 
 class EpochTrainAccumulator(EpochAccumulator):
     def __init__(self) -> None:
-        self._total_instances = 0
-        self._total_batches = 0
-        self._total_time = 0.0
-        self._total_batch_time = 0.0
-        self._total_loss = 0.0
-        self._total_best_reward = 0.0
-        self._total_reward_mean = 0.0
-        self._total_entropy = 0.0
-        self._total_entropy_norm = 0.0
-        self._total_log_p = 0.0
-        self._total_reward_std = 0.0
-        self._total_acceptance_rate = 0.0
-        self._total_unique_actions_ratio = 0.0
-        self._total_diversity_overlap = 0.0
-        self._total_unique_rollouts = 0.0
-        self._total_embeddings_cos_sim = 0.0
-        self._total_objective_start = 0.0
-        self._total_objective_before = 0.0
-        self._total_objective_after = 0.0
-        self._total_grad_norm = 0.0
+        # Keys match EpochTrainSummary fields so compute() spreads straight into it.
+        self._means = MetricCollection(
+            {
+                name: MeanMetric()
+                for name in (
+                    "loss",
+                    "best_reward",
+                    "reward_mean",
+                    "entropy",
+                    "entropy_norm",
+                    "log_p",
+                    "reward_std",
+                    "acceptance_rate",
+                    "unique_actions_ratio",
+                    "diversity_overlap",
+                    "unique_rollouts",
+                    "embeddings_cos_sim",
+                    "objective_start",
+                    "objective_before",
+                    "objective_after",
+                    "grad_norm",
+                )
+            }
+        )
+        self._instances = SumMetric()
+        self._batches = SumMetric()
+        self._batch_time = SumMetric()
 
     def update(self, summary: BatchTrainSummary) -> None:
         n = summary.batch_size
-        self._total_instances += n
-        self._total_batches += 1
-        self._total_time += summary.batch_time_sec
-        self._total_batch_time += summary.batch_time_sec
-        self._total_loss += summary.loss * n
-        self._total_best_reward += summary.reward_best * n
-        self._total_reward_mean += summary.reward_mean * n
-        self._total_entropy += summary.entropy * n
-        self._total_entropy_norm += summary.entropy_norm * n
-        self._total_log_p += summary.log_p * n
-        self._total_reward_std += summary.reward_std * n
-        self._total_acceptance_rate += summary.acceptance_rate * n
-        self._total_unique_actions_ratio += summary.unique_actions_ratio * n
-        self._total_diversity_overlap += summary.diversity_overlap * n
-        self._total_unique_rollouts += summary.unique_rollouts * n
-        self._total_embeddings_cos_sim += summary.embeddings_cos_sim * n
-        self._total_objective_start += summary.objective_start * n
-        self._total_objective_before += summary.objective_before * n
-        self._total_objective_after += summary.objective_after * n
-        self._total_grad_norm += summary.grad_norm * n
+        self._instances.update(n)
+        self._batches.update(1)
+        self._batch_time.update(summary.batch_time_sec)
+        self._means.update(
+            {
+                "loss": summary.loss,
+                "best_reward": summary.reward_best,
+                "reward_mean": summary.reward_mean,
+                "entropy": summary.entropy,
+                "entropy_norm": summary.entropy_norm,
+                "log_p": summary.log_p,
+                "reward_std": summary.reward_std,
+                "acceptance_rate": summary.acceptance_rate,
+                "unique_actions_ratio": summary.unique_actions_ratio,
+                "diversity_overlap": summary.diversity_overlap,
+                "unique_rollouts": summary.unique_rollouts,
+                "embeddings_cos_sim": summary.embeddings_cos_sim,
+                "objective_start": summary.objective_start,
+                "objective_before": summary.objective_before,
+                "objective_after": summary.objective_after,
+                "grad_norm": summary.grad_norm,
+            },
+            n,
+        )
 
     def complete(self, *, epoch: int) -> EpochTrainSummary:
-        n = self._total_instances
+        total_time = self._batch_time.compute()
         return EpochTrainSummary(
             epoch=epoch,
-            loss=self._total_loss / n,
-            best_reward=self._total_best_reward / n,
-            reward_mean=self._total_reward_mean / n,
-            entropy=self._total_entropy / n,
-            entropy_norm=self._total_entropy_norm / n,
-            log_p=self._total_log_p / n,
-            reward_std=self._total_reward_std / n,
-            acceptance_rate=self._total_acceptance_rate / n,
-            unique_actions_ratio=self._total_unique_actions_ratio / n,
-            diversity_overlap=self._total_diversity_overlap / n,
-            unique_rollouts=self._total_unique_rollouts / n,
-            embeddings_cos_sim=self._total_embeddings_cos_sim / n,
-            objective_start=self._total_objective_start / n,
-            objective_before=self._total_objective_before / n,
-            objective_after=self._total_objective_after / n,
-            grad_norm=self._total_grad_norm / n,
-            batch_time_sec=self._total_batch_time / self._total_batches,
-            epoch_time_sec=self._total_batch_time,
-            instances_per_sec=self._total_instances / self._total_time,
+            **self._means.compute(),
+            batch_time_sec=total_time / self._batches.compute(),
+            epoch_time_sec=total_time,
+            instances_per_sec=self._instances.compute() / total_time,
         )
 
 

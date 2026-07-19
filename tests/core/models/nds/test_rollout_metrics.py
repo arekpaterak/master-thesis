@@ -64,8 +64,8 @@ def test_leading_batch_dims_reduce_to_scalar():
 
 def test_recorder_averages_over_recorded_steps():
     recorder = RolloutMetricsRecorder()
-    assert recorder.diversity_overlap == 0.0
-    assert recorder.unique_rollouts == 0.0
+    assert math.isnan(recorder.diversity_overlap)
+    assert math.isnan(recorder.unique_rollouts)
 
     identical = torch.tensor([[0, 1, 2], [0, 1, 2]]).unsqueeze(0)  # overlap 1.0, unique 0.5
     disjoint = torch.tensor([[0, 1, 2], [3, 4, 5]]).unsqueeze(0)  # overlap 0.0, unique 1.0
@@ -76,5 +76,5 @@ def test_recorder_averages_over_recorded_steps():
     assert math.isclose(recorder.unique_rollouts, 0.75, rel_tol=1e-6)
 
     recorder.reset()
-    assert recorder.diversity_overlap == 0.0
-    assert recorder.unique_rollouts == 0.0
+    assert math.isnan(recorder.diversity_overlap)
+    assert math.isnan(recorder.unique_rollouts)
