@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+
 import torch
 
 from core.lns.operators.destroy.base import NodeDestroyOperator
 from core.models.nds.factory import NDSModel
 from core.models.nds.metrics import RolloutMetricsRecorder
+from core.models.rollout import Rollout
 from core.problems.solution import BaseSolution
 
 
@@ -28,12 +32,24 @@ class ModelNodeDestroy[S: BaseSolution](NodeDestroyOperator[S]):
         self._deconstruction_size = deconstruction_size
         self.stitch = stitch
         self._recorder = recorder
+        self._rollout: Callable[..., Rollout] | None = None
+
+    @contextmanager
+    def search_session(self, solution: S) -> Iterator[None]:
+        self._model.eval()
+        with self._model.search_session(solution.instance) as rollout:
+            self._rollout = rollout
+            try:
+                yield
+            finally:
+                self._rollout = None
 
     @torch.no_grad()
     def select_nodes(self, solution: S, num_rollouts: int) -> torch.Tensor:
         """Return ``[*batch_size, R, M]`` node indices from a single model forward pass."""
         self._model.eval()
-        rollout = self._model.rollout(
+        rollout_fn = self._rollout if self._rollout is not None else self._model.rollout
+        rollout = rollout_fn(
             solution,
             rollouts_per_solution=num_rollouts,
             deconstruction_size=self._deconstruction_size,

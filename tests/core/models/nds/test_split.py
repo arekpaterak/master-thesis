@@ -1,9 +1,12 @@
+from collections.abc import Callable
+
 import torch
 
 from core.models.nds.config import SplitModelConfig
 from core.models.nds.decoders.config import (
     SimpleOnePassDecoderConfig,
 )
+from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.encoders.config import PositionalEncodingConfig
 from core.models.nds.factory import build_model
 from core.models.nds.models.split import SplitNDSModel
@@ -15,6 +18,20 @@ from core.problems.tsp.graph_solution import TSPGraphSolution
 
 def _cvrp_model() -> SplitNDSModel:
     return build_model(SplitModelConfig(decoder=SimpleOnePassDecoderConfig()), "cvrp")
+
+
+def _count_encode(model: SplitNDSModel) -> Callable[[], int]:
+    """Patch the encoder to count how many times the instance is encoded."""
+    original = model.encoder.encode_instance
+    count = 0
+
+    def counting(instance):
+        nonlocal count
+        count += 1
+        return original(instance)
+
+    model.encoder.encode_instance = counting  # type: ignore[method-assign]
+    return lambda: count
 
 
 def _cvrp_solution(B: int = 4, N: int = 20) -> CVRPGraphSolution:
@@ -32,8 +49,8 @@ def test_factory_builds_split_model() -> None:
     model = _cvrp_model()
     assert isinstance(model, SplitNDSModel)
 
-    # Cache state must not leak into the persisted weights.
-    assert all("instance_cache" not in k and "cached" not in k for k in model.state_dict())
+    # Session cache state must not leak into the persisted weights.
+    assert all("session_cache" not in k and "cache" not in k for k in model.state_dict())
 
 
 def test_cvrp_rollout_shape_and_distinctness() -> None:
@@ -106,27 +123,46 @@ def test_positional_encoding_enabled_widens_fusion_projection() -> None:
     assert model.encoder.fusion.projection.in_features == default_hidden_dim + 2 * 16
 
 
-def test_cache_reused_in_eval_and_bypassed_in_train() -> None:
-    model = _cvrp_model()
+def test_search_session_binds_cache_and_encodes_once() -> None:
+    model = _cvrp_model().eval()
     solution = _cvrp_solution(B=2, N=20)
+    encode_count = _count_encode(model)
 
-    model.eval()
+    with model.search_session(solution.instance) as step:
+        step(solution, rollouts_per_solution=2, deconstruction_size=5)
+        step(solution, rollouts_per_solution=2, deconstruction_size=5)
+
+    # Encoded once on session enter and reused for both rollouts via the bound callable.
+    assert encode_count() == 1
+
+    # The model holds no ambient cache: a bare rollout after the session recomputes.
     model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5)
-    cached = model._instance_cache
-    assert cached is not None
-    assert model._cached_instance is solution.instance
+    assert encode_count() == 2
 
-    # Same instance object -> cache object is reused, not recomputed.
+
+def test_rollout_recomputes_without_session() -> None:
+    model = _cvrp_model().eval()
+    solution = _cvrp_solution(B=2, N=20)
+    encode_count = _count_encode(model)
+
+    # No active session and no explicit cache: pure rollout recomputes each call.
     model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5)
-    assert model._instance_cache is cached
-
-    # A different instance invalidates the cache.
-    other = _cvrp_solution(B=2, N=20)
-    model.rollout(other, rollouts_per_solution=2, deconstruction_size=5)
-    assert model._instance_cache is not cached
-
-    # Training mode never reads or writes the cache.
-    model.train()
-    sentinel = model._instance_cache
     model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5)
-    assert model._instance_cache is sentinel
+    assert encode_count() == 2
+
+
+def test_model_node_destroy_session_encodes_once() -> None:
+    # The search-time path: ModelNodeDestroy.search_session binds the model's rollout
+    # callable, so repeated select_nodes over one instance encode only once.
+    model = _cvrp_model()
+    destroy = ModelNodeDestroy(model=model, deconstruction_size=5)
+    solution = _cvrp_solution(B=2, N=20)
+    encode_count = _count_encode(model)
+
+    with destroy.search_session(solution):
+        assert destroy._rollout is not None
+        destroy.select_nodes(solution, num_rollouts=2)
+        destroy.select_nodes(solution, num_rollouts=2)
+
+    assert encode_count() == 1
+    assert destroy._rollout is None

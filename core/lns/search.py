@@ -36,15 +36,16 @@ def search[S: BaseSolution](
     criterion.reset()
     best = solution
     history: list[float] = []
-    for step in step_progress(range(n_iterations)):
-        solution = improvement_step(solution, criterion)
-        if exchange is not None:
-            solution = exchange(solution)
-        best = select_solution(solution.objective() < best.objective(), solution, best)
-        history.append(solution.objective().mean().item())
-        criterion.step()
-        if on_step is not None:
-            on_step(step + 1, solution)
+    with improvement_step.search_session(solution):
+        for step in step_progress(range(n_iterations)):
+            solution = improvement_step(solution, criterion)
+            if exchange is not None:
+                solution = exchange(solution)
+            best = select_solution(solution.objective() < best.objective(), solution, best)
+            history.append(solution.objective().mean().item())
+            criterion.step()
+            if on_step is not None:
+                on_step(step + 1, solution)
     return SearchResult(solution=solution, best_solution=best, history=history)
 
 

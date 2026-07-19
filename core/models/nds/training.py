@@ -162,7 +162,6 @@ class EpochTrainSummary(BaseModel):
 
 class EpochTrainAccumulator(EpochAccumulator):
     def __init__(self) -> None:
-        # Keys match EpochTrainSummary fields so compute() spreads straight into it.
         self._means = MetricCollection(
             {
                 name: MeanMetric()
@@ -288,6 +287,7 @@ class NDSTrainingStep:
             torch.autocast(
                 device_type=device.type, dtype=self._amp_dtype, enabled=self._amp_enabled
             ),
+            self._improvement_step.search_session(solution),
         ):
             for _ in range(self._num_initial_improvement_steps):
                 solution = self._improvement_step(solution, GreedyAcceptance())

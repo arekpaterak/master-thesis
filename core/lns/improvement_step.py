@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -28,6 +30,18 @@ class ImprovementStep(ABC):
     @abstractmethod
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution: ...
 
+    @property
+    def _operators_with_search_sessions(self) -> tuple[NodeDestroyOperator, ...]:
+        """Operators whose per-search session should be opened around a search."""
+        return ()
+
+    @contextmanager
+    def search_session(self, solution: BaseSolution) -> Iterator[None]:
+        with ExitStack() as stack:
+            for operator in self._operators_with_search_sessions:
+                stack.enter_context(operator.search_session(solution))
+            yield
+
 
 class NoopImprovementStep(ImprovementStep):
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
@@ -47,6 +61,10 @@ class SequentialImprovementStep(ImprovementStep):
         self._repair = repair
         self._num_rollouts = num_rollouts
         self._n_repairs = n_repairs
+
+    @property
+    def _operators_with_search_sessions(self) -> tuple[NodeDestroyOperator, ...]:
+        return (self._destroy,)
 
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
         nodes = self._destroy.select_nodes(solution, self._num_rollouts)  # [*B, R, M]
@@ -72,6 +90,10 @@ class ParallelImprovementStep(ImprovementStep):
         self._repair = repair
         self._num_rollouts = num_rollouts
         self._n_repairs = n_repairs
+
+    @property
+    def _operators_with_search_sessions(self) -> tuple[NodeDestroyOperator, ...]:
+        return (self._destroy,)
 
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
         nodes = self._destroy.select_nodes(solution, self._num_rollouts)  # [*B, R, M]
@@ -113,6 +135,10 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         self._seed = seed
         self._first_repair_uses_rollout_order = first_repair_uses_rollout_order
         self._insert_in_new_routes_only = insert_in_new_routes_only
+
+    @property
+    def _operators_with_search_sessions(self) -> tuple[NodeDestroyOperator, ...]:
+        return (self._destroy,)
 
     @staticmethod
     def _validate_repair(repair: RepairOperator) -> None:

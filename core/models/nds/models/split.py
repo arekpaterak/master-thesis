@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Literal
 
 import torch.nn as nn
@@ -20,7 +22,7 @@ class SplitNDSModel(nn.Module):
     """Destroy model with a split-frequency encoder designed specifically for LNS search.
 
     Encoding lives in :class:`SplitNDSEncoder`: the static instance is encoded once and
-    each LNS iteration conditions on the current solution via positional fusion.
+    each LNS iteration conditions on the current solution via fusion.
     """
 
     def __init__(
@@ -56,9 +58,6 @@ class SplitNDSModel(nn.Module):
         )
         self.decoder = decoder
 
-        self._cached_instance: BaseProblemInstance | None = None
-        self._instance_cache: InstanceCache | None = None
-
     def rollout(
         self,
         solution: BaseSolution,
@@ -70,17 +69,13 @@ class SplitNDSModel(nn.Module):
     ) -> Rollout:
         """Rollout from the instance encoding.
 
-        When ``cache`` is given (encode-once training, see ``encode_instance``) it is
-        used directly. Otherwise, the static encoding is obtained from
-        ``_instance_cache_for``: identity-cached at inference, recomputed in training.
+        A pure function of ``(solution, cache)``: when no ``cache`` is given the static
+        encoding is recomputed from the instance. Reuse across a search is provided by
+        :meth:`search_session`, which binds the cache into the callable it yields.
         """
-        # Identity anchor for the instance cache, taken before flattening reshapes the
-        # solution (and its instance) into a fresh object on every call.
-        instance_anchor = solution.instance
-
         solution, batch_dims = flatten_instance_batch(solution)
         if cache is None:
-            cache = self._instance_cache_for(instance_anchor, solution.instance)
+            cache = self.encoder.encode_instance(solution.instance)
 
         return self._rollout_from_cache(
             solution,
@@ -92,14 +87,16 @@ class SplitNDSModel(nn.Module):
         )
 
     def encode_instance(self, instance: BaseProblemInstance) -> InstanceCache:
-        """Encode the static instance once (with grad) for encode-once training.
-
-        The returned cache is reused across every improvement step of a training step;
-        only the solution-dependent positional fusion is recomputed per step. Pair this
-        with ``rollout(cache=...)`` and accumulate the boundary gradient so a single
-        encoder backward suffices. See ``encode_once_in_training``.
-        """
         return self.encoder.encode_instance(instance.reshape(-1))
+
+    @contextmanager
+    def search_session(self, instance: BaseProblemInstance) -> Iterator[Callable[..., Rollout]]:
+        cache = self.encode_instance(instance)
+
+        def step(solution: BaseSolution, **kwargs) -> Rollout:
+            return self.rollout(solution, cache=cache, **kwargs)
+
+        yield step
 
     def _rollout_from_cache(
         self,
@@ -136,24 +133,3 @@ class SplitNDSModel(nn.Module):
             greedy=greedy,
         )
         return unflatten_rollout(rollout, batch_dims)
-
-    def _instance_cache_for(
-        self, anchor: BaseProblemInstance, instance: BaseProblemInstance
-    ) -> InstanceCache:
-        """Return the static instance encoding, recomputing only when needed.
-
-        Training always recomputes: the per-step ``loss.backward`` frees the graph, so
-        a tensor reused across steps would break the next backward. At inference (eval
-        mode) the encoding is cached and reused while the same instance object drives
-        the search.
-          Holding a reference to ``anchor`` keeps the comparison sound -- an
-        alive instance cannot have its identity reused.
-        """
-        if self.training:
-            return self.encoder.encode_instance(instance)
-
-        if anchor is not self._cached_instance:
-            self._instance_cache = self.encoder.encode_instance(instance)
-            self._cached_instance = anchor
-        assert self._instance_cache is not None
-        return self._instance_cache

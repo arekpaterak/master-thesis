@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Literal
 
 import torch.nn as nn
@@ -16,6 +18,7 @@ from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
     CVRPSolutionFeatureExtractor,
 )
+from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
@@ -126,3 +129,10 @@ class JointNDSModel(nn.Module):
             greedy=greedy,
         )
         return unflatten_rollout(rollout, batch_dims)
+
+    @contextmanager
+    def search_session(self, instance: BaseProblemInstance) -> Iterator[Callable[..., Rollout]]:
+        def step(solution: BaseSolution, **kwargs) -> Rollout:
+            return self.rollout(solution, **kwargs)
+
+        yield step
