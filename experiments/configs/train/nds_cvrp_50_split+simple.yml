@@ -17,8 +17,7 @@ model:
     ff_activation: swiglu
     with_neighbours_encoding: true
     with_route_encoding: true
-    num_solution_attention_layers: 1
-  encode_once_in_training: false
+    num_solution_attention_layers: 0
 
 optimizer:
   learning_rate: 1.0e-4

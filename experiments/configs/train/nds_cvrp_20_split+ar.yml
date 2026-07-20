@@ -15,7 +15,7 @@ model:
   encoder:
     with_neighbours_encoding: true
     with_route_encoding: true
-    num_solution_attention_layers: 1
+    num_solution_attention_layers: 0
 
 optimizer:
   learning_rate: 1.0e-4
