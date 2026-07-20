@@ -7,7 +7,7 @@ from typing import Literal
 import torch.nn as nn
 
 from core.models.nds.decoders.base import DestroyDecoder
-from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.config import PositionalEncodingConfig, SplitEncoderConfig
 from core.models.nds.encoders.split import InstanceCache, SplitNDSEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
@@ -32,17 +32,11 @@ class SplitNDSModel(nn.Module):
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
-        encoder_config: EncoderConfig | None = None,
+        encoder_config: SplitEncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
-        with_fusion_neighbours_encoding: bool = False,
-        with_fusion_route_encoding: bool | None = None,
-        num_fusion_attention_layers: int = 0,
         decoder: DestroyDecoder,
     ) -> None:
         super().__init__()
-
-        if with_fusion_route_encoding is None:
-            with_fusion_route_encoding = problem_name == "cvrp"
 
         self.problem_name = problem_name
         self.encoder = SplitNDSEncoder(
@@ -52,9 +46,6 @@ class SplitNDSModel(nn.Module):
             ff_dim=ff_dim,
             encoder_config=encoder_config,
             positional=positional,
-            with_fusion_neighbours_encoding=with_fusion_neighbours_encoding,
-            with_fusion_route_encoding=with_fusion_route_encoding,
-            num_fusion_attention_layers=num_fusion_attention_layers,
         )
         self.decoder = decoder
 

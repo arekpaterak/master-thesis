@@ -10,7 +10,6 @@ with app.setup:
     import polars as pl
 
     from core.models.nds.config import (
-        EncoderConfig,
         JointModelConfig,
         SplitModelConfig,
     )
@@ -19,6 +18,7 @@ with app.setup:
         SimpleOnePassDecoderConfig,
         SlotDecoderConfig,
     )
+    from core.models.nds.encoders.config import JointEncoderConfig, SplitEncoderConfig
     from core.models.nds.factory import build_model
 
     ENCODER_MODES = ("joint", "split")
@@ -102,24 +102,30 @@ def _():
 
     def build_variant(encoder_mode, decoder_type, settings, problem, *, dims):
         decoder = DECODER_CONFIGS[decoder_type]()
-        encoder = EncoderConfig(
-            num_pre_attention_layers=dims["num_pre"],
-            num_post_attention_layers=dims["num_post"],
-            **ENCODER_SETTINGS[settings],
-        )
         shared = dict(
             hidden_dim=dims["hidden_dim"],
             ff_dim=dims["ff_dim"],
             num_heads=dims["num_heads"],
-            encoder=encoder,
             decoder=decoder,
         )
         if encoder_mode == "joint":
-            model_params = JointModelConfig(**shared)
+            encoder = JointEncoderConfig(
+                num_pre_attention_layers=dims["num_pre"],
+                num_post_attention_layers=dims["num_post"],
+                **ENCODER_SETTINGS[settings],
+            )
+            model_params = JointModelConfig(encoder=encoder, **shared)
         else:
             # Route encoding is a CVRP-only signal; the split encoder rejects it for TSP.
-            extra = {} if problem == "cvrp" else dict(with_fusion_route_encoding=False)
-            model_params = SplitModelConfig(**shared, **extra)
+            # The instance encoder has no pre/post split (structural layers are always
+            # off there), so the two slider values collapse into one attention block.
+            route_extra = {} if problem == "cvrp" else dict(with_route_encoding=False)
+            encoder = SplitEncoderConfig(
+                num_instance_attention_layers=dims["num_pre"] + dims["num_post"],
+                **ENCODER_SETTINGS[settings],
+                **route_extra,
+            )
+            model_params = SplitModelConfig(encoder=encoder, **shared)
         return build_model(model_params, problem)
 
     def variant_stats(encoder_mode, decoder_type, settings, problem, *, dims):

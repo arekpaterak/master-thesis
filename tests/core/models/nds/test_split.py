@@ -7,7 +7,7 @@ from core.models.nds.decoders.config import (
     SimpleOnePassDecoderConfig,
 )
 from core.models.nds.destroy import ModelNodeDestroy
-from core.models.nds.encoders.config import PositionalEncodingConfig
+from core.models.nds.encoders.config import PositionalEncodingConfig, SplitEncoderConfig
 from core.models.nds.factory import build_model
 from core.models.nds.models.split import SplitNDSModel
 from core.problems.cvrp import CVRP, CVRPSampler
@@ -76,7 +76,7 @@ def test_tsp_rollout_shape() -> None:
     assert rollout.actions.shape == (3, R, M)
 
 
-def test_fusion_route_encoding_defaults_to_problem() -> None:
+def test_route_encoding_defaults_to_problem() -> None:
     # None resolves to a problem-specific default: on for CVRP, off for TSP.
     cvrp = build_model(SplitModelConfig(decoder=SimpleOnePassDecoderConfig()), "cvrp")
     tsp = build_model(SplitModelConfig(decoder=SimpleOnePassDecoderConfig()), "tsp")
@@ -92,8 +92,7 @@ def test_positional_encoding_can_be_disabled_with_structural_layers_on() -> None
         SplitModelConfig(
             decoder=SimpleOnePassDecoderConfig(),
             positional_encoding=None,
-            with_fusion_neighbours_encoding=True,
-            with_fusion_route_encoding=True,
+            encoder=SplitEncoderConfig(with_neighbours_encoding=True, with_route_encoding=True),
         ),
         "cvrp",
     ).eval()

@@ -1,7 +1,7 @@
 import torch
 
 from core.models.embeddings import CVRPInitialEmbedding
-from core.models.nds.encoders.config import EncoderConfig
+from core.models.nds.encoders.config import EncoderConfig, JointEncoderConfig, SplitEncoderConfig
 from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.encoders.norm import InstanceNorm
 from core.models.nds.encoders.split import SplitNDSEncoder
@@ -63,7 +63,7 @@ def test_pre_norm_encoder_cvrp_forward() -> None:
     B, N = 4, 20
     instance_features, solution_features = _cvrp_encoder_inputs(B, N)
 
-    encoder = JointEncoder(problem_name="cvrp", encoder_config=EncoderConfig(pre_norm=True))
+    encoder = JointEncoder(problem_name="cvrp", encoder_config=JointEncoderConfig(pre_norm=True))
     assert encoder.final_norm is not None
 
     embedded_nodes = encoder.forward(instance_features, solution_features)
@@ -78,8 +78,7 @@ def test_pre_norm_encoder_tsp_forward() -> None:
 
     encoder = JointEncoder(
         problem_name="tsp",
-        encoder_config=EncoderConfig(pre_norm=True),
-        with_route_encoding=False,
+        encoder_config=JointEncoderConfig(pre_norm=True, with_route_encoding=False),
     )
     embedded_nodes = encoder.forward(instance_features, solution_features)
 
@@ -88,7 +87,7 @@ def test_pre_norm_encoder_tsp_forward() -> None:
 
 
 def test_rms_norm_selected_in_structural_layers() -> None:
-    encoder = JointEncoder(problem_name="cvrp", encoder_config=EncoderConfig(norm_type="rms"))
+    encoder = JointEncoder(problem_name="cvrp", encoder_config=JointEncoderConfig(norm_type="rms"))
     assert isinstance(encoder.neighbours_encoding.norm, torch.nn.RMSNorm)
     assert isinstance(encoder.route_encoding.norm, torch.nn.RMSNorm)
 
@@ -101,7 +100,7 @@ def test_split_encoder_final_norm_only_at_fusion_output() -> None:
     # the intermediate instance encoder.
     encoder = SplitNDSEncoder(
         problem_name="cvrp",
-        encoder_config=EncoderConfig(pre_norm=True),
+        encoder_config=SplitEncoderConfig(pre_norm=True),
     )
     assert encoder.instance_encoder.final_norm is None
     assert encoder.fusion.final_norm is not None

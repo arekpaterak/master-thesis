@@ -6,7 +6,12 @@ import torch
 import torch.nn as nn
 
 from core.models.embeddings.positional import circular_sinusoidal_encoding
-from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.config import (
+    EncoderConfig,
+    JointEncoderConfig,
+    PositionalEncodingConfig,
+    SplitEncoderConfig,
+)
 from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.encoders.layers import (
     AttentionLayer,
@@ -48,18 +53,17 @@ class SplitNDSEncoder(nn.Module):
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
-        encoder_config: EncoderConfig | None = None,
+        encoder_config: SplitEncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
-        with_fusion_neighbours_encoding: bool = False,
-        with_fusion_route_encoding: bool = False,
-        num_fusion_attention_layers: int = 0,
     ) -> None:
         super().__init__()
 
-        if with_fusion_route_encoding and problem_name != "cvrp":
-            raise ValueError(
-                "with_fusion_route_encoding is only supported for problem_name='cvrp'."
-            )
+        encoder_config = encoder_config or SplitEncoderConfig()
+        with_route_encoding = encoder_config.with_route_encoding
+        if with_route_encoding is None:
+            with_route_encoding = problem_name == "cvrp"
+        if with_route_encoding and problem_name != "cvrp":
+            raise ValueError("with_route_encoding is only supported for problem_name='cvrp'.")
 
         self.problem_name = problem_name
         self._positional = positional
@@ -83,30 +87,37 @@ class SplitNDSEncoder(nn.Module):
 
         # The instance encoder must stay solution-independent: structural layers off
         # and no positional encoding injected at the input (it is injected at fusion).
+        shared_fields = encoder_config.model_dump(
+            include=set(EncoderConfig.model_fields) - {"with_final_norm"}
+        )
+        instance_encoder_config = JointEncoderConfig(
+            **shared_fields,
+            with_final_norm=False,
+            with_neighbours_encoding=False,
+            with_route_encoding=False,
+            num_pre_attention_layers=encoder_config.num_instance_attention_layers,
+            num_post_attention_layers=0,
+        )
         self.instance_encoder = JointEncoder(
             problem_name=problem_name,
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,
-            encoder_config=encoder_config,
+            encoder_config=instance_encoder_config,
             positional=None,
-            with_neighbours_encoding=False,
-            with_route_encoding=False,
-            with_final_norm=False,
         )
 
-        # CVRP fuses IPE + XPE, TSP fuses IPE only (no depot anchor). 0 when PE is disabled.
+        # CVRP injects IPE + XPE, TSP injects IPE only (no depot anchor). 0 when PE is disabled.
         pe_components = 2 if problem_name == "cvrp" else 1
         pe_dim = pe_components * self._positional.dim if self._positional is not None else 0
         self.fusion = SolutionFusionEncoder(
             hidden_dim=hidden_dim,
             pe_dim=pe_dim,
-            with_neighbours_encoding=with_fusion_neighbours_encoding,
-            with_route_encoding=with_fusion_route_encoding,
-            num_attention_layers=num_fusion_attention_layers,
             num_heads=num_heads,
             ff_dim=ff_dim,
-            encoder_config=encoder_config,
+            encoder_config=encoder_config.model_copy(
+                update={"with_route_encoding": with_route_encoding}
+            ),
         )
 
     def encode_instance(self, instance: BaseProblemInstance) -> InstanceCache:
@@ -165,32 +176,19 @@ class SplitNDSEncoder(nn.Module):
 
 
 class SolutionFusionEncoder(nn.Module):
-    """Condition cached instance embeddings on the current solution.
-
-    Applies up to three stages in sequence:
-    1. Project ``[customer_embedding, positional_encoding]`` back to ``hidden_dim``
-       (depot passes through unchanged).
-    2. Neighbours encoding -- message-passing from prev/next route neighbours.
-    3. Route encoding -- route-mean pooling and update.
-    4. Self-attention layers over all nodes.
-
-    Stages 2-4 are optional and share the encoder's norm and activation settings.
-    """
+    """Enrich cached instance embeddings with the current solution."""
 
     def __init__(
         self,
         *,
         hidden_dim: int,
         pe_dim: int,
-        with_neighbours_encoding: bool = False,
-        with_route_encoding: bool = False,
-        num_attention_layers: int = 0,
         num_heads: int = 8,
         ff_dim: int = 512,
-        encoder_config: EncoderConfig | None = None,
+        encoder_config: SplitEncoderConfig | None = None,
     ) -> None:
         super().__init__()
-        _config = encoder_config or EncoderConfig()
+        _config = encoder_config or SplitEncoderConfig()
         self.encoding_order = _config.encoding_order
         self.projection = nn.Linear(hidden_dim + pe_dim, hidden_dim)
         self.neighbours = (
@@ -199,7 +197,7 @@ class SolutionFusionEncoder(nn.Module):
                 norm_type=_config.norm_type,
                 pre_norm=_config.pre_norm,
             )
-            if with_neighbours_encoding
+            if _config.with_neighbours_encoding
             else None
         )
         self.route = (
@@ -209,7 +207,7 @@ class SolutionFusionEncoder(nn.Module):
                 norm_type=_config.norm_type,
                 pre_norm=_config.pre_norm,
             )
-            if with_route_encoding
+            if _config.with_route_encoding
             else None
         )
         self.attention_layers = nn.ModuleList(
@@ -222,7 +220,7 @@ class SolutionFusionEncoder(nn.Module):
                     pre_norm=_config.pre_norm,
                     ff_activation=_config.ff_activation,
                 )
-                for _ in range(num_attention_layers)
+                for _ in range(_config.num_solution_attention_layers)
             ]
         )
         self.final_norm = (

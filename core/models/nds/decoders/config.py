@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 
 
 class _DecoderConfigBase(BaseModel):
+    poly_dim: int = Field(default=256, title="Poly dim", description="PolyNet hidden dimension.")
+    seed_dim: int = Field(default=10, title="Seed dim", description="Seed dimension.")
     with_poly: bool = Field(
         default=True,
         title="With PolyNet",

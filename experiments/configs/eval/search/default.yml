@@ -9,6 +9,6 @@ insert_in_new_routes_only: true
 start_solution_params:
     num_improvement_steps: 50
     deconstruction_size: 15
-n_augmentations: 1
+n_augmentations: 8
 acceptance:
   type: sa

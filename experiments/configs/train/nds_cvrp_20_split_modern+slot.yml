@@ -6,21 +6,19 @@ model:
   hidden_dim: 128
   num_heads: 8
   ff_dim: 512
-  poly_dim: 256
-  seed_dim: 10
   encoder_mode: split
   positional_encoding:
     dim: 16
   decoder:
     type: slot
     num_slots: 5
-  with_fusion_neighbours_encoding: true
-  with_fusion_route_encoding: true
-  num_fusion_attention_layers: 1
   encoder:
     norm_type: instance
     pre_norm: true
     ff_activation: swiglu
+    with_neighbours_encoding: true
+    with_route_encoding: true
+    num_solution_attention_layers: 1
 
 optimizer:
   learning_rate: 1.0e-4

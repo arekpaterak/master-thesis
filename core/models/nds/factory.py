@@ -22,23 +22,14 @@ def build_model(model_params: ModelConfig, problem_name: str) -> NDSModel:
     if isinstance(model_params, SplitModelConfig):
         return SplitNDSModel(
             **shared_kwargs,
-            with_fusion_neighbours_encoding=model_params.with_fusion_neighbours_encoding,
-            with_fusion_route_encoding=model_params.with_fusion_route_encoding,
-            num_fusion_attention_layers=model_params.num_fusion_attention_layers,
             decoder=build_decoder(
                 decoder_config,
                 hidden_dim=model_params.hidden_dim,
-                seed_dim=model_params.seed_dim,
-                poly_dim=model_params.poly_dim,
                 num_heads=model_params.num_heads,
             ),
         )
 
     return JointNDSModel(
         **shared_kwargs,
-        with_neighbours_encoding=model_params.with_neighbours_encoding,
-        with_route_encoding=model_params.with_route_encoding,
-        poly_dim=model_params.poly_dim,
-        seed_dim=model_params.seed_dim,
         decoder=decoder_config,
     )

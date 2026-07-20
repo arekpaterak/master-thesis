@@ -19,7 +19,11 @@ from core.models.nds.baseline import (
     build_baseline,
 )
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
-from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.config import (
+    JointEncoderConfig,
+    PositionalEncodingConfig,
+    SplitEncoderConfig,
+)
 from core.models.nds.policy_loss import BestRolloutLossConfig, PolicyLossConfig
 from core.models.nds.pretrained.config import (
     OriginalPretrainedConfig,
@@ -41,12 +45,9 @@ class _ModelConfigBase(BaseModel):
     hidden_dim: int = Field(default=128, title="Hidden dim", description="Hidden dimension.")
     num_heads: int = Field(default=8, title="Num. heads", description="Number of attention heads.")
     ff_dim: int = Field(default=512, title="FF dim", description="Feed-forward hidden dimension.")
-    poly_dim: int = Field(default=256, title="Poly dim", description="PolyNet hidden dimension.")
-    seed_dim: int = Field(default=10, title="Seed dim", description="Seed dimension.")
     positional_encoding: PositionalEncodingConfig | None = Field(
         default=None, title="Positional encoding"
     )
-    encoder: EncoderConfig = Field(default_factory=EncoderConfig)
     decoder: DecoderConfig = Field(default_factory=AutoregressiveDecoderConfig)
     init_weights: str | None = Field(
         default=None,
@@ -63,13 +64,7 @@ class JointModelConfig(_ModelConfigBase):
     """
 
     encoder_mode: Literal["joint"] = "joint"
-    with_neighbours_encoding: bool = Field(
-        default=True, title="With neighbours encoding", description="Use neighbours encoding."
-    )
-    with_route_encoding: bool | None = Field(
-        default=None,
-        description="Use route encoding. None means problem-specific default (True for CVRP, False for TSP).",
-    )
+    encoder: JointEncoderConfig = Field(default_factory=JointEncoderConfig)
     original_pretrained_weights: OriginalPretrainedConfig | None = Field(
         default=None, description="Original NDS pretrained checkpoint to initialise from."
     )
@@ -94,35 +89,21 @@ class SplitModelConfig(_ModelConfigBase):
     """LNS-native split encoder: the instance is encoded once and the solution enters
     via positional encodings fused before the decoder.
 
-    The solution-aware neighbours/route encoding layers are always disabled, and there
-    is no pretrained-NDS initialisation (its weights are entangled with those layers),
-    so the corresponding joint-only fields are absent here.
+    The static instance encoder's own structural neighbours/route encoding layers are
+    always disabled (it must stay solution-independent), and there is no pretrained-NDS
+    initialisation (its weights are entangled with those layers). ``encoder`` carries its
+    own solution-aware toggles instead, applied at the post-fusion stage -- see
+    :class:`SplitEncoderConfig`.
     """
 
     encoder_mode: Literal["split"] = "split"
+    encoder: SplitEncoderConfig = Field(default_factory=SplitEncoderConfig)
     encode_once_in_training: bool = Field(
         default=True,
         title="Encode once in training",
         description="Run the instance encoder once per training step and reuse the "
         "embeddings across all improvement steps (exact, with bounded memory). "
         "False recomputes the encoder every step (current behavior).",
-    )
-    with_fusion_neighbours_encoding: bool = Field(
-        default=True,
-        title="Fusion neighbours encoding",
-        description="Apply a neighbours encoding layer after positional fusion (before route and attention).",
-    )
-    with_fusion_route_encoding: bool | None = Field(
-        default=None,
-        title="Fusion route encoding",
-        description="Apply a route encoding layer after positional fusion (before attention). "
-        "CVRP only. None means problem-specific default (True for CVRP, False for TSP).",
-    )
-    num_fusion_attention_layers: int = Field(
-        default=0,
-        title="Fusion attention layers",
-        description="Self-attention layers applied to all nodes after positional fusion. "
-        "0 = disabled.",
     )
 
 

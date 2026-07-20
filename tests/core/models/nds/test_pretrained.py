@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
-from core.models.nds.encoders.config import EncoderConfig
+from core.models.nds.encoders.config import JointEncoderConfig
 from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.models.joint import JointNDSModel
 from core.models.nds.pretrained.load import (
@@ -20,7 +20,7 @@ from core.problems.cvrp.solve import one_customer_per_route
 
 CHECKPOINT = Path("../experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt")
 
-PRETRAINED_ENCODER_CONFIG = EncoderConfig(
+PRETRAINED_ENCODER_CONFIG = JointEncoderConfig(
     encoding_order="route_neighbours", route_aggregation="sum"
 )
 
@@ -113,7 +113,9 @@ def test_load_pretrained_model_forward() -> None:
 def test_load_guard_rejects_mean_route_aggregation() -> None:
     encoder = JointEncoder(
         problem_name="cvrp",
-        encoder_config=EncoderConfig(encoding_order="route_neighbours", route_aggregation="mean"),
+        encoder_config=JointEncoderConfig(
+            encoding_order="route_neighbours", route_aggregation="mean"
+        ),
     )
     with pytest.raises(ValueError, match="route aggregation"):
         load_original_pretrained_encoder_weights(encoder, CHECKPOINT)
@@ -122,7 +124,9 @@ def test_load_guard_rejects_mean_route_aggregation() -> None:
 def test_load_guard_rejects_neighbours_first_order() -> None:
     encoder = JointEncoder(
         problem_name="cvrp",
-        encoder_config=EncoderConfig(encoding_order="neighbours_route", route_aggregation="sum"),
+        encoder_config=JointEncoderConfig(
+            encoding_order="neighbours_route", route_aggregation="sum"
+        ),
     )
     with pytest.raises(ValueError, match="encoding_order"):
         load_original_pretrained_encoder_weights(encoder, CHECKPOINT)

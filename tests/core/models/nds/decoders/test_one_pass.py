@@ -123,10 +123,13 @@ def test_slot_self_attention_modes_produce_logits(slot_self_attention):
 @pytest.mark.parametrize("slot_self_attention", ["none", "pre", "post"])
 def test_slot_self_attention_config_is_wired_to_factory(slot_self_attention):
     decoder = build_decoder(
-        SlotDecoderConfig(num_slots=M, slot_self_attention=slot_self_attention),
+        SlotDecoderConfig(
+            num_slots=M,
+            slot_self_attention=slot_self_attention,
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
+        ),
         hidden_dim=HIDDEN_DIM,
-        seed_dim=SEED_DIM,
-        poly_dim=POLY_DIM,
         num_heads=NUM_HEADS,
     )
 

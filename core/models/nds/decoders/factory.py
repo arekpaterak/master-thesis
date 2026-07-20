@@ -16,15 +16,13 @@ def build_decoder(
     decoder_config: DecoderConfig,
     *,
     hidden_dim: int,
-    seed_dim: int,
-    poly_dim: int,
     num_heads: int,
 ) -> DestroyDecoder:
     """Instantiate the destroy decoder selected by ``decoder_config``."""
     shared = dict(
         hidden_dim=hidden_dim,
-        seed_dim=seed_dim,
-        poly_dim=poly_dim,
+        seed_dim=decoder_config.seed_dim,
+        poly_dim=decoder_config.poly_dim,
         num_heads=num_heads,
         with_poly=decoder_config.with_poly,
     )

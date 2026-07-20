@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from core.models.embeddings.cvrp import CVRPInitialEmbedding
 from core.models.embeddings.tsp import TSPInitialEmbedding
-from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.config import JointEncoderConfig, PositionalEncodingConfig
 from core.models.nds.encoders.layers import (
     AttentionLayer,
     NeighboursEncodingLayer,
@@ -20,11 +20,8 @@ class JointEncoder(nn.Module):
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
-        encoder_config: EncoderConfig | None = None,
+        encoder_config: JointEncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
-        with_neighbours_encoding: bool = True,
-        with_route_encoding: bool = True,
-        with_final_norm: bool | None = None,
         initial_embedding: nn.Module | None = None,
     ) -> None:
         super().__init__()
@@ -51,7 +48,11 @@ class JointEncoder(nn.Module):
         else:
             raise ValueError(f"Unknown problem_name: {problem_name}")
 
-        encoder_config = encoder_config or EncoderConfig()
+        encoder_config = encoder_config or JointEncoderConfig()
+        with_route_encoding = encoder_config.with_route_encoding
+        if with_route_encoding is None:
+            with_route_encoding = problem_name == "cvrp"
+
         attention_layer = lambda: AttentionLayer(
             hidden_dim=hidden_dim,
             num_heads=num_heads,
@@ -70,7 +71,7 @@ class JointEncoder(nn.Module):
                 norm_type=encoder_config.norm_type,
                 pre_norm=encoder_config.pre_norm,
             )
-            if with_neighbours_encoding
+            if encoder_config.with_neighbours_encoding
             else None
         )
         self.route_encoding = (
@@ -86,11 +87,10 @@ class JointEncoder(nn.Module):
         self.post_attention = nn.Sequential(
             *(attention_layer() for _ in range(encoder_config.num_post_attention_layers))
         )
-        apply_final_norm = (
-            encoder_config.with_final_norm if with_final_norm is None else with_final_norm
-        )
         self.final_norm = (
-            build_norm(encoder_config.norm_type, hidden_dim) if apply_final_norm else None
+            build_norm(encoder_config.norm_type, hidden_dim)
+            if encoder_config.with_final_norm
+            else None
         )
 
     def forward(self, instance, solution) -> torch.Tensor:

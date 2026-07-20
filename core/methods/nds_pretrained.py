@@ -12,7 +12,7 @@ from core.methods.base import Method
 from core.models.nds.config import JointModelConfig, ModelConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig
-from core.models.nds.encoders.config import EncoderConfig
+from core.models.nds.encoders.config import JointEncoderConfig
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.pretrained.config import (
@@ -26,7 +26,7 @@ from core.problems import ProblemConfig
 def _original_nds_model() -> JointModelConfig:
     """The architecture matching the original NDS pretrained checkpoint."""
     return JointModelConfig(
-        encoder=EncoderConfig(
+        encoder=JointEncoderConfig(
             encoding_order=ORIGINAL_NDS_ENCODING_ORDER,
             route_aggregation=ORIGINAL_NDS_ROUTE_AGGREGATION,
         ),

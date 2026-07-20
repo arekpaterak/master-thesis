@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 from core.models.nds.decoders.factory import build_decoder
-from core.models.nds.encoders.config import EncoderConfig, PositionalEncodingConfig
+from core.models.nds.encoders.config import JointEncoderConfig, PositionalEncodingConfig
 from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
@@ -43,20 +43,13 @@ class JointNDSModel(nn.Module):
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
-        poly_dim: int = 256,
-        seed_dim: int = 10,
-        encoder_config: EncoderConfig | None = None,
+        encoder_config: JointEncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
-        with_neighbours_encoding: bool = True,
-        with_route_encoding: bool | None = None,
         decoder: DecoderConfig | None = None,
     ) -> None:
         super().__init__()
 
         self.problem_name = problem_name
-
-        if with_route_encoding is None:
-            with_route_encoding = problem_name == "cvrp"
 
         with_positional = positional is not None
 
@@ -83,14 +76,10 @@ class JointNDSModel(nn.Module):
             ff_dim=ff_dim,
             encoder_config=encoder_config,
             positional=positional,
-            with_neighbours_encoding=with_neighbours_encoding,
-            with_route_encoding=with_route_encoding,
         )
         self.decoder = build_decoder(
             decoder or AutoregressiveDecoderConfig(),
             hidden_dim=hidden_dim,
-            seed_dim=seed_dim,
-            poly_dim=poly_dim,
             num_heads=num_heads,
         )
 

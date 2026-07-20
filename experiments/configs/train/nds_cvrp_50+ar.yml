@@ -6,8 +6,6 @@ model:
   hidden_dim: 128
   num_heads: 8
   ff_dim: 512
-  poly_dim: 256
-  seed_dim: 10
   encoder_mode: joint
   positional_encoding:
     dim: 16

@@ -25,7 +25,6 @@ with app.setup(hide_code=True):
     from core.lns.config import SearchParams, StartSolutionParams
     from core.models.nds.baseline import BaselineConfig
     from core.models.nds.config import (
-        EncoderConfig,
         JointModelConfig,
         LoggingConfig,
         OriginalPretrainedConfig,
@@ -36,6 +35,7 @@ with app.setup(hide_code=True):
         ValidationConfig,
     )
     from core.models.nds.decoders.config import DecoderConfig
+    from core.models.nds.encoders.config import JointEncoderConfig, SplitEncoderConfig
     from core.models.nds.factory import build_model
     from core.models.nds.module import NDSModule
     from core.models.nds.policy_loss import PolicyLossConfig
@@ -216,8 +216,7 @@ def _(defaults):
 
 
 @app.cell(hide_code=True)
-def _(defaults, encoder_mode_widget):
-    # Joint-only structural field: the split (LNS-native) encoder always disables it.
+def _(defaults):
     _skip = {
         "encoder_mode",
         "positional_encoding",
@@ -225,11 +224,8 @@ def _(defaults, encoder_mode_widget):
         "decoder",
         "init_weights",
         "original_pretrained_weights",
-        "with_route_encoding",
         "freeze_encoder",
     }
-    if encoder_mode_widget.value == "split":
-        _skip.add("with_neighbours_encoding")
     model_form = build_mo_ui_dict(
         JointModelConfig,
         defaults.model if isinstance(defaults.model, JointModelConfig) else JointModelConfig(),
@@ -237,8 +233,6 @@ def _(defaults, encoder_mode_widget):
         hints={
             "hidden_dim": {"options": [64, 128, 256, 512]},
             "ff_dim": {"options": [128, 256, 512, 1024]},
-            "poly_dim": {"options": [64, 128, 256, 512]},
-            "seed_dim": {"options": [4, 8, 10, 16, 32]},
             "num_heads": {"start": 1, "stop": 16},
         },
     )
@@ -272,8 +266,16 @@ def _(positional_enabled_widget, positional_form):
 
 
 @app.cell(hide_code=True)
-def _(defaults):
-    encoder_form = build_mo_ui_dict(EncoderConfig, defaults.model.encoder)
+def _(defaults, encoder_mode_widget):
+    _encoder_config_cls = (
+        SplitEncoderConfig if encoder_mode_widget.value == "split" else JointEncoderConfig
+    )
+    _default_encoder = (
+        defaults.model.encoder
+        if isinstance(defaults.model.encoder, _encoder_config_cls)
+        else _encoder_config_cls()
+    )
+    encoder_form = build_mo_ui_dict(_encoder_config_cls, _default_encoder)
     mo.vstack([mo.md("### Encoder"), *encoder_form.values()])
     return (encoder_form,)
 
@@ -601,12 +603,15 @@ def _(
             mo.md("Click 'Start Training' to begin."),
         )
         _pe_enabled = positional_enabled_widget.value or encoder_mode_widget.value == "split"
+        _encoder_config_cls = (
+            SplitEncoderConfig if encoder_mode_widget.value == "split" else JointEncoderConfig
+        )
         _shared_model_kwargs = dict(
             **model_form.value,
             positional_encoding=(
                 PositionalEncodingConfig(**positional_form.value) if _pe_enabled else None
             ),
-            encoder=EncoderConfig(**encoder_form.value),
+            encoder=_encoder_config_cls(**encoder_form.value),
             decoder=collect_union_value(DecoderConfig, decoder_type, decoder_forms),
             init_weights=init_weights_widget.value.strip() or None,
         )
