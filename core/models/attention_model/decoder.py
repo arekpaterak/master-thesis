@@ -102,6 +102,6 @@ class Decoder(nn.Module):
 
         # Final single-head layer
         log_p = self.final_scorer(
-            h_context=context_embedding, h_nodes=node_embeddings, mask=action_mask
+            context=context_embedding, node_embeddings=node_embeddings, mask=action_mask
         )
         return log_p

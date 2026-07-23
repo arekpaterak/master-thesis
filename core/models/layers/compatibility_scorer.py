@@ -35,8 +35,8 @@ class CompatibilityScorer(nn.Module):
     def forward(
         self,
         *,
-        h_context: torch.Tensor,
-        h_nodes: torch.Tensor,
+        context: torch.Tensor,
+        node_embeddings: torch.Tensor,
         mask: torch.Tensor,
         temperature: float = 1.0,
         log_softmax: bool = True,
@@ -54,8 +54,8 @@ class CompatibilityScorer(nn.Module):
         - ``(R, M)`` for the slot decoder.
 
         Args:
-            h_context: Query embedding(s), (B, *q, d).
-            h_nodes: Node embeddings used as keys, (B, num_nodes, d).
+            context: Query embedding(s), (B, *q, d).
+            node_embeddings: Node embeddings used as keys, (B, num_nodes, d).
             mask: Boolean mask broadcastable to (B, *q, num_nodes); True = masked out.
             temperature (float): Softmax temperature. Defaults to 1.0.
             log_softmax (bool): If True (default), return log-probabilities. If False,
@@ -65,8 +65,8 @@ class CompatibilityScorer(nn.Module):
         Returns:
             Log-probabilities if ``log_softmax`` else raw masked logits, (B, *q, num_nodes).
         """
-        Q = self.W_Q(h_context)  # (B, *q, d)
-        K = self.W_K(h_nodes)  # (B, num_nodes, d)
+        Q = self.W_Q(context)  # (B, *q, d)
+        K = self.W_K(node_embeddings)  # (B, num_nodes, d)
 
         batch_size, d, num_nodes = Q.shape[0], Q.shape[-1], K.shape[-2]
         query_dims = Q.shape[1:-1]  # *q

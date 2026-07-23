@@ -6,7 +6,6 @@ from typing import Literal
 
 import torch
 import torch.optim as optim
-from pydantic import BaseModel, computed_field
 
 from core.lns.acceptance_criterion import (
     AcceptanceCriterion,
@@ -15,216 +14,17 @@ from core.lns.acceptance_criterion import (
 )
 from core.lns.improvement_step import ImprovementStep
 from core.lns.utils import select_solution
-from core.models.metric import MeanMetric, MetricCollection, SumMetric
-from core.models.module import EpochAccumulator
 from core.models.nds.apply_and_repair import ApplyAndRepair
 from core.models.nds.baseline import Baseline
 from core.models.nds.factory import NDSModel
 from core.models.nds.metrics import EncoderMetricsRecorder, diversity_overlap, unique_rollouts
-from core.models.nds.models.split import SplitNDSModel
 from core.models.nds.policy_loss import PolicyLoss
 from core.models.nds.reward import Reward
-from core.models.rollout import Rollout
+from core.models.nds.training.logs import BatchTrainSummary
+from core.models.nds.training.passes import EncodeOncePass, ModelPass, RecomputePass
 from core.problems import depot_offset
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
-
-
-class ModelPass:
-    """Strategy for producing per-improvement-step rollouts within a training step.
-
-    Subclasses decide whether the instance encoder runs once or every step; the loop
-    drives them uniformly: ``rollout`` each step, ``after_backward`` after every
-    ``loss.backward``, and ``finish`` once after the loop.
-    """
-
-    def rollout(self, solution: BaseSolution, **kwargs) -> Rollout:
-        raise NotImplementedError
-
-    def after_backward(self) -> None:
-        pass
-
-    def finish(self) -> None:
-        pass
-
-
-class RecomputePass(ModelPass):
-    """Re-encode the instance every improvement step (rebuilds the graph each step)."""
-
-    def __init__(self, model: NDSModel) -> None:
-        self._model = model
-
-    def rollout(self, solution: BaseSolution, **kwargs) -> Rollout:
-        return self._model.rollout(solution, **kwargs)
-
-
-class EncodeOncePass(ModelPass):
-    """Encode the instance once and reuse it across improvement steps.
-
-    The encoder output is detached into a leaf so each step's backward stays bounded;
-    its gradient is accumulated and pushed through the encoder once in ``finish``. This
-    is exact: the split encoder is a deterministic function of the instance.
-    """
-
-    def __init__(self, model: SplitNDSModel, instance: BaseProblemInstance) -> None:
-        self._model = model
-        base_cache = model.encode_instance(instance)
-        self._embeddings = base_cache.instance_node_embeddings
-        self._embeddings_detached = self._embeddings.detach().requires_grad_(True)
-        self._cache = base_cache._replace(instance_node_embeddings=self._embeddings_detached)
-        self._accumulated_gradient = torch.zeros_like(self._embeddings)
-
-    def rollout(self, solution: BaseSolution, **kwargs) -> Rollout:
-        return self._model.rollout(solution, cache=self._cache, **kwargs)
-
-    def after_backward(self) -> None:
-        self._accumulated_gradient += self._embeddings_detached.grad
-        self._embeddings_detached.grad = None
-
-    def finish(self) -> None:
-        """One encoder backward with the summed boundary gradient."""
-        self._embeddings.backward(gradient=self._accumulated_gradient)
-
-
-class BatchTrainSummary(BaseModel):
-    model_config = {"frozen": True}
-
-    batch_size: int
-    loss: float
-    reward_best: float
-    reward_mean: float
-    entropy: float
-    entropy_norm: float
-    log_p: float
-    reward_std: float
-    # TODO: Rename because different acceptance criteria might be used
-    acceptance_rate: float
-    unique_actions_ratio: float
-    diversity_overlap: float
-    unique_rollouts: float
-    embeddings_cos_sim: float
-    objective_start: float
-    objective_before: float
-    objective_after: float
-    grad_norm: float
-    batch_time_sec: float
-    instances_per_sec: float
-
-    @computed_field
-    @property
-    def improvement(self) -> float:
-        return self.objective_start - self.objective_after
-
-    @computed_field
-    @property
-    def relative_improvement(self) -> float:
-        if self.objective_start == 0.0:
-            return 0.0
-        return self.improvement / self.objective_start
-
-
-class EpochTrainSummary(BaseModel):
-    model_config = {"frozen": True}
-
-    epoch: int
-    loss: float
-    best_reward: float
-    reward_mean: float
-    entropy: float
-    entropy_norm: float
-    log_p: float
-    reward_std: float
-    acceptance_rate: float
-    unique_actions_ratio: float
-    diversity_overlap: float
-    unique_rollouts: float
-    embeddings_cos_sim: float
-    objective_start: float
-    objective_before: float
-    objective_after: float
-    grad_norm: float
-    batch_time_sec: float
-    epoch_time_sec: float
-    instances_per_sec: float
-
-    @computed_field
-    @property
-    def improvement(self) -> float:
-        return self.objective_start - self.objective_after
-
-    @computed_field
-    @property
-    def relative_improvement(self) -> float:
-        if self.objective_start == 0.0:
-            return 0.0
-        return self.improvement / self.objective_start
-
-
-class EpochTrainAccumulator(EpochAccumulator):
-    def __init__(self) -> None:
-        self._means = MetricCollection(
-            {
-                name: MeanMetric()
-                for name in (
-                    "loss",
-                    "best_reward",
-                    "reward_mean",
-                    "entropy",
-                    "entropy_norm",
-                    "log_p",
-                    "reward_std",
-                    "acceptance_rate",
-                    "unique_actions_ratio",
-                    "diversity_overlap",
-                    "unique_rollouts",
-                    "embeddings_cos_sim",
-                    "objective_start",
-                    "objective_before",
-                    "objective_after",
-                    "grad_norm",
-                )
-            }
-        )
-        self._instances = SumMetric()
-        self._batches = SumMetric()
-        self._batch_time = SumMetric()
-
-    def update(self, summary: BatchTrainSummary) -> None:
-        n = summary.batch_size
-        self._instances.update(n)
-        self._batches.update(1)
-        self._batch_time.update(summary.batch_time_sec)
-        self._means.update(
-            {
-                "loss": summary.loss,
-                "best_reward": summary.reward_best,
-                "reward_mean": summary.reward_mean,
-                "entropy": summary.entropy,
-                "entropy_norm": summary.entropy_norm,
-                "log_p": summary.log_p,
-                "reward_std": summary.reward_std,
-                "acceptance_rate": summary.acceptance_rate,
-                "unique_actions_ratio": summary.unique_actions_ratio,
-                "diversity_overlap": summary.diversity_overlap,
-                "unique_rollouts": summary.unique_rollouts,
-                "embeddings_cos_sim": summary.embeddings_cos_sim,
-                "objective_start": summary.objective_start,
-                "objective_before": summary.objective_before,
-                "objective_after": summary.objective_after,
-                "grad_norm": summary.grad_norm,
-            },
-            n,
-        )
-
-    def complete(self, *, epoch: int) -> EpochTrainSummary:
-        total_time = self._batch_time.compute()
-        return EpochTrainSummary(
-            epoch=epoch,
-            **self._means.compute(),
-            batch_time_sec=total_time / self._batches.compute(),
-            epoch_time_sec=total_time,
-            instances_per_sec=self._instances.compute() / total_time,
-        )
 
 
 class NDSTrainingStep:
@@ -303,7 +103,7 @@ class NDSTrainingStep:
         total_entropy_norm = 0.0
         total_log_p = 0.0
         total_reward_std = 0.0
-        total_acceptance_rate = 0.0
+        total_improving_move_rate = 0.0
         total_unique_actions_ratio = 0.0
         total_diversity_overlap = 0.0
         total_unique_rollouts = 0.0
@@ -388,7 +188,7 @@ class NDSTrainingStep:
                 total_entropy_norm += rollout.mean_entropy_norm
                 total_log_p += best_log_p.mean().item()
                 total_reward_std += reward.std(dim=1).mean().item()
-                total_acceptance_rate += (best_reward > 0).float().mean().item()
+                total_improving_move_rate += (best_reward > 0).float().mean().item()
                 total_unique_actions_ratio += (
                     is_unique.float().sum(dim=-1).mean().item() / self._deconstruction_size
                 )
@@ -420,7 +220,7 @@ class NDSTrainingStep:
             entropy_norm=total_entropy_norm / self._num_main_improvement_steps,
             log_p=total_log_p / self._num_main_improvement_steps,
             reward_std=total_reward_std / self._num_main_improvement_steps,
-            acceptance_rate=total_acceptance_rate / self._num_main_improvement_steps,
+            improving_move_rate=total_improving_move_rate / self._num_main_improvement_steps,
             unique_actions_ratio=total_unique_actions_ratio / self._num_main_improvement_steps,
             diversity_overlap=total_diversity_overlap / self._num_main_improvement_steps,
             unique_rollouts=total_unique_rollouts / self._num_main_improvement_steps,

@@ -278,8 +278,8 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         # Shared-keys scoring: the R rollouts in context (B, R, D) all score against
         # the same per-instance nodes (B, N, D), avoiding any broadcast over R.
         logits = self.final_scorer(
-            h_context=context,
-            h_nodes=cache.h_nodes,
+            context=context,
+            node_embeddings=cache.h_nodes,
             mask=problem_state.action_mask,
         )
 

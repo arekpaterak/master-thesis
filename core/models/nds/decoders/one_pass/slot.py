@@ -85,6 +85,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         # so compute them once at (B, num_slots, hidden_dim) and expand to R only
         # before poly_net, where the per-rollout seed first enters.
         queries = self.slot_queries.expand(B, self.num_slots, hidden_dim)  # (B, M, D)
+
         if self.slot_self_attention == "pre":
             assert self.slot_self_attn is not None
             queries = queries + self.slot_self_attn(queries, queries, queries)
@@ -101,9 +102,9 @@ class SlotDecoder(OnePassDestroyDecoder):
         if self.poly_net is None:
             context = mha_out  # (B, R, M, hidden_dim)
         else:
-            seed_expanded = seed.unsqueeze(-2).expand(B, R, self.num_slots, self.seed_dim)
+            seed_for_slots = seed.unsqueeze(-2).expand(B, R, self.num_slots, self.seed_dim)
             context = mha_out + self.poly_net(
-                torch.cat([mha_out, seed_expanded], dim=-1)
+                torch.cat([mha_out, seed_for_slots], dim=-1)
             )  # (B, R, M, hidden_dim)
 
         # Nodes are shared across rollouts and slots: pass them un-expanded and let the
@@ -111,7 +112,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         # Return raw scores; rollout normalizes each slot over the still-available nodes.
         node_mask = action_mask[:, None, None]  # (B, 1, 1, N)
         return self.scorer(
-            h_context=context, h_nodes=h_nodes, mask=node_mask, log_softmax=False
+            context=context, node_embeddings=h_nodes, mask=node_mask, log_softmax=False
         )  # (B, R, M, N)
 
     def rollout(

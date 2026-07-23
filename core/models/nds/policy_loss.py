@@ -48,7 +48,7 @@ class BestRolloutLoss(PolicyLoss):
 
 
 class AllRolloutsLoss(PolicyLoss):
-    """Learns from every rollout (POMO-style) for more gradient per forward pass."""
+    """Learns from every rollout, possibly produces less diverse rollouts."""
 
     def __call__(
         self,

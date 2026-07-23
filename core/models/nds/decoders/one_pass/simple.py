@@ -60,7 +60,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         # Nodes are shared across rollouts: pass them un-expanded and let the scorer fold
         # the R rollouts into its query axis. The mask broadcasts over R via (B, 1, N).
         logits = self.final_scorer(
-            h_context=context, h_nodes=h_nodes, mask=action_mask.unsqueeze(1)
+            context=context, node_embeddings=h_nodes, mask=action_mask.unsqueeze(1)
         )  # (B, R, N)
         return logits
 
