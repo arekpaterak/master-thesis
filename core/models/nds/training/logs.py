@@ -47,7 +47,7 @@ class EpochTrainSummary(BaseModel):
 
     epoch: int
     loss: float
-    best_reward: float
+    reward_best: float
     reward_mean: float
     entropy: float
     entropy_norm: float
@@ -86,7 +86,7 @@ class EpochTrainAccumulator(EpochAccumulator):
                 name: MeanMetric()
                 for name in (
                     "loss",
-                    "best_reward",
+                    "reward_best",
                     "reward_mean",
                     "entropy",
                     "entropy_norm",
@@ -116,7 +116,7 @@ class EpochTrainAccumulator(EpochAccumulator):
         self._means.update(
             {
                 "loss": summary.loss,
-                "best_reward": summary.reward_best,
+                "reward_best": summary.reward_best,
                 "reward_mean": summary.reward_mean,
                 "entropy": summary.entropy,
                 "entropy_norm": summary.entropy_norm,
