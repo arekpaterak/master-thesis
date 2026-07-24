@@ -9,6 +9,7 @@ from core.problems.solve import generate_initial_solution
 from core.problems.tsp.config import TSP, TSPConfig
 from core.problems.tsp.sampler import TSPSampler
 
+# TODO: Move from __init__
 ProblemConfig = Annotated[CVRPConfig | TSPConfig, Field(discriminator="name")]
 
 _problem_config_adapter = TypeAdapter(ProblemConfig)

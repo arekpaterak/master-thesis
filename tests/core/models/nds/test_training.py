@@ -112,6 +112,7 @@ def test_encode_once_matches_recompute():
     def build_config(encode_once: bool) -> TrainConfig:
         return TrainConfig(
             model=SplitModelConfig(
+                problem_name="cvrp",
                 decoder=SimpleOnePassDecoderConfig(),
                 encode_once_in_training=encode_once,
             ),
@@ -125,8 +126,8 @@ def test_encode_once_matches_recompute():
             ),
         )
 
-    model_baseline = build_model(build_config(False).model, "cvrp")
-    model_once = build_model(build_config(True).model, "cvrp")
+    model_baseline = build_model(build_config(False).model)
+    model_once = build_model(build_config(True).model)
     model_once.load_state_dict(model_baseline.state_dict())
 
     module_baseline = NDSModule(config=build_config(False), model=model_baseline)

@@ -42,6 +42,11 @@ class _ModelConfigBase(BaseModel):
     :data:`ModelParams`.
     """
 
+    problem_name: Literal["tsp", "cvrp"] = Field(
+        title="Problem name",
+        description="Problem type the model targets. Under a train config it is resolved from "
+        "the problem config when omitted; must match it when set.",
+    )
     hidden_dim: int = Field(default=128, title="Hidden dim", description="Hidden dimension.")
     num_heads: int = Field(default=8, title="Num. heads", description="Number of attention heads.")
     ff_dim: int = Field(default=512, title="FF dim", description="Feed-forward hidden dimension.")
@@ -235,13 +240,31 @@ class TrainConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _default_encoder_mode(cls, data):
-        """Default the model discriminator to 'joint' for configs predating encoder_mode."""
-        if isinstance(data, dict):
-            model = data.get("model")
-            if isinstance(model, dict) and "encoder_mode" not in model:
-                model["encoder_mode"] = "joint"
+    def _prepare_model(cls, data):
+        """Backfill model defaults that depend on sibling fields before field validation."""
+        if not isinstance(data, dict):
+            return data
+        model = data.get("model")
+        if model is None:
+            model = data["model"] = {}
+        if isinstance(model, dict):
+            model.setdefault("encoder_mode", "joint")
+            problem = data.get("problem")
+            problem_name = (
+                problem.get("name") if isinstance(problem, dict) else getattr(problem, "name", None)
+            )
+            model.setdefault("problem_name", problem_name or CVRPConfig().name)
         return data
+
+    @model_validator(mode="after")
+    def _validate_model_problem_name(self) -> Self:
+        """The model must target the same problem as the problem config."""
+        if self.model.problem_name != self.problem.name:
+            raise ValueError(
+                f"model.problem_name '{self.model.problem_name}' does not match "
+                f"problem.name '{self.problem.name}'."
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_rollouts_for_baseline(self) -> Self:

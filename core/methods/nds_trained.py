@@ -48,7 +48,7 @@ class NDSTrainedMethod:
             _find_latest_checkpoint(config.run_dir), map_location=device, weights_only=True
         )
         train_config = _load_train_config(config.run_dir, ckpt)
-        model = build_model(train_config.model, train_config.problem.name).to(device)
+        model = build_model(train_config.model).to(device)
         model.load_state_dict(ckpt["model"])
         model.eval()
 

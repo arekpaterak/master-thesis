@@ -96,27 +96,49 @@ class MethodSpec:
     model_params: ModelConfig | None
 
 
-def _method_specs(deconstruction_size: int) -> list[MethodSpec]:
+def _method_specs(deconstruction_size: int, problem_name: str) -> list[MethodSpec]:
     return [
         MethodSpec("random-destroy", None),
         MethodSpec(
             "joint-ar",
-            JointModelConfig(decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=True)),
+            JointModelConfig(
+                problem_name=problem_name,
+                decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=True),
+            ),
         ),
         MethodSpec(
             "joint-ar-no-gru",
-            JointModelConfig(decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=False)),
+            JointModelConfig(
+                problem_name=problem_name,
+                decoder=AutoregressiveDecoderConfig(use_hidden_decoding_state=False),
+            ),
         ),
-        MethodSpec("joint-simple", JointModelConfig(decoder=SimpleOnePassDecoderConfig())),
         MethodSpec(
-            "joint-slot", JointModelConfig(decoder=SlotDecoderConfig(num_slots=deconstruction_size))
+            "joint-simple",
+            JointModelConfig(problem_name=problem_name, decoder=SimpleOnePassDecoderConfig()),
         ),
-        MethodSpec("split-simple", SplitModelConfig(decoder=SimpleOnePassDecoderConfig())),
+        MethodSpec(
+            "joint-slot",
+            JointModelConfig(
+                problem_name=problem_name,
+                decoder=SlotDecoderConfig(num_slots=deconstruction_size),
+            ),
+        ),
+        MethodSpec(
+            "split-simple",
+            SplitModelConfig(problem_name=problem_name, decoder=SimpleOnePassDecoderConfig()),
+        ),
         MethodSpec(
             "split-slot",
-            SplitModelConfig(decoder=SlotDecoderConfig(num_slots=deconstruction_size)),
+            SplitModelConfig(
+                problem_name=problem_name,
+                decoder=SlotDecoderConfig(num_slots=deconstruction_size),
+            ),
         ),
-        MethodSpec("split-ar", SplitModelConfig(decoder=AutoregressiveDecoderConfig())),
+        MethodSpec(
+            "split-ar",
+            SplitModelConfig(problem_name=problem_name, decoder=AutoregressiveDecoderConfig()),
+        ),
     ]
 
 
@@ -133,7 +155,7 @@ def _build_step(
     if spec.model_params is None:
         return build_random_destroy_step(search, problem_name=problem_name, seed=seed)
 
-    model = build_model(spec.model_params, problem_name).to(device)
+    model = build_model(spec.model_params).to(device)
     model.eval()
     repair = RepairOperator.create(
         problem_name, search.repair_type, deconstruction_size=search.deconstruction_size
@@ -141,10 +163,10 @@ def _build_step(
     return build_nds_improvement_step(search, model=model, repair=repair, seed=seed)
 
 
-def _count_parameters(spec: MethodSpec, problem_name: str) -> int:
+def _count_parameters(spec: MethodSpec) -> int:
     if spec.model_params is None:
         return 0
-    return sum(p.numel() for p in build_model(spec.model_params, problem_name).parameters())
+    return sum(p.numel() for p in build_model(spec.model_params).parameters())
 
 
 def _make_search(
@@ -296,7 +318,7 @@ def main(
     sampler = Sampler.from_config(problem_config, seed=seed)
     instance = sampler(batch_size).to(torch_device)
 
-    all_specs = _method_specs(deconstruction_size)
+    all_specs = _method_specs(deconstruction_size, problem_name)
     if methods:
         wanted = set(methods)
         unknown = wanted - {spec.name for spec in all_specs}
@@ -324,7 +346,7 @@ def main(
     )
 
     for spec in all_specs:
-        num_parameters = _count_parameters(spec, problem_name)
+        num_parameters = _count_parameters(spec)
         for step_type in step_types:
             search = _make_search(
                 step_type=step_type,

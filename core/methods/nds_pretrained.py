@@ -26,6 +26,7 @@ from core.problems import ProblemConfig
 def _original_nds_model() -> JointModelConfig:
     """The architecture matching the original NDS pretrained checkpoint."""
     return JointModelConfig(
+        problem_name="cvrp",
         encoder=JointEncoderConfig(
             encoding_order=ORIGINAL_NDS_ENCODING_ORDER,
             route_aggregation=ORIGINAL_NDS_ROUTE_AGGREGATION,
@@ -66,7 +67,12 @@ class NDSPretrainedMethod:
             load_original_pretrained_encoder_weights,
         )
 
-        model = build_model(config.model, problem.name).to(device)
+        if config.model.problem_name != problem.name:
+            raise ValueError(
+                f"nds-pretrained model.problem_name '{config.model.problem_name}' does not match "
+                f"the evaluation problem '{problem.name}'."
+            )
+        model = build_model(config.model).to(device)
         if not isinstance(getattr(model, "decoder", None), AutoregressiveNDSDecoder):
             raise ValueError(
                 "Expected the original NDS checkpoint to be used with an autoregressive decoder."

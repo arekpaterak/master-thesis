@@ -6,6 +6,7 @@ from core.models.nds.config import JointModelConfig, TrainConfig
 def test_original_pretrained_accepts_explicit_matching_encoder():
     model = JointModelConfig.model_validate(
         {
+            "problem_name": "cvrp",
             "original_pretrained_weights": {"path": "checkpoint.pt"},
             "encoder": {"encoding_order": "route_neighbours", "route_aggregation": "sum"},
         }
@@ -17,6 +18,7 @@ def test_original_pretrained_rejects_conflicting_encoder():
     with pytest.raises(ValueError, match="route_aggregation"):
         JointModelConfig.model_validate(
             {
+                "problem_name": "cvrp",
                 "original_pretrained_weights": {"path": "checkpoint.pt"},
                 "encoder": {"encoding_order": "route_neighbours", "route_aggregation": "mean"},
             }

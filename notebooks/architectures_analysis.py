@@ -103,6 +103,7 @@ def _():
     def build_variant(encoder_mode, decoder_type, settings, problem, *, dims):
         decoder = DECODER_CONFIGS[decoder_type]()
         shared = dict(
+            problem_name=problem,
             hidden_dim=dims["hidden_dim"],
             ff_dim=dims["ff_dim"],
             num_heads=dims["num_heads"],
@@ -126,7 +127,7 @@ def _():
                 **route_extra,
             )
             model_params = SplitModelConfig(encoder=encoder, **shared)
-        return build_model(model_params, problem)
+        return build_model(model_params)
 
     def variant_stats(encoder_mode, decoder_type, settings, problem, *, dims):
         model = build_variant(encoder_mode, decoder_type, settings, problem, dims=dims)

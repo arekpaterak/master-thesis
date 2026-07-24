@@ -117,11 +117,11 @@ def _cvrp_solution(B: int = 4, N: int = 20) -> CVRPGraphSolution:
 
 
 def _split_model():
-    return build_model(SplitModelConfig(decoder=SimpleOnePassDecoderConfig()), "cvrp")
+    return build_model(SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig()))
 
 
 def _joint_model():
-    return build_model(JointModelConfig(decoder=SimpleOnePassDecoderConfig()), "cvrp")
+    return build_model(JointModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig()))
 
 
 def _attach(model: NDSModel):

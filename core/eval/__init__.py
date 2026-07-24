@@ -1,5 +1,4 @@
 from core.eval.config import EvaluationConfig
-from core.eval.loader import load_evaluation_config
 from core.eval.problem_setting import (
     CVRPLibProblemSetting,
     ProblemSetting,
@@ -11,5 +10,4 @@ __all__ = [
     "EvaluationConfig",
     "ProblemSetting",
     "SyntheticProblemSetting",
-    "load_evaluation_config",
 ]

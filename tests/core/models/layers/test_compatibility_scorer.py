@@ -24,7 +24,7 @@ def test_forward_accepts_broadcastable_masks(query_dims, mask_shape) -> None:
     h_context = torch.randn(B, *query_dims, D)
     h_nodes = torch.randn(B, num_nodes, D)
     mask = torch.zeros(mask_shape, dtype=torch.bool)
-    out = scorer(h_context=h_context, h_nodes=h_nodes, mask=mask)
+    out = scorer(context=h_context, node_embeddings=h_nodes, mask=mask)
     assert out.shape == (B, *query_dims, num_nodes)
 
 
@@ -35,7 +35,7 @@ def test_forward_rejects_wrong_key_axis() -> None:
     # last dim 1 would otherwise silently broadcast a single mask value over all nodes.
     bad_mask = torch.zeros(B, R, 1, dtype=torch.bool)
     with pytest.raises(ValueError, match="mask's last dim must be num_nodes"):
-        scorer(h_context=h_context, h_nodes=h_nodes, mask=bad_mask)
+        scorer(context=h_context, node_embeddings=h_nodes, mask=bad_mask)
 
 
 def test_forward_rejects_missing_query_axis() -> None:
@@ -46,4 +46,4 @@ def test_forward_rejects_missing_query_axis() -> None:
     # misread batch as the rollout axis when B == R.
     bad_mask = torch.zeros(B, num_nodes, dtype=torch.bool)
     with pytest.raises(ValueError, match="mask must have dim"):
-        scorer(h_context=h_context, h_nodes=h_nodes, mask=bad_mask)
+        scorer(context=h_context, node_embeddings=h_nodes, mask=bad_mask)

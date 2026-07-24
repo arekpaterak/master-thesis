@@ -22,6 +22,7 @@ class EvaluationResult(BaseModel):
 
     step_labels: list[int]
     objective_per_step: torch.Tensor  # (n_steps, num_test_instances)
+    time_per_step: list[float]  # total wall-clock (s) to reach each step, summed over batches
     total_time_s: float = 0.0
 
     @computed_field
@@ -35,6 +36,7 @@ class BatchEvaluationResult(BaseModel):
 
     step_labels: list[int]
     objective_per_step: torch.Tensor  # (n_steps, batch_size)
+    cumulative_time_per_step: list[float]  # wall-clock (s) since batch start, per step
 
 
 StepCallback = Callable[[int, int, BaseSolution], None]  # (batch_idx, step, solution)
@@ -106,9 +108,17 @@ class Evaluator:
         num_steps = method.search.num_improvement_steps
         step_labels = list(range(num_steps + 1))
         objective_per_step: list[torch.Tensor] = []
+        cumulative_time_per_step: list[float] = []
+
+        # Per-step timing forces a sync each step, a small overhead absent in deployment;
+        # every method is measured identically, so relative obj(time) comparison stays fair.
+        batch_start = time.perf_counter()
 
         def on_step(step: int, solution: BaseSolution) -> None:
-            objective = solution.objective().detach().cpu()
+            objective = solution.objective().detach().cpu()  # forces the step's GPU work
+            if self.device is not None and self.device.type == "cuda":
+                torch.cuda.synchronize(self.device)
+            cumulative_time_per_step.append(time.perf_counter() - batch_start)
             assert objective.ndim == 1, (
                 f"Expected 1-D objective tensor, got shape {objective.shape}"
             )
@@ -125,6 +135,7 @@ class Evaluator:
         return BatchEvaluationResult(
             step_labels=step_labels,
             objective_per_step=torch.stack(objective_per_step, dim=0),
+            cumulative_time_per_step=cumulative_time_per_step,
         )
 
     def _aggregate(
@@ -135,9 +146,15 @@ class Evaluator:
         for batch in batches[1:]:
             assert batch.step_labels == step_labels, "Expected all batches to share step_labels"
         per_instance_objective = torch.cat([batch.objective_per_step for batch in batches], dim=1)
+        # Total wall-clock to bring every instance to step k, summed over sequential batches.
+        time_per_step = [
+            sum(batch.cumulative_time_per_step[step] for batch in batches)
+            for step in range(len(step_labels))
+        ]
         return EvaluationResult(
             step_labels=step_labels,
             objective_per_step=per_instance_objective,
+            time_per_step=time_per_step,
             total_time_s=total_time_s,
         )
 

@@ -218,6 +218,7 @@ def _(defaults):
 @app.cell(hide_code=True)
 def _(defaults):
     _skip = {
+        "problem_name",
         "encoder_mode",
         "positional_encoding",
         "encoder",
@@ -228,7 +229,9 @@ def _(defaults):
     }
     model_form = build_mo_ui_dict(
         JointModelConfig,
-        defaults.model if isinstance(defaults.model, JointModelConfig) else JointModelConfig(),
+        defaults.model
+        if isinstance(defaults.model, JointModelConfig)
+        else JointModelConfig(problem_name=defaults.problem.name),
         skip=_skip,
         hints={
             "hidden_dim": {"options": [64, 128, 256, 512]},
@@ -608,6 +611,7 @@ def _(
         )
         _shared_model_kwargs = dict(
             **model_form.value,
+            problem_name=problem_name.value,
             positional_encoding=(
                 PositionalEncodingConfig(**positional_form.value) if _pe_enabled else None
             ),
@@ -739,7 +743,7 @@ def _():
 
 @app.cell
 def _(config):
-    model = build_model(config.model, config.problem.name)
+    model = build_model(config.model)
 
     # original_pretrained_weights / freeze_encoder are joint-only; the split model
     # cannot initialise from a pretrained NDS encoder.

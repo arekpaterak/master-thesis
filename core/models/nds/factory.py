@@ -8,10 +8,10 @@ from .models.joint import JointNDSModel
 from .models.split import SplitNDSModel
 
 
-def build_model(model_params: ModelConfig, problem_name: str) -> NDSModel:
+def build_model(model_params: ModelConfig) -> NDSModel:
     decoder_config = model_params.decoder
     shared_kwargs = dict(
-        problem_name=problem_name,
+        problem_name=model_params.problem_name,
         hidden_dim=model_params.hidden_dim,
         num_heads=model_params.num_heads,
         ff_dim=model_params.ff_dim,

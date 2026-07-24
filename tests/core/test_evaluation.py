@@ -55,6 +55,11 @@ def test_evaluate_returns_well_shaped_result(
     assert result.objective_per_step.shape == (n_captures, tiny_eval_config.num_test_instances)
     assert result.total_time_s >= 0.0
 
+    assert len(result.time_per_step) == n_captures
+    assert all(a <= b + 1e-9 for a, b in zip(result.time_per_step, result.time_per_step[1:]))
+    # Sum of per-batch search times is bounded by the whole-run wall clock.
+    assert result.time_per_step[-1] <= result.total_time_s + 1e-3
+
 
 def test_objective_non_increasing_with_greedy_acceptance(
     tiny_eval_config: SyntheticProblemSetting,
@@ -102,6 +107,7 @@ def test_callbacks_fire_once_per_batch(tiny_eval_config: SyntheticProblemSetting
             n_captures,
             tiny_eval_config.batch_size,
         )
+        assert len(batch_result.cumulative_time_per_step) == n_captures
 
 
 def test_determinism_same_seed(tiny_eval_config: SyntheticProblemSetting) -> None:

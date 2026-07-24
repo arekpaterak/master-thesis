@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core.lns.config import SearchParams
+from core.lns.config import SearchParams, StartSolutionParams
 from core.models.nds.config import (
     JointModelConfig,
     LoggingConfig,
@@ -13,8 +13,9 @@ from core.models.nds.config import (
     SplitModelConfig,
     TrainConfig,
     TrainerParams,
+    ValidationConfig,
 )
-from core.problems import CVRPConfig
+from core.problems import make_problem_config
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "train-nds.py"
@@ -22,7 +23,7 @@ _NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "train-nds.py"
 
 def _minimal_config(model: ModelConfig) -> TrainConfig:
     return TrainConfig(
-        problem=CVRPConfig(size=10),
+        problem=make_problem_config(name=model.problem_name, size=10),
         model=model,
         trainer=TrainerParams(
             epochs=1,
@@ -35,16 +36,33 @@ def _minimal_config(model: ModelConfig) -> TrainConfig:
             num_improvement_steps=1,
             num_rollouts=2,
             deconstruction_size=3,
+            start_solution_params=StartSolutionParams(
+                num_improvement_steps=1, deconstruction_size=3
+            ),
+        ),
+        validation=ValidationConfig(
+            num_instances=2,
+            batch_size=2,
+            plot_enabled=False,
+            search=SearchParams(
+                repair_type="greedy_insert",
+                num_improvement_steps=1,
+                num_rollouts=2,
+                deconstruction_size=3,
+                start_solution_params=StartSolutionParams(
+                    num_improvement_steps=1, deconstruction_size=3
+                ),
+            ),
         ),
         logging=LoggingConfig(wandb_project=""),
     )
 
 
 _CASES = [
-    ("cvrp", JointModelConfig()),
-    ("tsp", JointModelConfig()),
-    ("cvrp", SplitModelConfig()),
-    ("tsp", SplitModelConfig()),
+    ("cvrp", JointModelConfig(problem_name="cvrp")),
+    ("tsp", JointModelConfig(problem_name="tsp")),
+    ("cvrp", SplitModelConfig(problem_name="cvrp")),
+    ("tsp", SplitModelConfig(problem_name="tsp")),
 ]
 
 

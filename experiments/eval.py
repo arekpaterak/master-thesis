@@ -5,39 +5,34 @@ from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import polars as pl
 import torch
 import typer
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.table import Table
 from tqdm import tqdm
 
 from core.eval.config import EvaluationConfig
-from core.eval.loader import load_evaluation_config
 from core.eval.problem_setting import CVRPLibProblemSetting, SyntheticProblemSetting
-from core.evaluation import EvaluationResult, Evaluator, PlotSnapshotCallback
+from core.evaluation import (
+    BatchEvaluationResult,
+    EvaluationResult,
+    Evaluator,
+    PlotSnapshotCallback,
+)
 from core.methods import build_method
 from core.methods.base import Method
 from core.methods.nds_trained import NDSTrainedConfig
+from core.models.metric import MeanMetric, MetricCollection, SumMetric
 from core.problems import make_problem_config
 from core.problems.cvrp.dataset import load_cvrplib_instance, load_cvrplib_solution_bks
+from core.results.cvrplib import CvrplibInstanceRow, CvrplibSummaryRow
 from core.results.plots import plot_objective_curve, plot_search_progress
-from core.results.schema import (
-    CVRPLIB_BUCKET_SCHEMA,
-    CVRPLIB_INSTANCE_SCHEMA,
-    SUMMARY_SCHEMA,
-    SYNTHETIC_CURVE_SCHEMA,
-    SYNTHETIC_INSTANCE_SCHEMA,
+from core.results.row import SummaryRowBase
+from core.results.synthetic import (
+    SyntheticCurveRow,
+    SyntheticInstanceRow,
+    SyntheticSummaryRow,
 )
-from core.results.summary import (
-    cvrplib_bucket_rows,
-    cvrplib_summary_row,
-    synthetic_curve_rows,
-    synthetic_instance_rows,
-    synthetic_summary_row,
-)
-from core.results.writer import eval_output_dir, write_config, write_csv_rows
 from core.solve import solve
 
 EXPERIMENTS_DIR = Path(__file__).parent
@@ -48,25 +43,32 @@ RESULTS_DIR = EXPERIMENTS_DIR / "results" / "eval"
 console = Console()
 app = typer.Typer(add_completion=False)
 
+DEFAULT_CHECKPOINT_STEPS = [10, 20, 50, 100]
+
 
 @app.command()
 def main(
-    config: Path = typer.Option(..., help="Eval config YAML (path, or name under configs/eval)."),
+    config: Path = typer.Option(..., help="Eval config file (path, or name under configs/eval)."),
     device: str | None = typer.Option(None, help="Torch device (default: cuda if available)."),
     problem: list[str] = typer.Option(
-        None, "--problem", "-p", help="Only run these problem settings, by label. Repeatable."
+        None, "--problem", "-p", help="Only run these problem settings, by label."
     ),
     first: bool = typer.Option(False, "--first", help="Run only the first (selected) problem."),
+    checkpoint_steps: list[int] = typer.Option(
+        DEFAULT_CHECKPOINT_STEPS,
+        "--checkpoint-steps",
+        help="Improvement steps to report obj, time at.",
+    ),
 ) -> None:
     """Evaluate a single method across the problem settings listed in the config."""
     load_dotenv(".env")
     config_path = config if config.exists() else EVAL_CONFIGS_DIR / config
-    eval_config = load_evaluation_config(config_path)
+    eval_config = EvaluationConfig.from_file(config_path)
     torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
     settings = _select_problems(eval_config, problem, first)
     eval_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    eval_dir = eval_output_dir(RESULTS_DIR, eval_config.name, eval_id)
+    eval_dir = RESULTS_DIR / eval_config.name / eval_id
 
     method = _build_method(eval_config, torch_device)
     labels = ", ".join(setting.label for setting in settings)
@@ -75,28 +77,112 @@ def main(
         f"device: {torch_device}  |  {labels}"
     )
 
-    summary_rows: list[dict[str, object]] = []
-    curves: dict[str, list[dict[str, object]]] = {}
-    # TODO: Upload after each setting
+    log_wandb = bool(eval_config.logging.wandb_project)
+    if log_wandb:
+        _init_wandb(eval_config, eval_id, settings)
+
+    synthetic_summaries: list[SyntheticSummaryRow] = []
+    cvrplib_summaries: list[CvrplibSummaryRow] = []
+    curves: dict[str, list[SyntheticCurveRow]] = {}
     for setting in settings:
         if isinstance(setting, CVRPLibProblemSetting):
-            summary_rows.append(_run_cvrplib(method, setting, eval_config, torch_device, eval_dir))
+            cvrplib_row = _run_cvrplib(
+                method, setting, eval_config, torch_device, eval_dir, log_wandb
+            )
+            if cvrplib_row is not None:
+                cvrplib_summaries.append(cvrplib_row)
         else:
             summary_row, curve = _run_synthetic(
-                method, setting, eval_config, torch_device, eval_dir
+                method, setting, eval_config, torch_device, eval_dir, checkpoint_steps, log_wandb
             )
-            summary_rows.append(summary_row)
+            synthetic_summaries.append(summary_row)
             curves[setting.label] = curve
 
-    summary_rows = [row for row in summary_rows if row is not None]
-    write_csv_rows(summary_rows, schema=SUMMARY_SCHEMA, path=eval_dir / "summary.csv")
-    write_config(eval_config.model_dump(mode="json"), path=eval_dir / "config.yml")
+    if synthetic_summaries:
+        SyntheticSummaryRow.write(synthetic_summaries, path=eval_dir / "summary_synthetic.csv")
+    if cvrplib_summaries:
+        CvrplibSummaryRow.write(cvrplib_summaries, path=eval_dir / "summary_cvrplib.csv")
+    eval_config.write_yaml(path=eval_dir / "config.yml")
     console.print(f"Wrote results to [bold]{eval_dir}[/bold]")
 
-    if eval_config.logging.wandb_project:
-        _upload_wandb(eval_config, eval_id, eval_dir, summary_rows, curves)
+    if log_wandb:
+        _finalize_wandb(
+            eval_config, eval_id, eval_dir, [*synthetic_summaries, *cvrplib_summaries], curves
+        )
 
-    _release_gpu(method)
+
+class WandbBatchLogger:
+    def __init__(self, label: str, total_instances: int, checkpoint_steps: list[int]) -> None:
+        self._label = label
+        self._total = total_instances
+        self._checkpoints = checkpoint_steps
+        self._seen = 0
+        self._running = MetricCollection(
+            {
+                "obj_initial": MeanMetric(),
+                "obj_final": MeanMetric(),
+                "improvement": MeanMetric(),
+                "relative_improvement": MeanMetric(),
+            }
+        )
+        self._running_time_total = SumMetric()  # whole-search time, summed over batches
+        self._running_obj = {step: MeanMetric() for step in checkpoint_steps}
+        self._running_time = {step: SumMetric() for step in checkpoint_steps}
+
+    def on_batch_end(self, _batch_idx: int, batch_result: BatchEvaluationResult) -> None:
+        import wandb
+
+        objective = batch_result.objective_per_step
+        times = batch_result.cumulative_time_per_step
+        batch_size = objective.shape[1]
+        self._seen += batch_size
+
+        initial = objective[0].mean().item()
+        final = objective[-1].mean().item()
+        improvement = initial - final
+        relative_improvement = improvement / initial if initial else 0.0
+        batch_time_s = times[-1]
+        instances_per_sec = batch_size / batch_time_s if batch_time_s > 0.0 else 0.0
+
+        self._running.update(
+            {
+                "obj_initial": initial,
+                "obj_final": final,
+                "improvement": improvement,
+                "relative_improvement": relative_improvement,
+            },
+            weight=batch_size,
+        )
+        self._running_time_total.update(batch_time_s)
+        running = self._running.compute()
+        total_time = self._running_time_total.compute()
+
+        log: dict[str, float] = {
+            f"eval/{self._label}/progress": self._seen / max(self._total, 1),
+            f"eval/{self._label}/running/instances": self._seen,
+            f"eval/{self._label}/batch/obj_initial": initial,
+            f"eval/{self._label}/batch/obj_final": final,
+            f"eval/{self._label}/batch/improvement": improvement,
+            f"eval/{self._label}/batch/relative_improvement": relative_improvement,
+            f"eval/{self._label}/batch/batch_time_s": batch_time_s,
+            f"eval/{self._label}/batch/instances_per_sec": instances_per_sec,
+            f"eval/{self._label}/running/obj_final": running["obj_final"],
+            f"eval/{self._label}/running/improvement": running["improvement"],
+            f"eval/{self._label}/running/relative_improvement": running["relative_improvement"],
+            f"eval/{self._label}/running/instances_per_sec": self._seen / total_time
+            if total_time > 0.0
+            else 0.0,
+        }
+        for step in self._checkpoints:
+            batch_obj = objective[step].mean().item()
+            self._running_obj[step].update(batch_obj, weight=batch_size)
+            self._running_time[step].update(times[step])
+            log[f"eval/{self._label}/batch/obj@{step}"] = batch_obj
+            log[f"eval/{self._label}/running/obj@{step}"] = self._running_obj[step].compute()
+            log[f"eval/{self._label}/running/time_total_s@{step}"] = self._running_time[
+                step
+            ].compute()
+        wandb.log(log)
 
 
 def _select_problems(
@@ -132,30 +218,37 @@ def _run_synthetic(
     eval_config: EvaluationConfig,
     device: torch.device,
     eval_dir: Path,
-) -> tuple[dict[str, object], list[dict[str, object]]]:
+    checkpoint_steps: list[int],
+    log_wandb: bool,
+) -> tuple[SyntheticSummaryRow, list[SyntheticCurveRow]]:
     console.rule(f"[bold]{setting.label}[/bold] (synthetic)")
     plot_cb = PlotSnapshotCallback(num_plot_instances=eval_config.num_plot_instances)
+
+    on_batch_end = None
+    if log_wandb:
+        num_steps = method.search.num_improvement_steps
+        checkpoints = [step for step in checkpoint_steps if step <= num_steps]
+        batch_logger = WandbBatchLogger(setting.label, setting.num_test_instances, checkpoints)
+        on_batch_end = [batch_logger.on_batch_end]
+
     evaluator = Evaluator(
         on_step=[plot_cb.on_step] if eval_config.num_plot_instances else None,
+        on_batch_end=on_batch_end,
         batch_progress=lambda it: tqdm(it, desc="Batches"),
         step_progress=lambda it: tqdm(it, desc="Improvement steps", leave=False),
         device=device,
     )
     result = evaluator.evaluate(setting, method)
-    _report_synthetic(result)
 
-    write_csv_rows(
-        synthetic_instance_rows(config=eval_config.name, setting=setting, result=result),
-        schema=SYNTHETIC_INSTANCE_SCHEMA,
+    SyntheticInstanceRow.write(
+        SyntheticInstanceRow.build(config=eval_config.name, setting=setting, result=result),
         path=eval_dir / f"{setting.label}_instances.csv",
     )
-    curve = synthetic_curve_rows(result)
-    write_csv_rows(
-        curve, schema=SYNTHETIC_CURVE_SCHEMA, path=eval_dir / f"{setting.label}_curve.csv"
-    )
+    curve = SyntheticCurveRow.build(result)
+    SyntheticCurveRow.write(curve, path=eval_dir / f"{setting.label}_curve.csv")
     _save_synthetic_plots(setting, result, plot_cb, eval_dir)
 
-    summary_row = synthetic_summary_row(
+    summary_row = SyntheticSummaryRow.build(
         config=eval_config.name, method_type=eval_config.method.type, setting=setting, result=result
     )
     return summary_row, curve
@@ -182,40 +275,24 @@ def _save_synthetic_plots(
         plt.close(fig)
 
 
-def _report_synthetic(result: EvaluationResult) -> None:
-    objective = result.objective_per_step
-    initial, final = objective[0], objective[-1]
-    improvement = initial - final
-
-    table = Table(show_header=True)
-    table.add_column("Metric")
-    table.add_column("Value", justify="right")
-    table.add_row("Instances", str(objective.shape[1]))
-    table.add_row("Steps", str(objective.shape[0] - 1))
-    table.add_row("Initial mean", f"{initial.mean().item():.4f}")
-    table.add_row("Final mean", f"{final.mean().item():.4f}")
-    table.add_row("Improvement mean", f"{improvement.mean().item():.4f}")
-    table.add_row("Improvement std", f"{improvement.std().item():.4f}")
-    table.add_row("Total time (s)", f"{result.total_time_s:.2f}")
-    console.print(table)
-
-
 def _run_cvrplib(
     method: Method,
     setting: CVRPLibProblemSetting,
     eval_config: EvaluationConfig,
     device: torch.device,
     eval_dir: Path,
-) -> dict[str, object] | None:
+    log_wandb: bool,
+) -> CvrplibSummaryRow | None:
     console.rule(f"[bold]{setting.label}[/bold] (CVRPLIB)")
     vrp_paths = _cvrplib_paths(setting)
     console.print(f"{len(vrp_paths)} instances selected from set {setting.set_name}.")
     if not vrp_paths:
         return None
 
-    rows: list[dict[str, object]] = []
+    rows: list[CvrplibInstanceRow] = []
+    running_gap = MeanMetric()
     start = time.perf_counter()
-    for vrp_path in tqdm(vrp_paths, desc="Instances"):
+    for idx, vrp_path in enumerate(tqdm(vrp_paths, desc="Instances")):
         instance = load_cvrplib_instance(vrp_path).unsqueeze(0).to(device)
         bks = load_cvrplib_solution_bks(vrp_path.with_suffix(".sol"))
 
@@ -223,52 +300,36 @@ def _run_cvrplib(
             final_solution = solve(method, instance)
 
         our_cost = int(final_solution.total_distance(rounded=True).item())
+        gap_pct = round((our_cost - bks) / bks * 100, 2)
         rows.append(
-            {
-                "instance": vrp_path.stem,
-                "n_customers": instance.num_customers,
-                "bks": bks,
-                "our_cost": our_cost,
-                "gap_pct": round((our_cost - bks) / bks * 100, 2),
-            }
+            CvrplibInstanceRow(
+                instance=vrp_path.stem,
+                n_customers=int(instance.num_customers),
+                bks=bks,
+                our_cost=our_cost,
+                gap_pct=gap_pct,
+            )
         )
+        if log_wandb:
+            import wandb
+
+            running_gap.update(gap_pct)
+            wandb.log(
+                {
+                    f"eval/{setting.label}/instance/gap_pct": gap_pct,
+                    f"eval/{setting.label}/running/gap_pct": running_gap.compute(),
+                    f"eval/{setting.label}/progress": (idx + 1) / len(vrp_paths),
+                }
+            )
     elapsed = time.perf_counter() - start
 
-    _report_cvrplib(pl.DataFrame(rows))
-    write_csv_rows(
-        rows, schema=CVRPLIB_INSTANCE_SCHEMA, path=eval_dir / f"{setting.label}_instances.csv"
-    )
-    write_csv_rows(
-        cvrplib_bucket_rows(rows),
-        schema=CVRPLIB_BUCKET_SCHEMA,
-        path=eval_dir / f"{setting.label}_buckets.csv",
-    )
-    return cvrplib_summary_row(
+    CvrplibInstanceRow.write(rows, path=eval_dir / f"{setting.label}_instances.csv")
+    return CvrplibSummaryRow.build(
         config=eval_config.name,
         method_type=eval_config.method.type,
         setting=setting,
         instance_rows=rows,
         total_time_s=elapsed,
-    )
-
-
-def _report_cvrplib(results: pl.DataFrame) -> None:
-    columns = ("instance", "n_customers", "bks", "our_cost", "gap_pct")
-    table = Table(show_header=True)
-    for column in columns:
-        table.add_column(column, justify="left" if column == "instance" else "right")
-    for row in results.iter_rows(named=True):
-        table.add_row(*(str(row[column]) for column in columns))
-    console.print(table)
-
-    summary = results.select(
-        pl.col("gap_pct").mean().round(3).alias("mean_gap_pct"),
-        pl.col("gap_pct").median().round(3).alias("median_gap_pct"),
-        pl.len().alias("n_instances"),
-    ).row(0, named=True)
-    console.print(
-        f"[bold]mean gap[/bold] {summary['mean_gap_pct']}%  |  "
-        f"median {summary['median_gap_pct']}%  |  n={summary['n_instances']}"
     )
 
 
@@ -291,39 +352,67 @@ def _n_customers_from_stem(stem: str) -> int:
         return -1
 
 
-def _upload_wandb(
+def _init_wandb(
     eval_config: EvaluationConfig,
     eval_id: str,
-    eval_dir: Path,
-    summary_rows: list[dict[str, object]],
-    curves: dict[str, list[dict[str, object]]],
+    settings: list[SyntheticProblemSetting | CVRPLibProblemSetting],
 ) -> None:
+    """Start the eval run before the settings loop so metrics stream live."""
     import wandb
-    from core.results.wandb_artifacts import upload_eval_dir
 
     trained = isinstance(eval_config.method, NDSTrainedConfig)
     source_run_name = Path(eval_config.method.run_dir).name if trained else None
-    problem_labels = [str(row["problem_label"]) for row in summary_rows]
-
     wandb.init(
         project=eval_config.logging.wandb_project,
         name=f"eval-{eval_config.name}-{eval_id}",
         job_type="eval",
         group=source_run_name if trained else eval_config.name,
-        tags=[eval_config.method.type, *problem_labels],
-        config={"eval_config": eval_config.model_dump(mode="json"), "eval_id": eval_id},
+        tags=[eval_config.method.type, *(setting.label for setting in settings)],
+        config={
+            "eval_id": eval_id,
+            "eval_config": eval_config.model_dump(mode="json"),
+        },
     )
+
+
+def _finalize_wandb(
+    eval_config: EvaluationConfig,
+    eval_id: str,
+    eval_dir: Path,
+    summary_rows: list[SummaryRowBase],
+    curves: dict[str, list[SyntheticCurveRow]],
+) -> None:
+    """Log final summary scalars and obj(step)/obj(time) curves, then upload the artifact."""
+    import wandb
+    from core.results.wandb_artifacts import upload_eval_dir
+
+    trained = isinstance(eval_config.method, NDSTrainedConfig)
+    source_run_name = Path(eval_config.method.run_dir).name if trained else None
+
     for row in summary_rows:
-        label = row["problem_label"]
-        for key, value in row.items():
+        dumped = row.model_dump()
+        label = dumped["problem_label"]
+        for key, value in dumped.items():
             if isinstance(value, (int, float)) and key not in {"n_instances", "size"}:
-                wandb.summary[f"{label}/{key}"] = value
+                wandb.summary[f"eval/{label}/{key}"] = value
     for label, curve in curves.items():
         table = wandb.Table(
-            columns=["step", "obj_mean", "obj_std"],
-            data=[[r["lns_step"], r["obj_mean"], r["obj_std"]] for r in curve],
+            columns=["step", "obj_mean", "obj_std", "time_total_s", "time_per_instance_s"],
+            data=[
+                [r.lns_step, r.obj_mean, r.obj_std, r.time_total_s, r.time_per_instance_s]
+                for r in curve
+            ],
         )
-        wandb.log({f"{label}/progress": wandb.plot.line(table, "step", "obj_mean", title=label)})
+        wandb.log(
+            {
+                f"eval/{label}/obj_vs_step": wandb.plot.line(
+                    table, "step", "obj_mean", title=f"{label} obj vs step"
+                ),
+                f"eval/{label}/obj_vs_time": wandb.plot.line(
+                    table, "time_total_s", "obj_mean", title=f"{label} obj vs time"
+                ),
+            }
+        )
 
     upload_eval_dir(
         run_name=source_run_name or eval_config.name,
@@ -337,13 +426,6 @@ def _upload_wandb(
         link_checkpoint_alias="final" if trained else None,
     )
     wandb.finish()
-
-
-def _release_gpu(method: Method) -> None:
-    model = getattr(method.improvement_step, "_model", None)
-    if model is not None:
-        model.to("cpu")
-        torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
