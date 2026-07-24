@@ -30,6 +30,15 @@ class AutoregressiveDecoderConfig(_DecoderConfigBase):
 
 class SimpleOnePassDecoderConfig(_DecoderConfigBase):
     type: Literal["simple"] = "simple"
+    query_strategy: Literal["mean", "max", "meanmax"] = Field(
+        default="mean",
+        title="Query strategy",
+        description=(
+            "How to pool node embeddings into the cross-attention query: 'mean' uses the "
+            "mean over nodes; 'max' the per-feature max; 'meanmax' concatenates the mean "
+            "and max and projects back to the hidden dimension."
+        ),
+    )
 
 
 class SlotDecoderConfig(_DecoderConfigBase):
@@ -45,6 +54,16 @@ class SlotDecoderConfig(_DecoderConfigBase):
         description=(
             "Where to apply self-attention among slot queries: disabled, before node "
             "cross-attention, or after node cross-attention."
+        ),
+    )
+    node_query_strategy: Literal["none", "mean", "max", "meanmax"] = Field(
+        default="none",
+        title="Node query strategy",
+        description=(
+            "Ground the learned slot queries in the instance by adding a pooled node "
+            "summary before cross-attention: 'none' keeps the pure learned queries; "
+            "'mean'/'max'/'meanmax' add the corresponding node pooling (broadcast over "
+            "slots)."
         ),
     )
 

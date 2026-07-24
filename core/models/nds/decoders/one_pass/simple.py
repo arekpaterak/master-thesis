@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
+from core.models.layers.decoder_query import DecoderQuery, QueryStrategy
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.rollout import Rollout
 
@@ -19,11 +22,13 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         poly_dim: int,
         num_heads: int,
         with_poly: bool = True,
+        query_strategy: QueryStrategy = "mean",
         C: float = 10.0,
     ):
         super().__init__()
         self._seed_dim = seed_dim
         self.with_poly = with_poly
+        self.query = DecoderQuery(hidden_dim=hidden_dim, strategy=query_strategy)
         self.MHA = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
         self.poly_net = (
             nn.Sequential(
@@ -46,7 +51,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
         B, N, D = h_nodes.shape
         R = seed.shape[1]
-        query = h_nodes.mean(dim=-2, keepdim=True)  # (B, 1, D)
+        query = self.query(h_nodes)  # (B, 1, D)
         mha_out = self.MHA(query, h_nodes, h_nodes, attention_mask=~action_mask).squeeze(
             -2
         )  # (B, D)

@@ -32,12 +32,13 @@ def build_decoder(
                 **shared, use_hidden_decoding_state=decoder_config.use_hidden_decoding_state
             )
         case SimpleOnePassDecoderConfig():
-            return SimpleOnePassDecoder(**shared)
+            return SimpleOnePassDecoder(**shared, query_strategy=decoder_config.query_strategy)
         case SlotDecoderConfig():
             return SlotDecoder(
                 **shared,
                 num_slots=decoder_config.num_slots,
                 slot_self_attention=decoder_config.slot_self_attention,
+                node_query_strategy=decoder_config.node_query_strategy,
             )
         case _:
             raise ValueError(f"Unknown decoder config: {type(decoder_config).__name__}")

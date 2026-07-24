@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
+from core.models.layers.decoder_query import DecoderQuery
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.rollout import Rollout
 
@@ -19,6 +20,10 @@ class SlotDecoder(OnePassDestroyDecoder):
     Each slot has a dedicated learned query vector (nn.Parameter) that specialises
     during training. The seed is incorporated via poly_net as a residual after MHA,
     adding stochastic conditioning per rollout - the same pattern as SimpleOnePassDecoder.
+
+    When ``node_query_strategy`` is not ``none``, a pooled node summary (see
+    :class:`DecoderQuery`) is added to every slot query before cross-attention, grounding
+    the otherwise instance-blind learned queries in the current graph.
 
     The M slots score all nodes in one pass, then ``rollout`` samples them sequentially:
     each slot draws from its own softmax over the still-available nodes, and the chosen
@@ -35,6 +40,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         num_heads: int,
         num_slots: int,
         slot_self_attention: Literal["none", "pre", "post"] = "post",
+        node_query_strategy: Literal["none", "mean", "max", "meanmax"] = "none",
         with_poly: bool = True,
         C: float = 10.0,
     ):
@@ -44,10 +50,17 @@ class SlotDecoder(OnePassDestroyDecoder):
         self._seed_dim = seed_dim
         self.num_slots = num_slots
         self.slot_self_attention = slot_self_attention
+        self.node_query_strategy = node_query_strategy
         self.with_poly = with_poly
 
         self.slot_queries = nn.Parameter(torch.empty(num_slots, hidden_dim))
         nn.init.xavier_uniform_(self.slot_queries.unsqueeze(0))
+
+        self.node_query = (
+            DecoderQuery(hidden_dim=hidden_dim, strategy=node_query_strategy)
+            if node_query_strategy != "none"
+            else None
+        )
 
         self.slot_self_attn = (
             MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
@@ -85,6 +98,10 @@ class SlotDecoder(OnePassDestroyDecoder):
         # so compute them once at (B, num_slots, hidden_dim) and expand to R only
         # before poly_net, where the per-rollout seed first enters.
         queries = self.slot_queries.expand(B, self.num_slots, hidden_dim)  # (B, M, D)
+
+        if self.node_query is not None:
+            # Add the pooled node summary (B, 1, D) to every slot, broadcasting over M.
+            queries = queries + self.node_query(h_nodes)
 
         if self.slot_self_attention == "pre":
             assert self.slot_self_attn is not None

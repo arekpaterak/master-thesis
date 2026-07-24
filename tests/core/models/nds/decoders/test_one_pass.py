@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.models.nds.decoders.config import SlotDecoderConfig
+from core.models.nds.decoders.config import SimpleOnePassDecoderConfig, SlotDecoderConfig
 from core.models.nds.decoders.factory import build_decoder
 from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
 from core.models.nds.decoders.one_pass.slot import SlotDecoder
@@ -13,17 +13,18 @@ POLY_DIM = 32
 NUM_HEADS = 2
 
 
-def _simple(with_poly=True):
+def _simple(with_poly=True, query_strategy="mean"):
     return SimpleOnePassDecoder(
         hidden_dim=HIDDEN_DIM,
         seed_dim=SEED_DIM,
         poly_dim=POLY_DIM,
         num_heads=NUM_HEADS,
         with_poly=with_poly,
+        query_strategy=query_strategy,
     ), {}
 
 
-def _slot(slot_self_attention="post", with_poly=True):
+def _slot(slot_self_attention="post", with_poly=True, node_query_strategy="none"):
     return SlotDecoder(
         hidden_dim=HIDDEN_DIM,
         seed_dim=SEED_DIM,
@@ -32,6 +33,7 @@ def _slot(slot_self_attention="post", with_poly=True):
         num_slots=M,
         slot_self_attention=slot_self_attention,
         with_poly=with_poly,
+        node_query_strategy=node_query_strategy,
     ), {}
 
 
@@ -120,6 +122,34 @@ def test_slot_self_attention_modes_produce_logits(slot_self_attention):
     assert logits.shape == (B, R, M, N)
 
 
+@pytest.mark.parametrize("query_strategy", ["mean", "max", "meanmax"])
+def test_simple_query_strategy_produces_logits(query_strategy):
+    decoder, _ = _simple(query_strategy=query_strategy)
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, N)
+
+
+@pytest.mark.parametrize("query_strategy", ["mean", "max", "meanmax"])
+def test_simple_query_strategy_is_wired_to_factory(query_strategy):
+    decoder = build_decoder(
+        SimpleOnePassDecoderConfig(
+            query_strategy=query_strategy,
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
+        ),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+    )
+
+    assert isinstance(decoder, SimpleOnePassDecoder)
+    assert decoder.query.strategy == query_strategy
+
+
 @pytest.mark.parametrize("slot_self_attention", ["none", "pre", "post"])
 def test_slot_self_attention_config_is_wired_to_factory(slot_self_attention):
     decoder = build_decoder(
@@ -135,6 +165,36 @@ def test_slot_self_attention_config_is_wired_to_factory(slot_self_attention):
 
     assert isinstance(decoder, SlotDecoder)
     assert decoder.slot_self_attention == slot_self_attention
+
+
+@pytest.mark.parametrize("node_query_strategy", ["none", "mean", "max", "meanmax"])
+def test_slot_node_query_produces_logits(node_query_strategy):
+    decoder, _ = _slot(node_query_strategy=node_query_strategy)
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, M, N)
+    assert (decoder.node_query is None) == (node_query_strategy == "none")
+
+
+@pytest.mark.parametrize("node_query_strategy", ["none", "mean", "max", "meanmax"])
+def test_slot_node_query_is_wired_to_factory(node_query_strategy):
+    decoder = build_decoder(
+        SlotDecoderConfig(
+            num_slots=M,
+            node_query_strategy=node_query_strategy,
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
+        ),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+    )
+
+    assert isinstance(decoder, SlotDecoder)
+    assert decoder.node_query_strategy == node_query_strategy
 
 
 @pytest.mark.parametrize("greedy", [False, True])
