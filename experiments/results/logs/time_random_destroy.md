@@ -1,0 +1,13 @@
+| step_type        | n_aug | batch | sec/batch | inst/s | 10k_est_s |
+| :--------------- | ----: | ----: | --------: | -----: | --------: |
+| numba_sequential |     1 |     1 |      3.69 |    0.3 |     36929 |
+| numba_sequential |     1 |    10 |      5.72 |    1.7 |      5722 |
+| numba_sequential |     1 |   100 |     26.74 |    3.7 |      2674 |
+| numba_sequential |     8 |     1 |      8.43 |    0.1 |     84297 |
+| numba_sequential |     8 |    10 |     23.00 |    0.4 |     22998 |
+| numba_sequential |     8 |   100 |    182.72 |    0.5 |     18272 |
+| numba_sequential |     8 |   200 |    317.05 |    0.6 |     15852 |
+| parallel         |     1 |     1 |     51.01 |    0.0 |    510104 |
+| parallel         |     1 |    10 |     52.01 |    0.2 |     52006 |
+| parallel         |     1 |   100 |    134.48 |    0.7 |     13448 |
+| parallel         |     8 |     1 |     53.90 |    0.0 |    538971 |

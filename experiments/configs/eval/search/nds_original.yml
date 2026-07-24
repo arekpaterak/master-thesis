@@ -12,3 +12,5 @@ start_solution_params:
 n_augmentations: 8
 acceptance:
   type: sa
+  augmented_exchange:
+    threshold_factor: 15

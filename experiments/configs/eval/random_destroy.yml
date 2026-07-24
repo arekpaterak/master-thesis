@@ -1,7 +1,7 @@
 method:
   type: random-destroy
   seed: 0
-  search: search/nds_default.yml
+  search: search/default.yml
 
 problems:
   - problems/cvrp_100_data.yml
