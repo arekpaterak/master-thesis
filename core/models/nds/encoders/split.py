@@ -17,9 +17,14 @@ from core.models.nds.encoders.layers import (
     AttentionLayer,
     NeighboursEncodingLayer,
     RouteEncodingLayer,
+    TreeNeighboursEncodingLayer,
     build_norm,
 )
 from core.models.utils import get_model_device
+from core.problems.cmst.features import (
+    CMSTInstanceFeatureExtractor,
+    CMSTSolutionFeatureExtractor,
+)
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
     CVRPSolutionFeatureExtractor,
@@ -49,7 +54,7 @@ class SplitNDSEncoder(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: Literal["tsp", "cvrp"],
+        problem_name: Literal["tsp", "cvrp", "cmst"],
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -61,9 +66,13 @@ class SplitNDSEncoder(nn.Module):
         encoder_config = encoder_config or SplitEncoderConfig()
         with_route_encoding = encoder_config.with_route_encoding
         if with_route_encoding is None:
-            with_route_encoding = problem_name == "cvrp"
-        if with_route_encoding and problem_name != "cvrp":
-            raise ValueError("with_route_encoding is only supported for problem_name='cvrp'.")
+            with_route_encoding = problem_name in ("cvrp", "cmst")
+        if with_route_encoding and problem_name not in ("cvrp", "cmst"):
+            raise ValueError(
+                "with_route_encoding is only supported for problem_name in {'cvrp', 'cmst'}."
+            )
+        if positional is not None and problem_name == "cmst":
+            raise NotImplementedError("CMST positional encoding is not implemented yet.")
 
         self.problem_name = problem_name
         self._positional = positional
@@ -82,6 +91,9 @@ class SplitNDSEncoder(nn.Module):
                 self.solution_feature_extractor = TSPSolutionFeatureExtractor(
                     with_positional=with_positional
                 )
+            case "cmst":
+                self.instance_feature_extractor = CMSTInstanceFeatureExtractor()
+                self.solution_feature_extractor = CMSTSolutionFeatureExtractor()
             case _:
                 raise ValueError(f"Unsupported problem_name: {problem_name}")
 
@@ -111,6 +123,7 @@ class SplitNDSEncoder(nn.Module):
         pe_components = 2 if problem_name == "cvrp" else 1
         pe_dim = pe_components * self._positional.dim if self._positional is not None else 0
         self.fusion = SolutionFusionEncoder(
+            problem_name=problem_name,
             hidden_dim=hidden_dim,
             pe_dim=pe_dim,
             num_heads=num_heads,
@@ -144,6 +157,14 @@ class SplitNDSEncoder(nn.Module):
             positional = None
         else:
             positional = ipe if cache.xpe is None else torch.cat([ipe, cache.xpe], dim=-1)
+        if self.problem_name == "cmst":
+            return self.fusion(
+                cache.instance_node_embeddings,
+                positional,
+                num_customers=solution_features.parent_index.shape[-1],
+                parent_index=solution_features.parent_index,
+                route_index=solution_features.route_index,
+            )
         route_index = solution_features.route_index if self.problem_name == "cvrp" else None
         return self.fusion(
             cache.instance_node_embeddings,
@@ -181,6 +202,7 @@ class SolutionFusionEncoder(nn.Module):
     def __init__(
         self,
         *,
+        problem_name: Literal["tsp", "cvrp", "cmst"] = "cvrp",
         hidden_dim: int,
         pe_dim: int,
         num_heads: int = 8,
@@ -189,10 +211,14 @@ class SolutionFusionEncoder(nn.Module):
     ) -> None:
         super().__init__()
         _config = encoder_config or SplitEncoderConfig()
+        self.problem_name = problem_name
         self.encoding_order = _config.encoding_order
         self.projection = nn.Linear(hidden_dim + pe_dim, hidden_dim)
+        neighbours_layer_cls = (
+            TreeNeighboursEncodingLayer if problem_name == "cmst" else NeighboursEncodingLayer
+        )
         self.neighbours = (
-            NeighboursEncodingLayer(
+            neighbours_layer_cls(
                 hidden_dim=hidden_dim,
                 norm_type=_config.norm_type,
                 pre_norm=_config.pre_norm,
@@ -234,6 +260,7 @@ class SolutionFusionEncoder(nn.Module):
         *,
         num_customers: int,
         neighbours_index: torch.Tensor | None = None,
+        parent_index: torch.Tensor | None = None,
         route_index: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
@@ -242,7 +269,8 @@ class SolutionFusionEncoder(nn.Module):
             positional: (B, N, pe_dim) per-customer solution positional encoding, or
                 None when positional encoding is disabled.
             num_customers: N, used to split off the depot/non-customer offset.
-            neighbours_index: (B, N, 2) required when neighbours encoding is enabled.
+            neighbours_index: (B, N, 2) required when neighbours encoding is enabled (non-CMST).
+            parent_index: (B, N) required when neighbours encoding is enabled for CMST.
             route_index: (B, N) required when route encoding is enabled.
 
         Returns:
@@ -259,6 +287,8 @@ class SolutionFusionEncoder(nn.Module):
         def apply_neighbours(h: torch.Tensor) -> torch.Tensor:
             if self.neighbours is None:
                 return h
+            if self.problem_name == "cmst":
+                return self.neighbours(h, parent_index=parent_index)
             return self.neighbours(h, neighbours_index=neighbours_index)
 
         def apply_route(h: torch.Tensor) -> torch.Tensor:

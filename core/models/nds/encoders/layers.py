@@ -148,6 +148,75 @@ class NeighboursEncodingLayer(nn.Module):
         return embeddings.gather(1, indices[:, :, None].expand(B, N, hidden_dim))
 
 
+class TreeNeighboursEncodingLayer(nn.Module):
+    """Message passing over a tree's parent-pointer neighbourhood (CMST).
+
+    The CMST analog of :class:`NeighboursEncodingLayer`. A CVRP node has exactly two
+    directed neighbours (prev, next) gathered into fixed slots; a tree node has one parent
+    and a variable number of children. Neighbour information is the **sum** of projected
+    neighbour embeddings -- the parent by a gather, the children by a scatter-add over the
+    parent buckets -- with **separate** projections for the parent and child directions.
+    """
+
+    def __init__(
+        self, *, hidden_dim: int, norm_type: str = "instance", pre_norm: bool = False
+    ) -> None:
+        super().__init__()
+        self.pre_norm = pre_norm
+        self.parent_projector = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.child_projector = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.neighbour_combiner = nn.Linear(2 * hidden_dim, hidden_dim)
+        self.feedforward_layer = nn.Linear(hidden_dim, hidden_dim)
+        self.norm = build_norm(norm_type, hidden_dim)
+
+    def forward(
+        self,
+        h: torch.Tensor,
+        *,
+        parent_index: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Args:
+            h: (B, N+1, hidden_dim) node embeddings. h[:, 0] is the root.
+            parent_index: (B, N) parent node index per terminal. 0 = root, 1..N = terminal.
+
+        Returns:
+            (B, N+1, hidden_dim) updated node embeddings after message passing.
+        """
+        B, N = parent_index.shape
+        hidden_dim = h.shape[-1]
+        offset = h.shape[-2] - N  # 1 (the root)
+
+        source = self.norm(h) if self.pre_norm else h
+        terminal_embeddings = source[:, offset:]  # (B, N, hidden_dim)
+
+        # Parent message: gather each terminal's parent embedding over the full node set.
+        parent_gather = source.gather(
+            1, parent_index[:, :, None].expand(B, N, hidden_dim)
+        )  # (B, N, hidden_dim)
+        parent_info = self.parent_projector(parent_gather)
+
+        # Children message: scatter-add each terminal's projected embedding into its
+        # parent's bucket (sum aggregation). Bucket 0 (the root) is discarded below.
+        child_projected = self.child_projector(terminal_embeddings)  # (B, N, hidden_dim)
+        child_buckets = torch.zeros(
+            B, N + offset, hidden_dim, device=h.device, dtype=child_projected.dtype
+        )
+        child_buckets.scatter_add_(
+            1, parent_index[:, :, None].expand(B, N, hidden_dim), child_projected
+        )
+        child_info = child_buckets[:, offset:]  # (B, N, hidden_dim)
+
+        neighbour_info = parent_info + child_info
+        combined = torch.cat([terminal_embeddings, neighbour_info], dim=-1)
+        update = self.feedforward_layer(F.relu(self.neighbour_combiner(combined)))
+
+        raw = h[:, offset:]
+        updated = raw + update if self.pre_norm else self.norm(raw + update)
+
+        return torch.cat([h[:, :offset], updated], dim=1)
+
+
 class RouteEncodingLayer(nn.Module):
     """
     Named Tour Encoding Layer in the original paper (Hottung et al. 2025).

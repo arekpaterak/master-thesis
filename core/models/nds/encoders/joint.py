@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from core.models.embeddings.cmst import CMSTInitialEmbedding
 from core.models.embeddings.cvrp import CVRPInitialEmbedding
 from core.models.embeddings.tsp import TSPInitialEmbedding
 from core.models.nds.encoders.config import JointEncoderConfig, PositionalEncodingConfig
@@ -8,6 +9,7 @@ from core.models.nds.encoders.layers import (
     AttentionLayer,
     NeighboursEncodingLayer,
     RouteEncodingLayer,
+    TreeNeighboursEncodingLayer,
     build_norm,
 )
 
@@ -36,6 +38,10 @@ class JointEncoder(nn.Module):
                 raise TypeError(
                     f"Expected TSPInitialEmbedding for problem_name='tsp', got {type(initial_embedding).__name__}"
                 )
+            if problem_name == "cmst" and not isinstance(initial_embedding, CMSTInitialEmbedding):
+                raise TypeError(
+                    f"Expected CMSTInitialEmbedding for problem_name='cmst', got {type(initial_embedding).__name__}"
+                )
             self.initial_embedding = initial_embedding
         elif problem_name == "cvrp":
             self.initial_embedding = CVRPInitialEmbedding(
@@ -45,13 +51,17 @@ class JointEncoder(nn.Module):
             self.initial_embedding = TSPInitialEmbedding(
                 hidden_dim=hidden_dim, positional=positional
             )
+        elif problem_name == "cmst":
+            self.initial_embedding = CMSTInitialEmbedding(
+                hidden_dim=hidden_dim, positional=positional
+            )
         else:
             raise ValueError(f"Unknown problem_name: {problem_name}")
 
         encoder_config = encoder_config or JointEncoderConfig()
         with_route_encoding = encoder_config.with_route_encoding
         if with_route_encoding is None:
-            with_route_encoding = problem_name == "cvrp"
+            with_route_encoding = problem_name in ("cvrp", "cmst")
 
         attention_layer = lambda: AttentionLayer(
             hidden_dim=hidden_dim,
@@ -65,8 +75,11 @@ class JointEncoder(nn.Module):
             *(attention_layer() for _ in range(encoder_config.num_pre_attention_layers))
         )
         self.encoding_order = encoder_config.encoding_order
+        neighbours_layer_cls = (
+            TreeNeighboursEncodingLayer if problem_name == "cmst" else NeighboursEncodingLayer
+        )
         self.neighbours_encoding = (
-            NeighboursEncodingLayer(
+            neighbours_layer_cls(
                 hidden_dim=hidden_dim,
                 norm_type=encoder_config.norm_type,
                 pre_norm=encoder_config.pre_norm,
@@ -108,6 +121,8 @@ class JointEncoder(nn.Module):
         def apply_neighbours(h: torch.Tensor) -> torch.Tensor:
             if self.neighbours_encoding is None:
                 return h
+            if self.problem_name == "cmst":
+                return self.neighbours_encoding(h, parent_index=solution.parent_index)
             return self.neighbours_encoding(h, neighbours_index=solution.neighbours_index)
 
         def apply_route(h: torch.Tensor) -> torch.Tensor:

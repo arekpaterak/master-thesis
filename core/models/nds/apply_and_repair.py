@@ -14,6 +14,7 @@ from core.models.rollout import Rollout
 from core.problems.solution import BaseSolution
 
 if TYPE_CHECKING:
+    from core.problems.cmst.solution import CMSTSolution
     from core.problems.cvrp.graph_solution import CVRPGraphSolution
     from core.problems.tsp.graph_solution import TSPGraphSolution
 
@@ -73,6 +74,7 @@ class NumbaApplyAndRepair(ApplyAndRepair):
         self._seed = seed
 
     def __call__(self, solution: BaseSolution, rollout: Rollout) -> BaseSolution:
+        from core.problems.cmst.solution import CMSTSolution
         from core.problems.cvrp.graph_solution import CVRPGraphSolution
         from core.problems.tsp.graph_solution import TSPGraphSolution
 
@@ -81,10 +83,21 @@ class NumbaApplyAndRepair(ApplyAndRepair):
                 return self._call_cvrp(solution, rollout)
             case TSPGraphSolution():
                 return self._call_tsp(solution, rollout)
+            case CMSTSolution():
+                return self._call_cmst(solution, rollout)
             case _:
                 raise NotImplementedError(
                     f"NumbaApplyAndRepair not implemented for {type(solution)}"
                 )
+
+    def _call_cmst(self, solution: CMSTSolution, rollout: Rollout) -> CMSTSolution:
+        nodes = self._nodes_to_numpy(rollout, num_instances=solution.batch_size[0])
+        return solution.apply_and_repair(
+            nodes,
+            n_repairs=self._n_repairs,
+            base_seed=self._seed,
+            first_repair_uses_order=self._first_repair_uses_rollout_order,
+        )
 
     def _call_cvrp(self, solution: CVRPGraphSolution, rollout: Rollout) -> CVRPGraphSolution:
         from core.lns.numba_kernels.cvrp_apply_and_repair import apply_and_repair_parallel
@@ -187,8 +200,10 @@ def _validate_numba_repair(repair: RepairOperator) -> None:
             return
         case "tsp" if repair.repair_type == "greedy_insert":
             return
+        case "cmst" if repair.repair_type == "greedy_insert" and repair.requires_stitch:
+            return
     raise NotImplementedError(
-        "NumbaApplyAndRepair only supports the stitched CVRP greedy-insert repair or the "
-        f"TSP greedy-insert repair, got {type(repair).__name__} "
-        f"(problem_name={getattr(repair, 'problem_name', None)!r})."
+        "NumbaApplyAndRepair only supports the stitched CVRP greedy-insert repair, the "
+        f"TSP greedy-insert repair, or the stitched CMST greedy-insert repair, got "
+        f"{type(repair).__name__} (problem_name={getattr(repair, 'problem_name', None)!r})."
     )

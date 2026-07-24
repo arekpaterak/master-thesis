@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from core.lns.operators.repair import RepairOperator
+from core.problems.cmst.solution import CMSTSolution
 from core.problems.cvrp import CVRPSolution
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.solution import BaseSolution
@@ -71,6 +72,15 @@ def select_solution(mask: torch.Tensor, a: BaseSolution, b: BaseSolution) -> Bas
                 _next=torch.where(m, a_tsp.next_nodes, b.next_nodes),
                 _prev=torch.where(m, a_tsp.prev_nodes, b.prev_nodes),
                 batch_size=a_tsp.batch_size,
+            )
+        case CMSTSolution() as a_cmst:
+            assert isinstance(b, CMSTSolution)
+            m = mask.unsqueeze(-1)
+            return CMSTSolution(
+                _instance=a_cmst.instance,
+                _parent=torch.where(m, a_cmst.parent_nodes, b.parent_nodes),
+                _subtree_id=torch.where(m, a_cmst.subtree_ids, b.subtree_ids),
+                batch_size=a_cmst.batch_size,
             )
         case _:
             raise NotImplementedError(f"select_solution not implemented for {type(a)}")

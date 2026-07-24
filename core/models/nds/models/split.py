@@ -28,7 +28,7 @@ class SplitNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: Literal["tsp", "cvrp"],
+        problem_name: Literal["tsp", "cvrp", "cmst"],
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,

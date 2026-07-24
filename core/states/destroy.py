@@ -68,6 +68,25 @@ class CVRPDestroyState(DestroyState):
         return cls(action_mask=action_mask, last_node_idx=None)
 
 
+@dataclass(frozen=True)
+class CMSTDestroyState(DestroyState):
+    @classmethod
+    def build_initial(
+        cls,
+        *,
+        batch_size: int,
+        rollout_size: int,
+        num_nodes: int,
+        device: torch.device,
+    ) -> CMSTDestroyState:
+        action_mask = torch.zeros(
+            batch_size, rollout_size, num_nodes, dtype=torch.bool, device=device
+        )
+        # Root cannot be selected for removal.
+        action_mask[:, :, 0] = True
+        return cls(action_mask=action_mask, last_node_idx=None)
+
+
 def initial_action_mask(
     problem_name: str, *, batch_size: int, num_nodes: int, device: torch.device
 ) -> torch.Tensor:
@@ -77,6 +96,8 @@ def initial_action_mask(
             state_cls: type[DestroyState] = CVRPDestroyState
         case "tsp":
             state_cls = TSPDestroyState
+        case "cmst":
+            state_cls = CMSTDestroyState
         case _:
             raise ValueError(f"Unsupported problem_name: {problem_name}")
     return state_cls.build_initial(
