@@ -26,6 +26,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         query_learned: bool = False,
         query_context: bool = True,
         skip_mha: bool = False,
+        attend_to_context: bool = False,
         num_context_nodes: int = 0,
         C: float = 10.0,
     ):
@@ -33,6 +34,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         self._seed_dim = seed_dim
         self.with_poly = with_poly
         self.skip_mha = skip_mha
+        self.attend_to_context = attend_to_context
         self.num_context_nodes = num_context_nodes
         self.query = DecoderQuery(
             hidden_dim=hidden_dim,
@@ -73,7 +75,10 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         if self.MHA is None:
             query = query.squeeze(-2)  # (B, D), scorer reads straight off the query
         else:
-            query = self.MHA(query, h_nodes, h_nodes, attention_mask=~action_mask).squeeze(
+            attend_mask = ~action_mask  # (B, N), True = attend
+            if self.attend_to_context and k:
+                attend_mask[:, :k] = True  # also let the query attend to the context nodes
+            query = self.MHA(query, h_nodes, h_nodes, attention_mask=attend_mask).squeeze(
                 -2
             )  # (B, D)
         query = query.unsqueeze(1).expand(B, R, D)  # (B, R, D)

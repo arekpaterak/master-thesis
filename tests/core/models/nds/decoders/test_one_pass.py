@@ -19,6 +19,7 @@ def _simple(
     query_learned=False,
     query_context=True,
     skip_mha=False,
+    attend_context=False,
     num_context_nodes=0,
 ):
     return SimpleOnePassDecoder(
@@ -31,6 +32,7 @@ def _simple(
         query_learned=query_learned,
         query_context=query_context,
         skip_mha=skip_mha,
+        attend_to_context=attend_context,
         num_context_nodes=num_context_nodes,
     ), {}
 
@@ -40,6 +42,7 @@ def _slot(
     with_poly=True,
     node_pooling="none",
     node_context=True,
+    attend_context=False,
     num_context_nodes=0,
 ):
     return SlotDecoder(
@@ -52,6 +55,7 @@ def _slot(
         with_poly=with_poly,
         node_pooling=node_pooling,
         node_context=node_context,
+        attend_to_context=attend_context,
         num_context_nodes=num_context_nodes,
     ), {}
 
@@ -242,6 +246,54 @@ def test_simple_context_is_wired_to_factory(num_context_nodes, expected):
     assert decoder.query.with_context is expected
 
 
+def test_simple_attend_context_defaults_off():
+    decoder, _ = _simple(num_context_nodes=1)
+    assert decoder.attend_to_context is False
+
+
+def test_simple_attend_context_produces_logits():
+    decoder, _ = _simple(num_context_nodes=1, attend_context=True)
+    assert decoder.attend_to_context is True
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+    action_mask[..., 0] = True  # the context node (depot) is unselectable
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, N)
+    # Attending to the context node must not make it selectable: it stays at -inf.
+    assert torch.isinf(logits[..., 0]).all()
+
+
+def test_simple_attend_context_does_not_mutate_action_mask():
+    decoder, _ = _simple(num_context_nodes=1, attend_context=True)
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+    action_mask[..., 0] = True
+    original = action_mask.clone()
+
+    decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert torch.equal(action_mask, original)
+
+
+@pytest.mark.parametrize("attend_context", [True, False])
+def test_simple_attend_context_is_wired_to_factory(attend_context):
+    decoder = build_decoder(
+        SimpleOnePassDecoderConfig(
+            attend_to_context=attend_context, seed_dim=SEED_DIM, poly_dim=POLY_DIM
+        ),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+        num_context_nodes=1,
+    )
+
+    assert isinstance(decoder, SimpleOnePassDecoder)
+    assert decoder.attend_to_context is attend_context
+
+
 @pytest.mark.parametrize("slot_self_attention", ["none", "pre", "post"])
 def test_slot_self_attention_config_is_wired_to_factory(slot_self_attention):
     decoder = build_decoder(
@@ -319,6 +371,35 @@ def test_slot_context_is_wired_to_factory():
     assert isinstance(decoder, SlotDecoder)
     assert decoder.node_query is not None
     assert decoder.node_query.with_context is True
+
+
+def test_slot_attend_context_produces_logits():
+    decoder, _ = _slot(num_context_nodes=1, attend_context=True)
+    assert decoder.attend_to_context is True
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+    action_mask[..., 0] = True  # the context node (depot) is unselectable
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, M, N)
+    assert torch.isinf(logits[..., 0]).all()
+
+
+@pytest.mark.parametrize("attend_context", [True, False])
+def test_slot_attend_context_is_wired_to_factory(attend_context):
+    decoder = build_decoder(
+        SlotDecoderConfig(
+            num_slots=M, attend_to_context=attend_context, seed_dim=SEED_DIM, poly_dim=POLY_DIM
+        ),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+        num_context_nodes=1,
+    )
+
+    assert isinstance(decoder, SlotDecoder)
+    assert decoder.attend_to_context is attend_context
 
 
 @pytest.mark.parametrize("greedy", [False, True])

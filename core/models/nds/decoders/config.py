@@ -68,6 +68,16 @@ class SimpleOnePassDecoderConfig(_DecoderConfigBase):
             "scorer, so node scores are read directly off the (un-refined) query."
         ),
     )
+    attend_to_context: bool = Field(
+        default=False,
+        title="Attend to context nodes",
+        description=(
+            "Let the query attend to the non-selectable context nodes (e.g. the CVRP "
+            "depot) in the cross-attention, which the action mask otherwise excludes. "
+            "The scorer still cannot select them. No effect without cross-attention "
+            "('skip_mha') or context nodes (e.g. TSP)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_query(self) -> SimpleOnePassDecoderConfig:
@@ -110,6 +120,16 @@ class SlotDecoderConfig(_DecoderConfigBase):
             "Ground the learned slot queries by adding the non-selectable context nodes "
             "(e.g. the CVRP depot), which the slot cross-attention and scorer otherwise "
             "never see. No effect for problems without context nodes (e.g. TSP)."
+        ),
+    )
+    attend_to_context: bool = Field(
+        default=False,
+        title="Attend to context nodes",
+        description=(
+            "Let the slots attend to the non-selectable context nodes (e.g. the CVRP "
+            "depot) in the cross-attention, which the action mask otherwise excludes. "
+            "The scorer still cannot select them. No effect for problems without context "
+            "nodes (e.g. TSP)."
         ),
     )
 

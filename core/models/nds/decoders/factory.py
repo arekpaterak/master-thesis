@@ -43,6 +43,7 @@ def build_decoder(
                 query_learned=decoder_config.query_learned,
                 query_context=decoder_config.query_context,
                 skip_mha=decoder_config.skip_mha,
+                attend_to_context=decoder_config.attend_to_context,
                 num_context_nodes=num_context_nodes,
             )
         case SlotDecoderConfig():
@@ -52,6 +53,7 @@ def build_decoder(
                 slot_self_attention=decoder_config.slot_self_attention,
                 node_pooling=decoder_config.node_pooling,
                 node_context=decoder_config.node_context,
+                attend_to_context=decoder_config.attend_to_context,
                 num_context_nodes=num_context_nodes,
             )
         case _:

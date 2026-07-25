@@ -43,6 +43,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         slot_self_attention: Literal["none", "pre", "post"] = "post",
         node_pooling: Pooling = "none",
         node_context: bool = True,
+        attend_to_context: bool = False,
         with_poly: bool = True,
         num_context_nodes: int = 0,
         C: float = 10.0,
@@ -54,6 +55,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         self.num_slots = num_slots
         self.slot_self_attention = slot_self_attention
         self.node_pooling = node_pooling
+        self.attend_to_context = attend_to_context
         self.with_poly = with_poly
         self.num_context_nodes = num_context_nodes
 
@@ -98,6 +100,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         # h_nodes: (B, N, hidden_dim), seed: (B, R, seed_dim), action_mask: (B, N)
         B, N, hidden_dim = h_nodes.shape
         R = seed.shape[1]
+        k = self.num_context_nodes
 
         # MHA and slot self-attention do not depend on the rollout dimension R,
         # so compute them once at (B, num_slots, hidden_dim) and expand to R only
@@ -106,7 +109,6 @@ class SlotDecoder(OnePassDestroyDecoder):
 
         if self.node_query is not None:
             # Add the node summary (B, 1, D) to every slot, broadcasting over M.
-            k = self.num_context_nodes
             queries = queries + self.node_query(
                 h_nodes[:, k:], context_embed_nodes=h_nodes[:, :k] if k else None
             )
@@ -115,8 +117,11 @@ class SlotDecoder(OnePassDestroyDecoder):
             assert self.slot_self_attn is not None
             queries = queries + self.slot_self_attn(queries, queries, queries)
 
+        attend_mask = ~action_mask  # (B, N), True = attend
+        if self.attend_to_context and k:
+            attend_mask[:, :k] = True  # also let the slots attend to the context nodes
         mha_out = self.cross_attn(
-            queries, h_nodes, h_nodes, attention_mask=~action_mask
+            queries, h_nodes, h_nodes, attention_mask=attend_mask
         )  # (B, M, hidden_dim)
 
         if self.slot_self_attention == "post":
