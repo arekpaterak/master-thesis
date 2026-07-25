@@ -11,6 +11,9 @@ model:
     dim: 16
   decoder:
     type: simple
+    query:
+      learned: true
+      pooling: meanmax
   encoder:
     norm_type: instance
     pre_norm: true
@@ -73,6 +76,6 @@ validation:
       num_improvement_steps: 50
       deconstruction_size: 15
     n_repairs: 5
-    n_augmentations: 8
+    n_augmentations: 1
     acceptance:
       type: greedy

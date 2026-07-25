@@ -1,5 +1,4 @@
-"""Standalone Typer entrypoint for training the NDS destroy model on CMST.
-
+"""
 Example:
     uv run python train_cmst.py --size 100 --epochs 1 --batch-size 16
 """
@@ -52,17 +51,16 @@ def build_config(
     validation_instances: int,
     validation_steps: int,
 ) -> TrainConfig:
-    """Assemble a CMST training config using the numba backend end to end (no warmup)."""
     search = SearchParams(
         repair_type="greedy_insert",
         apply_and_repair_backend="numba",
         improvement_step_type="numba_sequential",
-        num_improvement_steps=0,  # main loop uses apply-and-repair; no initial search
+        num_improvement_steps=10,
         num_rollouts=num_rollouts,
         deconstruction_size=deconstruction_size,
         n_repairs=n_repairs,
         acceptance=GreedyAcceptanceConfig(),
-        start_solution_params=StartSolutionParams(num_improvement_steps=0),  # skip warmup
+        start_solution_params=StartSolutionParams(num_improvement_steps=0),
     )
     validation_search = SearchParams(
         repair_type="greedy_insert",
@@ -108,7 +106,7 @@ def main(
     instances_per_epoch: int = typer.Option(1500, help="Instances per epoch."),
     num_main_improvement_steps: int = typer.Option(100, help="Main improvement steps per batch."),
     deconstruction_size: int = typer.Option(15, help="Terminals removed per rollout."),
-    num_rollouts: int = typer.Option(100, help="Rollouts per improvement step."),
+    num_rollouts: int = typer.Option(128, help="Rollouts per improvement step."),
     n_repairs: int = typer.Option(5, help="Repair attempts per rollout; best is kept."),
     split: bool = typer.Option(False, "--split", help="Use the split encoder instead of joint."),
     validation_instances: int = typer.Option(1000, help="Validation instances."),
