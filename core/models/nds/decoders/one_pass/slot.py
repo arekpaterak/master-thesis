@@ -7,7 +7,8 @@ import torch.nn as nn
 
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
-from core.models.layers.decoder_query import DecoderQuery, Pooling
+from core.models.layers.cross_attention import CrossAttention, CrossAttentionConfig
+from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.rollout import Rollout
 
@@ -21,8 +22,8 @@ class SlotDecoder(OnePassDestroyDecoder):
     during training. The seed is incorporated via poly_net as a residual after MHA,
     adding stochastic conditioning per rollout - the same pattern as SimpleOnePassDecoder.
 
-    When ``node_pooling`` is not ``none`` or ``node_context`` adds the context nodes (see
-    :class:`DecoderQuery`), a node summary is added to every slot query before
+    When ``query`` has an active component (a pooling or the context nodes; see
+    :class:`DecoderQueryConfig`), a node summary is added to every slot query before
     cross-attention, grounding the otherwise instance-blind learned queries in the
     current graph.
 
@@ -41,9 +42,8 @@ class SlotDecoder(OnePassDestroyDecoder):
         num_heads: int,
         num_slots: int,
         slot_self_attention: Literal["none", "pre", "post"] = "post",
-        node_pooling: Pooling = "none",
-        node_context: bool = True,
-        attend_to_context: bool = False,
+        cross_attention: CrossAttentionConfig | None = None,
+        query: DecoderQueryConfig | None = None,
         with_poly: bool = True,
         num_context_nodes: int = 0,
         C: float = 10.0,
@@ -54,18 +54,19 @@ class SlotDecoder(OnePassDestroyDecoder):
         self._seed_dim = seed_dim
         self.num_slots = num_slots
         self.slot_self_attention = slot_self_attention
-        self.node_pooling = node_pooling
-        self.attend_to_context = attend_to_context
         self.with_poly = with_poly
         self.num_context_nodes = num_context_nodes
 
         self.slot_queries = nn.Parameter(torch.empty(num_slots, hidden_dim))
         nn.init.xavier_uniform_(self.slot_queries.unsqueeze(0))
 
-        use_context = node_context and num_context_nodes > 0
+        # The slot queries are the learned base, so the query only pools/adds context.
+        query = query or DecoderQueryConfig(pooling="none")
         self.node_query = (
-            DecoderQuery(hidden_dim=hidden_dim, pooling=node_pooling, with_context=use_context)
-            if (node_pooling != "none" or use_context)
+            DecoderQuery.from_config(
+                query, hidden_dim=hidden_dim, num_context_nodes=num_context_nodes
+            )
+            if query.is_active_for(num_context_nodes=num_context_nodes)
             else None
         )
 
@@ -74,7 +75,12 @@ class SlotDecoder(OnePassDestroyDecoder):
             if slot_self_attention != "none"
             else None
         )
-        self.cross_attn = MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
+        self.cross_attn = CrossAttention.from_config(
+            cross_attention or CrossAttentionConfig(),
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            num_context_nodes=num_context_nodes,
+        )
         self.poly_net = (
             nn.Sequential(
                 nn.Linear(hidden_dim + seed_dim, poly_dim),
@@ -110,31 +116,24 @@ class SlotDecoder(OnePassDestroyDecoder):
         if self.node_query is not None:
             # Add the node summary (B, 1, D) to every slot, broadcasting over M.
             queries = queries + self.node_query(
-                h_nodes[:, k:], context_embed_nodes=h_nodes[:, :k] if k else None
+                h_nodes[:, k:], context_embedded_nodes=h_nodes[:, :k] if k else None
             )
 
         if self.slot_self_attention == "pre":
             assert self.slot_self_attn is not None
             queries = queries + self.slot_self_attn(queries, queries, queries)
 
-        attend_mask = ~action_mask  # (B, N), True = attend
-        if self.attend_to_context and k:
-            attend_mask[:, :k] = True  # also let the slots attend to the context nodes
-        mha_out = self.cross_attn(
-            queries, h_nodes, h_nodes, attention_mask=attend_mask
-        )  # (B, M, hidden_dim)
+        queries = self.cross_attn(queries, h_nodes, action_mask)  # (B, M, hidden_dim)
 
         if self.slot_self_attention == "post":
             assert self.slot_self_attn is not None
-            mha_out = mha_out + self.slot_self_attn(mha_out, mha_out, mha_out)
+            queries = queries + self.slot_self_attn(queries, queries, queries)
 
-        mha_out = mha_out.unsqueeze(1).expand(B, R, self.num_slots, hidden_dim)  # (B, R, M, D)
-        if self.poly_net is None:
-            context = mha_out  # (B, R, M, hidden_dim)
-        else:
+        queries = queries.unsqueeze(1).expand(B, R, self.num_slots, hidden_dim)  # (B, R, M, D)
+        if self.poly_net is not None:
             seed_for_slots = seed.unsqueeze(-2).expand(B, R, self.num_slots, self.seed_dim)
-            context = mha_out + self.poly_net(
-                torch.cat([mha_out, seed_for_slots], dim=-1)
+            queries = queries + self.poly_net(
+                torch.cat([queries, seed_for_slots], dim=-1)
             )  # (B, R, M, hidden_dim)
 
         # Nodes are shared across rollouts and slots: pass them un-expanded and let the
@@ -142,7 +141,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         # Return raw scores; rollout normalizes each slot over the still-available nodes.
         node_mask = action_mask[:, None, None]  # (B, 1, 1, N)
         return self.scorer(
-            context=context, node_embeddings=h_nodes, mask=node_mask, log_softmax=False
+            context=queries, node_embeddings=h_nodes, mask=node_mask, log_softmax=False
         )  # (B, R, M, N)
 
     def rollout(

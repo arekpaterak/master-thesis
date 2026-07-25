@@ -3,9 +3,55 @@ from __future__ import annotations
 from typing import Literal
 
 import torch
+from pydantic import BaseModel, Field
 from torch import nn
 
 Pooling = Literal["none", "mean", "max", "meanmax"]
+
+
+class DecoderQueryConfig(BaseModel):
+    """Configures the query a decoder builds from the node embeddings (see DecoderQuery)."""
+
+    pooling: Pooling = Field(
+        default="mean",
+        title="Query pooling",
+        description=(
+            "How to pool the selectable nodes into the query: 'none' adds no pooling; "
+            "'mean' uses the mean over nodes; 'max' the per-feature max; 'meanmax' "
+            "concatenates the mean and max and projects back to the hidden dimension."
+        ),
+    )
+    learned: bool = Field(
+        default=False,
+        title="Learned query base",
+        description=(
+            "Add a learned query vector, independent of the node contents. On its own the "
+            "query is instance-blind and instance dependence flows through the attention "
+            "keys/values."
+        ),
+    )
+    include_context_in_query: bool = Field(
+        default=True,
+        title="Context nodes in query",
+        description=(
+            "Give the non-selectable context nodes (e.g. the CVRP depot) their own "
+            "coordinate in the query instead of pooling them with the selectable nodes. "
+            "No effect for problems without context nodes (e.g. TSP)."
+        ),
+    )
+
+    @property
+    def is_configured(self) -> bool:
+        """Whether any component could be active, independent of the problem."""
+        return self.pooling != "none" or self.learned or self.include_context_in_query
+
+    def is_active_for(self, *, num_context_nodes: int) -> bool:
+        """Whether any component is active given how many context nodes the problem has."""
+        return (
+            self.pooling != "none"
+            or self.learned
+            or (self.include_context_in_query and num_context_nodes > 0)
+        )
 
 
 class DecoderQuery(nn.Module):
@@ -55,21 +101,32 @@ class DecoderQuery(nn.Module):
         else:
             self.learned = None
 
+    @classmethod
+    def from_config(
+        cls, config: DecoderQueryConfig, *, hidden_dim: int, num_context_nodes: int
+    ) -> DecoderQuery:
+        return cls(
+            hidden_dim=hidden_dim,
+            pooling=config.pooling,
+            with_context=config.include_context_in_query and num_context_nodes > 0,
+            learned=config.learned,
+        )
+
     def forward(
         self,
-        selectable_embed_nodes: torch.Tensor,
+        selectable_embedded_nodes: torch.Tensor,
         *,
-        context_embed_nodes: torch.Tensor | None = None,
+        context_embedded_nodes: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        # selectable_embed_nodes: (B, Ns, D), context_embed_nodes: (B, Nc, D) or None
+        # selectable_embedded_nodes: (B, Ns, D), context_embedded_nodes: (B, Nc, D) or None
         # -> query: (B, 1, D)
-        summaries = self._pool(selectable_embed_nodes)
+        summaries = self._pool(selectable_embedded_nodes)
         if self.with_context:
-            assert context_embed_nodes is not None
-            summaries.append(context_embed_nodes.mean(dim=-2, keepdim=True))  # (B, 1, D)
+            assert context_embedded_nodes is not None
+            summaries.append(context_embedded_nodes.mean(dim=-2, keepdim=True))  # (B, 1, D)
         query = self._combine(summaries)
         if self.learned is not None:
-            B, _, D = selectable_embed_nodes.shape
+            B, _, D = selectable_embedded_nodes.shape
             base = self.learned.unsqueeze(0).expand(B, 1, D)  # (B, 1, D)
             query = base if query is None else query + base
         assert query is not None

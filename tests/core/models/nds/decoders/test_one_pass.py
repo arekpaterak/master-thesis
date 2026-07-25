@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+from core.models.layers.cross_attention import CrossAttentionConfig
+from core.models.layers.decoder_query import DecoderQueryConfig
 from core.models.nds.decoders.config import SimpleOnePassDecoderConfig, SlotDecoderConfig
 from core.models.nds.decoders.factory import build_decoder
 from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
@@ -17,9 +19,10 @@ def _simple(
     with_poly=True,
     query_pooling="mean",
     query_learned=False,
-    query_context=True,
+    include_context_in_query=True,
     skip_mha=False,
     attend_context=False,
+    cross_attn_residual=False,
     num_context_nodes=0,
 ):
     return SimpleOnePassDecoder(
@@ -28,11 +31,14 @@ def _simple(
         poly_dim=POLY_DIM,
         num_heads=NUM_HEADS,
         with_poly=with_poly,
-        query_pooling=query_pooling,
-        query_learned=query_learned,
-        query_context=query_context,
-        skip_mha=skip_mha,
-        attend_to_context=attend_context,
+        query=DecoderQueryConfig(
+            pooling=query_pooling,
+            learned=query_learned,
+            include_context_in_query=include_context_in_query,
+        ),
+        cross_attention=CrossAttentionConfig(
+            skip=skip_mha, attend_to_context=attend_context, residual=cross_attn_residual
+        ),
         num_context_nodes=num_context_nodes,
     ), {}
 
@@ -41,8 +47,10 @@ def _slot(
     slot_self_attention="post",
     with_poly=True,
     node_pooling="none",
-    node_context=True,
+    include_context_in_query=True,
     attend_context=False,
+    cross_attn_residual=False,
+    skip_cross_attn=False,
     num_context_nodes=0,
 ):
     return SlotDecoder(
@@ -52,10 +60,13 @@ def _slot(
         num_heads=NUM_HEADS,
         num_slots=M,
         slot_self_attention=slot_self_attention,
+        cross_attention=CrossAttentionConfig(
+            skip=skip_cross_attn, attend_to_context=attend_context, residual=cross_attn_residual
+        ),
         with_poly=with_poly,
-        node_pooling=node_pooling,
-        node_context=node_context,
-        attend_to_context=attend_context,
+        query=DecoderQueryConfig(
+            pooling=node_pooling, include_context_in_query=include_context_in_query
+        ),
         num_context_nodes=num_context_nodes,
     ), {}
 
@@ -172,8 +183,7 @@ def test_simple_query_produces_logits(query_pooling, query_learned):
 def test_simple_query_is_wired_to_factory(query_pooling, query_learned):
     decoder = build_decoder(
         SimpleOnePassDecoderConfig(
-            query_pooling=query_pooling,
-            query_learned=query_learned,
+            query=DecoderQueryConfig(pooling=query_pooling, learned=query_learned),
             seed_dim=SEED_DIM,
             poly_dim=POLY_DIM,
         ),
@@ -188,7 +198,7 @@ def test_simple_query_is_wired_to_factory(query_pooling, query_learned):
 
 def test_simple_skip_mha_produces_logits():
     decoder, _ = _simple(skip_mha=True)
-    assert decoder.MHA is None
+    assert decoder.cross_attn.mha is None
     h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
     action_mask = torch.zeros(B, N, dtype=torch.bool)
@@ -200,14 +210,47 @@ def test_simple_skip_mha_produces_logits():
 
 def test_simple_skip_mha_is_wired_to_factory():
     decoder = build_decoder(
-        SimpleOnePassDecoderConfig(skip_mha=True, seed_dim=SEED_DIM, poly_dim=POLY_DIM),
+        SimpleOnePassDecoderConfig(
+            cross_attention=CrossAttentionConfig(skip=True), seed_dim=SEED_DIM, poly_dim=POLY_DIM
+        ),
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
     )
 
     assert isinstance(decoder, SimpleOnePassDecoder)
-    assert decoder.skip_mha is True
-    assert decoder.MHA is None
+    assert decoder.cross_attn.mha is None
+
+
+def test_simple_cross_attn_residual_defaults_off():
+    decoder, _ = _simple()
+    assert decoder.cross_attn.residual is False
+
+
+def test_simple_cross_attn_residual_produces_logits():
+    decoder, _ = _simple(cross_attn_residual=True)
+    assert decoder.cross_attn.residual is True
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, N)
+
+
+def test_simple_cross_attn_residual_is_wired_to_factory():
+    decoder = build_decoder(
+        SimpleOnePassDecoderConfig(
+            cross_attention=CrossAttentionConfig(residual=True),
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
+        ),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+    )
+
+    assert isinstance(decoder, SimpleOnePassDecoder)
+    assert decoder.cross_attn.residual is True
 
 
 def test_simple_context_query_produces_logits():
@@ -227,8 +270,8 @@ def test_simple_context_off_without_context_nodes():
     assert decoder.query.with_context is False
 
 
-def test_simple_query_context_toggle_disables_context():
-    decoder, _ = _simple(num_context_nodes=1, query_context=False)
+def test_simple_include_context_in_query_toggle_disables_context():
+    decoder, _ = _simple(num_context_nodes=1, include_context_in_query=False)
     assert decoder.query.with_context is False
 
 
@@ -248,12 +291,12 @@ def test_simple_context_is_wired_to_factory(num_context_nodes, expected):
 
 def test_simple_attend_context_defaults_off():
     decoder, _ = _simple(num_context_nodes=1)
-    assert decoder.attend_to_context is False
+    assert decoder.cross_attn.attend_to_context is False
 
 
 def test_simple_attend_context_produces_logits():
     decoder, _ = _simple(num_context_nodes=1, attend_context=True)
-    assert decoder.attend_to_context is True
+    assert decoder.cross_attn.attend_to_context is True
     h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
     action_mask = torch.zeros(B, N, dtype=torch.bool)
@@ -283,7 +326,9 @@ def test_simple_attend_context_does_not_mutate_action_mask():
 def test_simple_attend_context_is_wired_to_factory(attend_context):
     decoder = build_decoder(
         SimpleOnePassDecoderConfig(
-            attend_to_context=attend_context, seed_dim=SEED_DIM, poly_dim=POLY_DIM
+            cross_attention=CrossAttentionConfig(attend_to_context=attend_context),
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
         ),
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
@@ -291,7 +336,7 @@ def test_simple_attend_context_is_wired_to_factory(attend_context):
     )
 
     assert isinstance(decoder, SimpleOnePassDecoder)
-    assert decoder.attend_to_context is attend_context
+    assert decoder.cross_attn.attend_to_context is attend_context
 
 
 @pytest.mark.parametrize("slot_self_attention", ["none", "pre", "post"])
@@ -309,6 +354,68 @@ def test_slot_self_attention_config_is_wired_to_factory(slot_self_attention):
 
     assert isinstance(decoder, SlotDecoder)
     assert decoder.slot_self_attention == slot_self_attention
+
+
+def test_slot_cross_attn_residual_defaults_off():
+    decoder, _ = _slot()
+    assert decoder.cross_attn.residual is False
+
+
+def test_slot_cross_attn_residual_produces_logits():
+    decoder, _ = _slot(cross_attn_residual=True)
+    assert decoder.cross_attn.residual is True
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, M, N)
+
+
+@pytest.mark.parametrize("cross_attn_residual", [True, False])
+def test_slot_cross_attn_residual_is_wired_to_factory(cross_attn_residual):
+    decoder = build_decoder(
+        SlotDecoderConfig(
+            num_slots=M,
+            cross_attention=CrossAttentionConfig(residual=cross_attn_residual),
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
+        ),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+    )
+
+    assert isinstance(decoder, SlotDecoder)
+    assert decoder.cross_attn.residual is cross_attn_residual
+
+
+def test_slot_skip_cross_attn_produces_logits():
+    decoder, _ = _slot(skip_cross_attn=True)
+    assert decoder.cross_attn.mha is None
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, M, N)
+
+
+def test_slot_skip_cross_attn_is_wired_to_factory():
+    decoder = build_decoder(
+        SlotDecoderConfig(
+            num_slots=M,
+            cross_attention=CrossAttentionConfig(skip=True),
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
+        ),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+    )
+
+    assert isinstance(decoder, SlotDecoder)
+    assert decoder.cross_attn.mha is None
 
 
 @pytest.mark.parametrize("node_pooling", ["none", "mean", "max", "meanmax"])
@@ -329,7 +436,7 @@ def test_slot_node_pooling_is_wired_to_factory(node_pooling):
     decoder = build_decoder(
         SlotDecoderConfig(
             num_slots=M,
-            node_pooling=node_pooling,
+            query=DecoderQueryConfig(pooling=node_pooling),
             seed_dim=SEED_DIM,
             poly_dim=POLY_DIM,
         ),
@@ -338,7 +445,11 @@ def test_slot_node_pooling_is_wired_to_factory(node_pooling):
     )
 
     assert isinstance(decoder, SlotDecoder)
-    assert decoder.node_pooling == node_pooling
+    if node_pooling == "none":
+        assert decoder.node_query is None
+    else:
+        assert decoder.node_query is not None
+        assert decoder.node_query.pooling == node_pooling
 
 
 def test_slot_context_grounds_without_pooling():
@@ -362,7 +473,12 @@ def test_slot_no_grounding_without_pooling_or_context():
 
 def test_slot_context_is_wired_to_factory():
     decoder = build_decoder(
-        SlotDecoderConfig(num_slots=M, node_pooling="none", seed_dim=SEED_DIM, poly_dim=POLY_DIM),
+        SlotDecoderConfig(
+            num_slots=M,
+            query=DecoderQueryConfig(pooling="none"),
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
+        ),
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
         num_context_nodes=1,
@@ -375,7 +491,7 @@ def test_slot_context_is_wired_to_factory():
 
 def test_slot_attend_context_produces_logits():
     decoder, _ = _slot(num_context_nodes=1, attend_context=True)
-    assert decoder.attend_to_context is True
+    assert decoder.cross_attn.attend_to_context is True
     h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
     action_mask = torch.zeros(B, N, dtype=torch.bool)
@@ -391,7 +507,10 @@ def test_slot_attend_context_produces_logits():
 def test_slot_attend_context_is_wired_to_factory(attend_context):
     decoder = build_decoder(
         SlotDecoderConfig(
-            num_slots=M, attend_to_context=attend_context, seed_dim=SEED_DIM, poly_dim=POLY_DIM
+            num_slots=M,
+            cross_attention=CrossAttentionConfig(attend_to_context=attend_context),
+            seed_dim=SEED_DIM,
+            poly_dim=POLY_DIM,
         ),
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
@@ -399,7 +518,7 @@ def test_slot_attend_context_is_wired_to_factory(attend_context):
     )
 
     assert isinstance(decoder, SlotDecoder)
-    assert decoder.attend_to_context is attend_context
+    assert decoder.cross_attn.attend_to_context is attend_context
 
 
 @pytest.mark.parametrize("greedy", [False, True])

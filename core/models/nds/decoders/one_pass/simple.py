@@ -5,8 +5,8 @@ import torch.nn as nn
 
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
-from core.models.layers.decoder_query import DecoderQuery, Pooling
-from core.models.layers.multihead_attention import MultiheadAttentionWrapper
+from core.models.layers.cross_attention import CrossAttention, CrossAttentionConfig
+from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.rollout import Rollout
 
 from .base import OnePassDestroyDecoder
@@ -22,30 +22,25 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         poly_dim: int,
         num_heads: int,
         with_poly: bool = True,
-        query_pooling: Pooling = "mean",
-        query_learned: bool = False,
-        query_context: bool = True,
-        skip_mha: bool = False,
-        attend_to_context: bool = False,
+        query: DecoderQueryConfig | None = None,
+        cross_attention: CrossAttentionConfig | None = None,
         num_context_nodes: int = 0,
         C: float = 10.0,
     ):
         super().__init__()
         self._seed_dim = seed_dim
         self.with_poly = with_poly
-        self.skip_mha = skip_mha
-        self.attend_to_context = attend_to_context
         self.num_context_nodes = num_context_nodes
-        self.query = DecoderQuery(
+        self.query = DecoderQuery.from_config(
+            query or DecoderQueryConfig(),
             hidden_dim=hidden_dim,
-            pooling=query_pooling,
-            with_context=query_context and num_context_nodes > 0,
-            learned=query_learned,
+            num_context_nodes=num_context_nodes,
         )
-        self.MHA = (
-            None
-            if skip_mha
-            else MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
+        self.cross_attn = CrossAttention.from_config(
+            cross_attention or CrossAttentionConfig(),
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            num_context_nodes=num_context_nodes,
         )
         self.poly_net = (
             nn.Sequential(
@@ -70,17 +65,9 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         R = seed.shape[1]
         k = self.num_context_nodes
         query = self.query(
-            h_nodes[:, k:], context_embed_nodes=h_nodes[:, :k] if k else None
+            h_nodes[:, k:], context_embedded_nodes=h_nodes[:, :k] if k else None
         )  # (B, 1, D)
-        if self.MHA is None:
-            query = query.squeeze(-2)  # (B, D), scorer reads straight off the query
-        else:
-            attend_mask = ~action_mask  # (B, N), True = attend
-            if self.attend_to_context and k:
-                attend_mask[:, :k] = True  # also let the query attend to the context nodes
-            query = self.MHA(query, h_nodes, h_nodes, attention_mask=attend_mask).squeeze(
-                -2
-            )  # (B, D)
+        query = self.cross_attn(query, h_nodes, action_mask).squeeze(-2)  # (B, D)
         query = query.unsqueeze(1).expand(B, R, D)  # (B, R, D)
 
         if self.poly_net is not None:

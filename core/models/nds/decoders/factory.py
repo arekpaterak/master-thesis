@@ -39,11 +39,8 @@ def build_decoder(
         case SimpleOnePassDecoderConfig():
             return SimpleOnePassDecoder(
                 **shared,
-                query_pooling=decoder_config.query_pooling,
-                query_learned=decoder_config.query_learned,
-                query_context=decoder_config.query_context,
-                skip_mha=decoder_config.skip_mha,
-                attend_to_context=decoder_config.attend_to_context,
+                query=decoder_config.query,
+                cross_attention=decoder_config.cross_attention,
                 num_context_nodes=num_context_nodes,
             )
         case SlotDecoderConfig():
@@ -51,9 +48,8 @@ def build_decoder(
                 **shared,
                 num_slots=decoder_config.num_slots,
                 slot_self_attention=decoder_config.slot_self_attention,
-                node_pooling=decoder_config.node_pooling,
-                node_context=decoder_config.node_context,
-                attend_to_context=decoder_config.attend_to_context,
+                cross_attention=decoder_config.cross_attention,
+                query=decoder_config.query,
                 num_context_nodes=num_context_nodes,
             )
         case _:

@@ -4,7 +4,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from core.models.layers.decoder_query import Pooling
+from core.models.layers.cross_attention import CrossAttentionConfig
+from core.models.layers.decoder_query import DecoderQueryConfig
 
 
 class _DecoderConfigBase(BaseModel):
@@ -32,58 +33,22 @@ class AutoregressiveDecoderConfig(_DecoderConfigBase):
 
 class SimpleOnePassDecoderConfig(_DecoderConfigBase):
     type: Literal["simple"] = "simple"
-    query_pooling: Pooling = Field(
-        default="mean",
-        title="Query pooling",
-        description=(
-            "How to pool the nodes into the query: 'none' adds no node pooling (requires "
-            "'query_learned'); 'mean' uses the mean over nodes; 'max' the per-feature max; "
-            "'meanmax' concatenates the mean and max and projects back to the hidden "
-            "dimension."
-        ),
+    query: DecoderQueryConfig = Field(
+        default_factory=DecoderQueryConfig,
+        title="Query",
+        description="How the cross-attention query is built from the node embeddings.",
     )
-    query_learned: bool = Field(
-        default=False,
-        title="Learned query base",
-        description=(
-            "Add a learned query vector, independent of the node contents. On its own "
-            "('query_pooling' is 'none') the query is instance-blind and instance "
-            "dependence flows through the attention keys/values."
-        ),
-    )
-    query_context: bool = Field(
-        default=True,
-        title="Context nodes in query",
-        description=(
-            "Give the non-selectable context nodes (e.g. the CVRP depot) their own "
-            "coordinate in the query instead of pooling them with the selectable nodes. "
-            "No effect for problems without context nodes (e.g. TSP)."
-        ),
-    )
-    skip_mha: bool = Field(
-        default=False,
-        title="Skip cross-attention",
-        description=(
-            "Skip the node cross-attention and feed the query straight to the "
-            "scorer, so node scores are read directly off the (un-refined) query."
-        ),
-    )
-    attend_to_context: bool = Field(
-        default=False,
-        title="Attend to context nodes",
-        description=(
-            "Let the query attend to the non-selectable context nodes (e.g. the CVRP "
-            "depot) in the cross-attention, which the action mask otherwise excludes. "
-            "The scorer still cannot select them. No effect without cross-attention "
-            "('skip_mha') or context nodes (e.g. TSP)."
-        ),
+    cross_attention: CrossAttentionConfig = Field(
+        default_factory=CrossAttentionConfig,
+        title="Cross-attention",
+        description="How the query reads the node embeddings via cross-attention.",
     )
 
     @model_validator(mode="after")
     def _check_query(self) -> SimpleOnePassDecoderConfig:
-        if self.query_pooling == "none" and not self.query_learned and not self.query_context:
+        if not self.query.is_configured:
             raise ValueError(
-                "Set query_pooling, query_learned or query_context; the query cannot be empty."
+                "The query needs a pooling, a learned base or context nodes; it cannot be empty."
             )
         return self
 
@@ -103,35 +68,27 @@ class SlotDecoderConfig(_DecoderConfigBase):
             "cross-attention, or after node cross-attention."
         ),
     )
-    node_pooling: Pooling = Field(
-        default="none",
-        title="Node pooling",
+    cross_attention: CrossAttentionConfig = Field(
+        default_factory=CrossAttentionConfig,
+        title="Cross-attention",
+        description="How the slot queries read the node embeddings via cross-attention.",
+    )
+    query: DecoderQueryConfig = Field(
+        default_factory=lambda: DecoderQueryConfig(pooling="none"),
+        title="Query",
         description=(
-            "Ground the learned slot queries in the instance by adding a pooled node "
-            "summary before cross-attention: 'none' keeps the pure learned queries; "
-            "'mean'/'max'/'meanmax' add the corresponding node pooling (broadcast over "
-            "slots)."
+            "How the slot queries are grounded in the instance: the node summary is added "
+            "to every learned slot query before cross-attention. With no active component "
+            "the slots stay pure learned queries. The 'learned' base is not allowed here "
+            "-- the slot queries already are it."
         ),
     )
-    node_context: bool = Field(
-        default=True,
-        title="Context nodes in slot grounding",
-        description=(
-            "Ground the learned slot queries by adding the non-selectable context nodes "
-            "(e.g. the CVRP depot), which the slot cross-attention and scorer otherwise "
-            "never see. No effect for problems without context nodes (e.g. TSP)."
-        ),
-    )
-    attend_to_context: bool = Field(
-        default=False,
-        title="Attend to context nodes",
-        description=(
-            "Let the slots attend to the non-selectable context nodes (e.g. the CVRP "
-            "depot) in the cross-attention, which the action mask otherwise excludes. "
-            "The scorer still cannot select them. No effect for problems without context "
-            "nodes (e.g. TSP)."
-        ),
-    )
+
+    @model_validator(mode="after")
+    def _check_query(self) -> SlotDecoderConfig:
+        if self.query.learned:
+            raise ValueError("Slot query cannot be learned; the slot queries are the learned base.")
+        return self
 
 
 DecoderConfig = Annotated[
