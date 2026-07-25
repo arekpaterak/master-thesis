@@ -7,7 +7,7 @@ import torch.nn as nn
 
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
-from core.models.layers.decoder_query import DecoderQuery
+from core.models.layers.decoder_query import DecoderQuery, Pooling
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.rollout import Rollout
 
@@ -21,9 +21,10 @@ class SlotDecoder(OnePassDestroyDecoder):
     during training. The seed is incorporated via poly_net as a residual after MHA,
     adding stochastic conditioning per rollout - the same pattern as SimpleOnePassDecoder.
 
-    When ``node_query_strategy`` is not ``none``, a pooled node summary (see
-    :class:`DecoderQuery`) is added to every slot query before cross-attention, grounding
-    the otherwise instance-blind learned queries in the current graph.
+    When ``node_pooling`` is not ``none`` or ``node_context`` adds the context nodes (see
+    :class:`DecoderQuery`), a node summary is added to every slot query before
+    cross-attention, grounding the otherwise instance-blind learned queries in the
+    current graph.
 
     The M slots score all nodes in one pass, then ``rollout`` samples them sequentially:
     each slot draws from its own softmax over the still-available nodes, and the chosen
@@ -40,8 +41,10 @@ class SlotDecoder(OnePassDestroyDecoder):
         num_heads: int,
         num_slots: int,
         slot_self_attention: Literal["none", "pre", "post"] = "post",
-        node_query_strategy: Literal["none", "mean", "max", "meanmax"] = "none",
+        node_pooling: Pooling = "none",
+        node_context: bool = True,
         with_poly: bool = True,
+        num_context_nodes: int = 0,
         C: float = 10.0,
     ):
         super().__init__()
@@ -50,15 +53,17 @@ class SlotDecoder(OnePassDestroyDecoder):
         self._seed_dim = seed_dim
         self.num_slots = num_slots
         self.slot_self_attention = slot_self_attention
-        self.node_query_strategy = node_query_strategy
+        self.node_pooling = node_pooling
         self.with_poly = with_poly
+        self.num_context_nodes = num_context_nodes
 
         self.slot_queries = nn.Parameter(torch.empty(num_slots, hidden_dim))
         nn.init.xavier_uniform_(self.slot_queries.unsqueeze(0))
 
+        use_context = node_context and num_context_nodes > 0
         self.node_query = (
-            DecoderQuery(hidden_dim=hidden_dim, strategy=node_query_strategy)
-            if node_query_strategy != "none"
+            DecoderQuery(hidden_dim=hidden_dim, pooling=node_pooling, with_context=use_context)
+            if (node_pooling != "none" or use_context)
             else None
         )
 
@@ -100,8 +105,11 @@ class SlotDecoder(OnePassDestroyDecoder):
         queries = self.slot_queries.expand(B, self.num_slots, hidden_dim)  # (B, M, D)
 
         if self.node_query is not None:
-            # Add the pooled node summary (B, 1, D) to every slot, broadcasting over M.
-            queries = queries + self.node_query(h_nodes)
+            # Add the node summary (B, 1, D) to every slot, broadcasting over M.
+            k = self.num_context_nodes
+            queries = queries + self.node_query(
+                h_nodes[:, k:], context_embed_nodes=h_nodes[:, :k] if k else None
+            )
 
         if self.slot_self_attention == "pre":
             assert self.slot_self_attn is not None

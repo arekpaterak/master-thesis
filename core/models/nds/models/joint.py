@@ -14,6 +14,7 @@ from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
+from core.problems import depot_offset
 from core.problems.cmst.features import (
     CMSTInstanceFeatureExtractor,
     CMSTSolutionFeatureExtractor,
@@ -88,6 +89,7 @@ class JointNDSModel(nn.Module):
             decoder or AutoregressiveDecoderConfig(),
             hidden_dim=hidden_dim,
             num_heads=num_heads,
+            num_context_nodes=depot_offset(problem_name),
         )
 
     def rollout(

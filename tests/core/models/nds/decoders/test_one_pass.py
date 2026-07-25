@@ -13,18 +13,35 @@ POLY_DIM = 32
 NUM_HEADS = 2
 
 
-def _simple(with_poly=True, query_strategy="mean"):
+def _simple(
+    with_poly=True,
+    query_pooling="mean",
+    query_learned=False,
+    query_context=True,
+    skip_mha=False,
+    num_context_nodes=0,
+):
     return SimpleOnePassDecoder(
         hidden_dim=HIDDEN_DIM,
         seed_dim=SEED_DIM,
         poly_dim=POLY_DIM,
         num_heads=NUM_HEADS,
         with_poly=with_poly,
-        query_strategy=query_strategy,
+        query_pooling=query_pooling,
+        query_learned=query_learned,
+        query_context=query_context,
+        skip_mha=skip_mha,
+        num_context_nodes=num_context_nodes,
     ), {}
 
 
-def _slot(slot_self_attention="post", with_poly=True, node_query_strategy="none"):
+def _slot(
+    slot_self_attention="post",
+    with_poly=True,
+    node_pooling="none",
+    node_context=True,
+    num_context_nodes=0,
+):
     return SlotDecoder(
         hidden_dim=HIDDEN_DIM,
         seed_dim=SEED_DIM,
@@ -33,8 +50,21 @@ def _slot(slot_self_attention="post", with_poly=True, node_query_strategy="none"
         num_slots=M,
         slot_self_attention=slot_self_attention,
         with_poly=with_poly,
-        node_query_strategy=node_query_strategy,
+        node_pooling=node_pooling,
+        node_context=node_context,
+        num_context_nodes=num_context_nodes,
     ), {}
+
+
+# (query_pooling, query_learned): the two orthogonal query components, including the
+# learned-only and learned+pooled cells the two-axis contract now allows.
+QUERY_COMPONENTS = [
+    pytest.param("mean", False, id="mean"),
+    pytest.param("max", False, id="max"),
+    pytest.param("meanmax", False, id="meanmax"),
+    pytest.param("none", True, id="learned"),
+    pytest.param("mean", True, id="mean+learned"),
+]
 
 
 DECODERS = [
@@ -122,9 +152,9 @@ def test_slot_self_attention_modes_produce_logits(slot_self_attention):
     assert logits.shape == (B, R, M, N)
 
 
-@pytest.mark.parametrize("query_strategy", ["mean", "max", "meanmax"])
-def test_simple_query_strategy_produces_logits(query_strategy):
-    decoder, _ = _simple(query_strategy=query_strategy)
+@pytest.mark.parametrize("query_pooling, query_learned", QUERY_COMPONENTS)
+def test_simple_query_produces_logits(query_pooling, query_learned):
+    decoder, _ = _simple(query_pooling=query_pooling, query_learned=query_learned)
     h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
     action_mask = torch.zeros(B, N, dtype=torch.bool)
@@ -134,11 +164,12 @@ def test_simple_query_strategy_produces_logits(query_strategy):
     assert logits.shape == (B, R, N)
 
 
-@pytest.mark.parametrize("query_strategy", ["mean", "max", "meanmax"])
-def test_simple_query_strategy_is_wired_to_factory(query_strategy):
+@pytest.mark.parametrize("query_pooling, query_learned", QUERY_COMPONENTS)
+def test_simple_query_is_wired_to_factory(query_pooling, query_learned):
     decoder = build_decoder(
         SimpleOnePassDecoderConfig(
-            query_strategy=query_strategy,
+            query_pooling=query_pooling,
+            query_learned=query_learned,
             seed_dim=SEED_DIM,
             poly_dim=POLY_DIM,
         ),
@@ -147,7 +178,68 @@ def test_simple_query_strategy_is_wired_to_factory(query_strategy):
     )
 
     assert isinstance(decoder, SimpleOnePassDecoder)
-    assert decoder.query.strategy == query_strategy
+    assert decoder.query.pooling == query_pooling
+    assert (decoder.query.learned is not None) == query_learned
+
+
+def test_simple_skip_mha_produces_logits():
+    decoder, _ = _simple(skip_mha=True)
+    assert decoder.MHA is None
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, N)
+
+
+def test_simple_skip_mha_is_wired_to_factory():
+    decoder = build_decoder(
+        SimpleOnePassDecoderConfig(skip_mha=True, seed_dim=SEED_DIM, poly_dim=POLY_DIM),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+    )
+
+    assert isinstance(decoder, SimpleOnePassDecoder)
+    assert decoder.skip_mha is True
+    assert decoder.MHA is None
+
+
+def test_simple_context_query_produces_logits():
+    decoder, _ = _simple(num_context_nodes=1)
+    assert decoder.query.with_context is True
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, N)
+
+
+def test_simple_context_off_without_context_nodes():
+    decoder, _ = _simple(num_context_nodes=0)
+    assert decoder.query.with_context is False
+
+
+def test_simple_query_context_toggle_disables_context():
+    decoder, _ = _simple(num_context_nodes=1, query_context=False)
+    assert decoder.query.with_context is False
+
+
+@pytest.mark.parametrize("num_context_nodes, expected", [(1, True), (0, False)])
+def test_simple_context_is_wired_to_factory(num_context_nodes, expected):
+    decoder = build_decoder(
+        SimpleOnePassDecoderConfig(seed_dim=SEED_DIM, poly_dim=POLY_DIM),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+        num_context_nodes=num_context_nodes,
+    )
+
+    assert isinstance(decoder, SimpleOnePassDecoder)
+    assert decoder.num_context_nodes == num_context_nodes
+    assert decoder.query.with_context is expected
 
 
 @pytest.mark.parametrize("slot_self_attention", ["none", "pre", "post"])
@@ -167,9 +259,9 @@ def test_slot_self_attention_config_is_wired_to_factory(slot_self_attention):
     assert decoder.slot_self_attention == slot_self_attention
 
 
-@pytest.mark.parametrize("node_query_strategy", ["none", "mean", "max", "meanmax"])
-def test_slot_node_query_produces_logits(node_query_strategy):
-    decoder, _ = _slot(node_query_strategy=node_query_strategy)
+@pytest.mark.parametrize("node_pooling", ["none", "mean", "max", "meanmax"])
+def test_slot_node_pooling_produces_logits(node_pooling):
+    decoder, _ = _slot(node_pooling=node_pooling)
     h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
     action_mask = torch.zeros(B, N, dtype=torch.bool)
@@ -177,15 +269,15 @@ def test_slot_node_query_produces_logits(node_query_strategy):
     logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
 
     assert logits.shape == (B, R, M, N)
-    assert (decoder.node_query is None) == (node_query_strategy == "none")
+    assert (decoder.node_query is None) == (node_pooling == "none")
 
 
-@pytest.mark.parametrize("node_query_strategy", ["none", "mean", "max", "meanmax"])
-def test_slot_node_query_is_wired_to_factory(node_query_strategy):
+@pytest.mark.parametrize("node_pooling", ["none", "mean", "max", "meanmax"])
+def test_slot_node_pooling_is_wired_to_factory(node_pooling):
     decoder = build_decoder(
         SlotDecoderConfig(
             num_slots=M,
-            node_query_strategy=node_query_strategy,
+            node_pooling=node_pooling,
             seed_dim=SEED_DIM,
             poly_dim=POLY_DIM,
         ),
@@ -194,7 +286,39 @@ def test_slot_node_query_is_wired_to_factory(node_query_strategy):
     )
 
     assert isinstance(decoder, SlotDecoder)
-    assert decoder.node_query_strategy == node_query_strategy
+    assert decoder.node_pooling == node_pooling
+
+
+def test_slot_context_grounds_without_pooling():
+    # With no pooling but context nodes present, the depot still reaches the slot query.
+    decoder, _ = _slot(node_pooling="none", num_context_nodes=1)
+    assert decoder.node_query is not None
+    assert decoder.node_query.with_context is True
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, M, N)
+
+
+def test_slot_no_grounding_without_pooling_or_context():
+    decoder, _ = _slot(node_pooling="none", num_context_nodes=0)
+    assert decoder.node_query is None
+
+
+def test_slot_context_is_wired_to_factory():
+    decoder = build_decoder(
+        SlotDecoderConfig(num_slots=M, node_pooling="none", seed_dim=SEED_DIM, poly_dim=POLY_DIM),
+        hidden_dim=HIDDEN_DIM,
+        num_heads=NUM_HEADS,
+        num_context_nodes=1,
+    )
+
+    assert isinstance(decoder, SlotDecoder)
+    assert decoder.node_query is not None
+    assert decoder.node_query.with_context is True
 
 
 @pytest.mark.parametrize("greedy", [False, True])

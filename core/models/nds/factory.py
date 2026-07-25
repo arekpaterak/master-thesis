@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from core.models.nds.config import ModelConfig, SplitModelConfig
+from core.problems import depot_offset
 
 from .decoders.factory import build_decoder
 from .models import NDSModel
@@ -26,6 +27,7 @@ def build_model(model_params: ModelConfig) -> NDSModel:
                 decoder_config,
                 hidden_dim=model_params.hidden_dim,
                 num_heads=model_params.num_heads,
+                num_context_nodes=depot_offset(model_params.problem_name),
             ),
         )
 
