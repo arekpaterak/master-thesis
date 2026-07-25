@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
 
 from core.models.entropy import entropy
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.cross_attention import CrossAttention, CrossAttentionConfig
 from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
+from core.models.layers.poly_net import PolyNet
 from core.models.rollout import Rollout
 
 from .base import OnePassDestroyDecoder
@@ -43,11 +43,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
             num_context_nodes=num_context_nodes,
         )
         self.poly_net = (
-            nn.Sequential(
-                nn.Linear(hidden_dim + seed_dim, poly_dim),
-                nn.ReLU(),
-                nn.Linear(poly_dim, hidden_dim),
-            )
+            PolyNet(hidden_dim=hidden_dim, seed_dim=seed_dim, poly_dim=poly_dim)
             if with_poly
             else None
         )
@@ -71,7 +67,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         query = query.unsqueeze(1).expand(B, R, D)  # (B, R, D)
 
         if self.poly_net is not None:
-            query = query + self.poly_net(torch.cat([query, seed], dim=-1))
+            query = query + self.poly_net(query, seed)
 
         # Nodes are shared across rollouts: pass them un-expanded and let the scorer fold
         # the R rollouts into its query axis. The mask broadcasts over R via (B, 1, N).

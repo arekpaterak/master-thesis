@@ -9,6 +9,7 @@ from core.models.entropy import entropy
 from core.models.layers.batched_gru_cell import BatchedGRUCell
 from core.models.layers.cached_multihead_attention import CachedMultiheadAttention
 from core.models.layers.compatibility_scorer import CompatibilityScorer
+from core.models.layers.poly_net import PolyNet
 from core.models.nds.decoders.base import DestroyDecoder
 from core.models.rollout import Rollout
 from core.states.destroy import DestroyState
@@ -107,11 +108,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         self.GRU = BatchedGRUCell(hidden_dim, hidden_dim) if use_hidden_decoding_state else None
 
         self.poly_net = (
-            nn.Sequential(
-                nn.Linear(hidden_dim + seed_dim, poly_dim),
-                nn.ReLU(),
-                nn.Linear(poly_dim, hidden_dim),
-            )
+            PolyNet(hidden_dim=hidden_dim, seed_dim=seed_dim, poly_dim=poly_dim)
             if with_poly
             else None
         )
@@ -270,10 +267,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
             q=context, k_cached=cache.k, v_cached=cache.v, attention_mask=attention_mask
         ).reshape(B, R, self.hidden_dim)
 
-        if self.poly_net is None:
-            context = mha_out
-        else:
-            context = mha_out + self.poly_net(torch.cat([mha_out, cache.seed], dim=-1))
+        context = mha_out if self.poly_net is None else mha_out + self.poly_net(mha_out, cache.seed)
 
         # Shared-keys scoring: the R rollouts in context (B, R, D) all score against
         # the same per-instance nodes (B, N, D), avoiding any broadcast over R.

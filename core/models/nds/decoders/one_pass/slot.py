@@ -10,6 +10,7 @@ from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.cross_attention import CrossAttention, CrossAttentionConfig
 from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
+from core.models.layers.poly_net import PolyNet
 from core.models.rollout import Rollout
 
 from .base import OnePassDestroyDecoder
@@ -82,11 +83,7 @@ class SlotDecoder(OnePassDestroyDecoder):
             num_context_nodes=num_context_nodes,
         )
         self.poly_net = (
-            nn.Sequential(
-                nn.Linear(hidden_dim + seed_dim, poly_dim),
-                nn.ReLU(),
-                nn.Linear(poly_dim, hidden_dim),
-            )
+            PolyNet(hidden_dim=hidden_dim, seed_dim=seed_dim, poly_dim=poly_dim)
             if with_poly
             else None
         )
@@ -132,9 +129,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         queries = queries.unsqueeze(1).expand(B, R, self.num_slots, hidden_dim)  # (B, R, M, D)
         if self.poly_net is not None:
             seed_for_slots = seed.unsqueeze(-2).expand(B, R, self.num_slots, self.seed_dim)
-            queries = queries + self.poly_net(
-                torch.cat([queries, seed_for_slots], dim=-1)
-            )  # (B, R, M, hidden_dim)
+            queries = queries + self.poly_net(queries, seed_for_slots)  # (B, R, M, hidden_dim)
 
         # Nodes are shared across rollouts and slots: pass them un-expanded and let the
         # scorer fold (R, M) into its query axes. The mask broadcasts via (B, 1, 1, N).

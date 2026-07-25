@@ -107,9 +107,9 @@ def load_original_pretrained_decoder_weights(
         for suffix in ("weight_ih", "weight_hh", "bias_ih", "bias_hh"):
             out[f"GRU.{suffix}"] = nds_sd[f"decoder.GRU.{suffix}"]
 
-    # Polynomial network: poly_layer_1/2 -> poly_net.0/2
-    _copy(nds_sd, out, "decoder.poly_layer_1", "poly_net.0")
-    _copy(nds_sd, out, "decoder.poly_layer_2", "poly_net.2")
+    # Polynomial network: poly_layer_1/2 -> poly_net.net.0/2
+    _copy(nds_sd, out, "decoder.poly_layer_1", "poly_net.net.0")
+    _copy(nds_sd, out, "decoder.poly_layer_2", "poly_net.net.2")
 
     decoder.load_state_dict(out, strict=True)
 
