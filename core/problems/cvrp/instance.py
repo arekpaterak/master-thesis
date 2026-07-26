@@ -75,6 +75,10 @@ class CVRPInstance(BaseProblemInstance):
         return self.num_nodes - 1
 
     @property
+    def problem_size(self) -> int:
+        return self.num_customers
+
+    @property
     def depot_location(self) -> torch.Tensor:
         return self.locations[..., :1, :]  # (..., 1, 2)
 

@@ -8,6 +8,10 @@ class BaseProblemInstance(TensorClass, ABC):
     @abstractmethod
     def num_nodes(self) -> int: ...
 
+    @property
+    @abstractmethod
+    def problem_size(self) -> int: ...
+
     @abstractmethod
     def normalize_(self) -> None: ...
 

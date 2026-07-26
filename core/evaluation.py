@@ -89,7 +89,7 @@ class Evaluator:
             return Sampler.from_config(setting.problem, seed=setting.test_seed)
 
         sampler = DatasetSampler.from_file(setting.problem.name, setting.dataset_path)
-        dataset_problem_size = sampler.num_nodes - 1
+        dataset_problem_size = sampler.problem_size
         if dataset_problem_size != setting.problem.size:
             raise ValueError(
                 f"Dataset instances have size {dataset_problem_size} but problem.size is "

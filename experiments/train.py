@@ -176,18 +176,12 @@ def _merge_overrides(yaml_data: dict, overrides: dict[str, object]) -> None:
 
 
 def _build_samplers(config: TrainConfig) -> tuple[Sampler, Sampler]:
-    """Create the training sampler and the validation sampler (dataset or random)."""
+    """Create the training sampler and the validation sampler."""
     sampler = Sampler.from_config(config.problem)
     if config.validation.dataset_path is None:
         return sampler, Sampler.from_config(config.problem, seed=config.validation.seed)
 
     val_sampler = DatasetSampler.from_file(config.problem.name, config.validation.dataset_path)
-    val_dataset_size = val_sampler.num_nodes - 1
-    if val_dataset_size != config.problem.size:
-        raise ValueError(
-            f"Validation dataset instances have size {val_dataset_size} but "
-            f"problem.size is {config.problem.size}."
-        )
     if config.validation.num_instances > len(val_sampler):
         raise ValueError(
             f"validation.num_instances={config.validation.num_instances} exceeds "

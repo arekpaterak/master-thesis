@@ -36,3 +36,5 @@ wandb/
 data/*/*
 !data/synthetic/.gitkeep
 !data/cvrplib/.gitkeep
+
+notebooks/playground.ipynb

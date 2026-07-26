@@ -63,6 +63,10 @@ class DatasetSampler(Sampler):
     def num_nodes(self) -> int:
         return self._instance.num_nodes
 
+    @property
+    def problem_size(self) -> int:
+        return self._instance.problem_size
+
     def reset(self) -> None:
         self._cursor = 0
 
