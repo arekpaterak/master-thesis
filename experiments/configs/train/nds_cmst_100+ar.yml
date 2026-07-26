@@ -1,0 +1,58 @@
+problem:
+  name: cmst
+  size: 100
+
+model:
+  hidden_dim: 128
+  num_heads: 8
+  ff_dim: 512
+  encoder_mode: joint
+  decoder:
+    type: ar
+    use_hidden_decoding_state: true
+
+optimizer:
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-6
+
+trainer:
+  epochs: 25
+  instances_per_epoch: 1500
+  batch_size: 64
+  num_main_improvement_steps: 100
+
+search:
+  repair_type: greedy_insert
+  num_improvement_steps: 10
+  num_rollouts: 128
+  deconstruction_size: 15
+  improvement_step_type: numba_sequential
+  apply_and_repair_backend: numba
+  n_repairs: 5
+  start_solution_params:
+    num_improvement_steps: 0
+  acceptance:
+    type: greedy
+
+logging:
+  wandb_project: nds
+
+validation:
+  validate_before_training: true
+  num_instances: 1000
+  batch_size: 100
+  every_n_epochs: 1
+  seed: 42
+  plot_enabled: false
+  search:
+    repair_type: greedy_insert
+    num_improvement_steps: 50
+    num_rollouts: 100
+    deconstruction_size: 15
+    improvement_step_type: numba_sequential
+    apply_and_repair_backend: numba
+    n_repairs: 5
+    start_solution_params:
+      num_improvement_steps: 0
+    acceptance:
+      type: greedy

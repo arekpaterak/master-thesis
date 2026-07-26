@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gc
 import traceback
 from pathlib import Path
 
@@ -69,7 +68,7 @@ def main(
         raise typer.Exit()
 
     overrides = _parse_overrides(ctx.args)
-    train_config = _load_config(config_path, resume, overrides)
+    train_config: TrainConfig = _load_config(config_path, resume, overrides)
 
     torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     console.print(
@@ -191,11 +190,10 @@ def _build_samplers(config: TrainConfig) -> tuple[Sampler, Sampler]:
 
 
 def _build_model(config: TrainConfig) -> torch.nn.Module:
-    """Build the model and initialise weights per the config (pretrained/checkpoint/freeze)."""
     model = build_model(config.model)
 
-    # original_pretrained_weights / freeze_encoder are joint-only; the split model
-    # cannot initialise from a pretrained NDS encoder.
+    # original_pretrained_weights / freeze_encoder are joint-only;
+    # the split model cannot initialise from a pretrained NDS encoder.
     is_joint = isinstance(config.model, JointModelConfig)
     if is_joint and config.model.original_pretrained_weights:
         pretrained = config.model.original_pretrained_weights
@@ -406,11 +404,6 @@ def _run_training(
             if error is None:
                 upload_validation_plots(run_name=config.run_name, plots_dir=run_dir / "plots")
             wandb.finish(exit_code=1 if error is not None else 0)
-        # Free the GPU whether training finished or errored: the trained weights are
-        # persisted in checkpoints and the in-memory model only needs to live on CPU.
-        model.to("cpu")
-        gc.collect()
-        torch.cuda.empty_cache()
 
     if error is not None:
         raise error
