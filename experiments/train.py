@@ -246,6 +246,7 @@ def _prepare_run_dir(
                 project=config.logging.wandb_project,
                 name=config.run_name,
                 config=config.model_dump(),
+                tags=_run_tags(config),
             )
             wandb_id_path.write_text(wandb.run.id)
         wandb.config.update(
@@ -262,6 +263,12 @@ def _prepare_run_dir(
         wandb.define_metric("train/epoch_time_sec", step_metric="epoch")
 
     return run_dir, initial_epoch
+
+
+def _run_tags(config: TrainConfig) -> list[str]:
+    """Tags describing the model variant, for filtering runs in wandb."""
+    decoder_tag = "ar" if config.model.decoder.type == "ar" else "nar"
+    return [config.model.encoder_mode, decoder_tag]
 
 
 def _find_latest_checkpoint(run_dir: Path) -> tuple[Path | None, int]:
