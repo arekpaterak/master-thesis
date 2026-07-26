@@ -1,7 +1,7 @@
 Train the NDS model:
 
 ```bash
-python experiments/train-nds.py --config experiments/configs/train/nds_cvrp_100.yml
+python experiments/train.py --config experiments/configs/train/nds_cvrp_100.yml
 ```
 
 Evaluate a method:

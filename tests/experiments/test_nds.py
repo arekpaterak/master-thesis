@@ -18,7 +18,7 @@ from core.models.nds.config import (
 from core.problems import make_problem_config
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-_NDS_SCRIPT = _PROJECT_ROOT / "experiments" / "train-nds.py"
+_TRAIN_SCRIPT = _PROJECT_ROOT / "experiments" / "train.py"
 
 
 def _minimal_config(model: ModelConfig) -> TrainConfig:
@@ -77,7 +77,7 @@ def test_nds_runnable_as_script(tmp_path, problem, model):
     config_file.write_text(yaml.dump(_minimal_config(model).model_dump()))
 
     result = subprocess.run(
-        [sys.executable, str(_NDS_SCRIPT), "--config", str(config_file), "--problem.name", problem],
+        [sys.executable, str(_TRAIN_SCRIPT), str(config_file), "--problem.name", problem],
         capture_output=True,
         text=True,
         cwd=_PROJECT_ROOT,
