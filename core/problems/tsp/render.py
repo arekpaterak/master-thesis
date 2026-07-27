@@ -62,6 +62,9 @@ def render_solution(
     ax: Axes | None = None,
     with_problem_size: bool = True,
     with_objective: bool = True,
+    with_direction: bool = True,
+    separator: str = " | ",
+    scale: float = 1.0,
 ) -> None:
     if solution.batch_size.numel() > 1:
         raise ValueError(f"visualize() only works on a single instance. Got {solution.batch_size}")
@@ -87,6 +90,7 @@ def render_solution(
     connected = ~next_unassigned & ~prev_unassigned
 
     cmap = plt.get_cmap("Blues")
+    arrowstyle = "->" if with_direction else "-"
 
     for mask, color in (
         (orphaned, cmap(0.2)),
@@ -97,10 +101,10 @@ def render_solution(
             ax.scatter(
                 locations[mask, 0],
                 locations[mask, 1],
-                s=100,
+                s=100 * scale,
                 color=color,
                 edgecolors="black",
-                linewidths=1,
+                linewidths=1.0 * scale,
                 zorder=3,
             )
 
@@ -110,7 +114,7 @@ def render_solution(
                 "",
                 xy=tuple(locations[j].tolist()),
                 xytext=tuple(locations[i].tolist()),
-                arrowprops=dict(arrowstyle="->", color=cmap(0.8), lw=2),
+                arrowprops=dict(arrowstyle=arrowstyle, color=cmap(0.8), lw=2 * scale),
                 zorder=1,
             )
 
@@ -125,4 +129,4 @@ def render_solution(
     is_complete = bool(unbatched.is_complete.item())
     if with_objective and is_complete:
         title_parts.append(f"distance = {unbatched.objective().item():.4f}")
-    ax.set_title(" | ".join(title_parts))
+    ax.set_title(separator.join(title_parts))

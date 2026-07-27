@@ -11,6 +11,7 @@ from core.problems.solution import BaseSolution
 
 if TYPE_CHECKING:
     import numpy as np
+    from matplotlib.axes import Axes
 
 
 class CMSTSolution(BaseSolution):
@@ -326,5 +327,28 @@ class CMSTSolution(BaseSolution):
             device=self.device,
         )
 
-    def visualize(self, **kwargs) -> None:
-        raise NotImplementedError("CMSTSolution.visualize is not implemented yet.")
+    def visualize(
+        self,
+        *,
+        min_coordinate: float | None = None,
+        max_coordinate: float | None = None,
+        ax: Axes | None = None,
+        with_problem_size: bool = True,
+        with_objective: bool = True,
+        separator: str = " | ",
+        palette: str = "tab20",
+        scale: float = 1.0,
+    ) -> None:
+        from .render import render_solution
+
+        render_solution(
+            self,
+            min_coordinate=min_coordinate,
+            max_coordinate=max_coordinate,
+            ax=ax,
+            with_problem_size=with_problem_size,
+            with_objective=with_objective,
+            separator=separator,
+            palette=palette,
+            scale=scale,
+        )

@@ -189,6 +189,9 @@ class TSPGraphSolution(BaseSolution):
         ax: Axes | None = None,
         with_problem_size: bool = True,
         with_objective: bool = True,
+        with_direction: bool = True,
+        separator: str = " | ",
+        scale: float = 1.0,
     ) -> None:
         from .render import render_solution
 
@@ -199,6 +202,9 @@ class TSPGraphSolution(BaseSolution):
             ax=ax,
             with_problem_size=with_problem_size,
             with_objective=with_objective,
+            with_direction=with_direction,
+            separator=separator,
+            scale=scale,
         )
 
     @property

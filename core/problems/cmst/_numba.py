@@ -1,33 +1,4 @@
-"""Numba CPU apply-and-repair for CMST.
-
-Both entry points take externally supplied node sets and, per element, deconstruct the
-solution (stitch-remove those terminals, reattaching their children to the nearest
-surviving ancestor) and greedily reconstruct it via best-of-n cheapest attach. They
-differ only in how the node sets are applied:
-
-- ``apply_and_repair_sequential`` applies a solution's rollouts one after another,
-  threading acceptance through a running solution (mirrors ``SequentialImprovementStep``).
-- ``apply_and_repair_parallel`` applies every rollout independently from the same
-  solution and returns all candidates with their objectives, no acceptance
-  (mirrors ``ParallelImprovementStep``; used by training to score rollouts).
-
-Both share :func:`_apply_and_repair_one`, the per-element deconstruct + best-of-n repair
-core. The functions operate on raw numpy ``parent`` arrays (the parent-pointer
-representation of :class:`CMSTSolution`) plus the instance arrays, folding the work into
-``njit(parallel=True)`` passes -- the CMST analog of
-:mod:`core.lns.numba_kernels.cvrp_apply_and_repair`, with ``ROOT``/``parent`` in place of
-``DEPOT``/``next``/``prev`` and no route concept.
-
-``subtree_id`` is intentionally NOT maintained here; the caller recomputes it once via
-:meth:`CMSTSolution._compute_subtree_ids`. The greedy attach mirrors
-:class:`core.lns.operators.repair.insert.cmst.CMSTGreedyInsertRepair` (random free
-terminal, then cheapest capacity-feasible parent, with an always-valid attach-to-root
-fallback).
-
-Randomness uses numba's per-thread ``np.random``, reseeded per iteration from
-``base_seed`` and the iteration index for reproducibility under ``prange`` -- see
-:func:`seed_for`.
-"""
+"""Numba CPU apply-and-repair for CMST."""
 
 from __future__ import annotations
 

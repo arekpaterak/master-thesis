@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 
 from core.problems.cvrp import CVRPInstance
+from core.problems.palette import resolve_palette
 
 if TYPE_CHECKING:
     from core.problems.cvrp.graph_solution import CVRPGraphSolution
@@ -81,7 +82,7 @@ def render_instance(
     )
 
     plt.colorbar(
-        scatter, ax=ax, label="Demand (normalised)" if with_normalized_demand else "Demand (raw)"
+        scatter, ax=ax, label="Demand (normalised)" if with_normalized_demand else "Demand"
     )
     ax.set_xlim(min_coordinate - 0.1, max_coordinate + 0.1)
     ax.set_ylim(min_coordinate - 0.1, max_coordinate + 0.1)
@@ -102,7 +103,11 @@ def render_solution(
     show_depot_edges: bool = False,
     depot_in_legend: bool = True,
     with_route_labels: bool = False,
+    with_direction: bool = True,
     legend_loc: str | None = "upper right",
+    separator: str = " | ",
+    palette: str = "tab20",
+    scale: float = 1.0,
 ) -> None:
     if solution.batch_size.numel() > 1:
         raise ValueError(
@@ -124,16 +129,17 @@ def render_solution(
         min_coordinate = float(all_nodes.min())
         max_coordinate = float(all_nodes.max())
 
-    cmap = plt.get_cmap("tab10")
+    route_colours = resolve_palette(palette)
+    arrowstyle = "->" if with_direction else "-"
 
     ax.scatter(
         depot[0],
         depot[1],
         c="orange",
-        s=120,
+        s=120 * scale,
         marker="s",
         edgecolors="black",
-        linewidths=1,
+        linewidths=1.0 * scale,
         label="depot" if depot_in_legend else None,
         zorder=5,
     )
@@ -141,9 +147,8 @@ def render_solution(
     # Graph solutions can have partial chains; sequence solutions always have complete segments.
     is_graph = hasattr(solution, "prev_nodes")
 
-    num_colours = max(len(routes), 1)
     for r_idx, route in enumerate(routes):
-        colour = cmap(r_idx % num_colours)
+        colour = route_colours[r_idx % len(route_colours)]
 
         is_complete = (
             (
@@ -181,9 +186,9 @@ def render_solution(
             route_locs[:, 0],
             route_locs[:, 1],
             c=[colour],
-            s=40,
+            s=100 * scale,
             edgecolors="black",
-            linewidths=0.5,
+            linewidths=0.5 * scale,
             label=route_label if with_route_labels else None,
             zorder=4,
         )
@@ -196,7 +201,9 @@ def render_solution(
                 "",
                 xy=waypoints[k + 1],
                 xytext=waypoints[k],
-                arrowprops=dict(arrowstyle="->", color=colour, lw=1.5, linestyle=linestyle),
+                arrowprops=dict(
+                    arrowstyle=arrowstyle, color=colour, lw=1.5 * scale, linestyle=linestyle
+                ),
                 zorder=2,
             )
 
@@ -214,8 +221,8 @@ def render_solution(
     if num_unassigned > 0:
         title += f", {num_unassigned} unassigned"
     if with_problem_size:
-        title = f"CVRP({instance.num_customers}) | " + title
+        title = f"CVRP({instance.num_customers}){separator}" + title
     if with_objective:
-        title += f" | total distance = {solution.objective().item():.4f}"
+        title += f"{separator}total distance = {solution.objective().item():.4f}"
     ax.set_title(title)
     ax.grid(True, linestyle="--", alpha=0.4)

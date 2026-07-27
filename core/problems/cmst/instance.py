@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
 
 from core.problems.augmentations import apply_d4_transforms
 from core.problems.instance import BaseProblemInstance
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 
 class CMSTInstance(BaseProblemInstance):
@@ -149,5 +154,20 @@ class CMSTInstance(BaseProblemInstance):
         relative = self.terminal_locations - self.root_location  # (..., N, 2)
         return torch.atan2(relative[..., 1], relative[..., 0])  # (..., N) in [-pi, pi]
 
-    def visualize(self, **kwargs) -> None:
-        raise NotImplementedError("CMSTInstance.visualize is not implemented yet.")
+    def visualize(
+        self,
+        *,
+        min_coordinate: float | None = None,
+        max_coordinate: float | None = None,
+        ax: Axes | None = None,
+        with_normalized_demand: bool = True,
+    ) -> None:
+        from .render import render_instance
+
+        render_instance(
+            self,
+            min_coordinate=min_coordinate,
+            max_coordinate=max_coordinate,
+            ax=ax,
+            with_normalized_demand=with_normalized_demand,
+        )

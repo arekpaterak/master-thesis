@@ -686,7 +686,11 @@ class CVRPGraphSolution(BaseSolution):
         show_depot_edges: bool = False,
         depot_in_legend: bool = True,
         with_route_labels: bool = False,
+        with_direction: bool = True,
         legend_loc: str | None = "upper right",
+        separator: str = " | ",
+        palette: str = "tab20",
+        scale: float = 1.0,
     ) -> None:
         from .render import render_solution
 
@@ -700,5 +704,9 @@ class CVRPGraphSolution(BaseSolution):
             show_depot_edges=show_depot_edges,
             depot_in_legend=depot_in_legend,
             with_route_labels=with_route_labels,
+            with_direction=with_direction,
             legend_loc=legend_loc,
+            separator=separator,
+            palette=palette,
+            scale=scale,
         )
