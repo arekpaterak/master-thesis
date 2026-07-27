@@ -12,6 +12,7 @@ class SyntheticSummaryRow(SummaryRowBase):
 
     problem: str
     size: int
+    source: str
     n_steps: int
     time_per_instance_s: float
     obj_initial_mean: float
@@ -47,6 +48,7 @@ class SyntheticSummaryRow(SummaryRowBase):
             total_time_s=round(result.total_time_s, 4),
             problem=setting.problem.name,
             size=setting.problem.size,
+            source=setting.source,
             n_steps=objective.shape[0] - 1,
             time_per_instance_s=round(result.total_time_s / max(n_instances, 1), 6),
             obj_initial_mean=initial.mean().item(),
@@ -68,7 +70,7 @@ class SyntheticInstanceRow(Row):
     config: str
     problem_label: str
     instance_id: str
-    seed: int
+    source: str
     initial_objective: float
     final_objective: float
     improvement: float
@@ -79,12 +81,13 @@ class SyntheticInstanceRow(Row):
     ) -> list[Self]:
         objective = result.objective_per_step
         initial, final = objective[0], objective[-1]
+        source = setting.source
         return [
             cls(
                 config=config,
                 problem_label=setting.label,
-                instance_id=f"{setting.label}-seed{setting.test_seed}-{i:04d}",
-                seed=setting.test_seed,
+                instance_id=f"{setting.label}-{source}-{i:04d}",
+                source=source,
                 initial_objective=initial[i].item(),
                 final_objective=final[i].item(),
                 improvement=(initial[i] - final[i]).item(),

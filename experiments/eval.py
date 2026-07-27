@@ -68,7 +68,7 @@ def main(
 
     settings = _select_problems(eval_config, problem, first)
     eval_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    eval_dir = RESULTS_DIR / eval_config.name / eval_id
+    eval_dir = RESULTS_DIR / _results_subdir(config_path) / eval_config.name / eval_id
 
     method = _build_method(eval_config, torch_device)
     labels = ", ".join(setting.label for setting in settings)
@@ -183,6 +183,14 @@ class WandbBatchLogger:
                 step
             ].compute()
         wandb.log(log)
+
+
+def _results_subdir(config_path: Path) -> Path:
+    """Mirror the config's location under configs/eval/ in the results tree, so e.g. cvrp/random_destroy.yml lands in results/eval/cvrp/random_destroy/<id>."""
+    try:
+        return config_path.resolve().parent.relative_to(EVAL_CONFIGS_DIR.resolve())
+    except ValueError:
+        return Path()
 
 
 def _select_problems(

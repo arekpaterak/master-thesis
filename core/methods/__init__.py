@@ -5,6 +5,7 @@ from typing import Annotated
 import torch
 from pydantic import Field
 
+from core.lns.start_solution import with_warmup
 from core.methods.base import Method
 from core.methods.nds_pretrained import NDSPretrainedConfig, NDSPretrainedMethod
 from core.methods.nds_trained import NDSTrainedConfig, NDSTrainedMethod
@@ -29,20 +30,21 @@ def build_method(
     device: torch.device,
 ) -> Method:
     """Build a Method from any method config, dispatching on its concrete type."""
+    start_solution = with_warmup(
+        generate_initial_solution, problem_name=problem.name, search=config.search
+    )
     if isinstance(config, NDSTrainedConfig):
-        return NDSTrainedMethod.build(
-            config, generate_start_solution=generate_initial_solution, device=device
-        )
+        return NDSTrainedMethod.build(config, generate_start_solution=start_solution, device=device)
     if isinstance(config, NDSPretrainedConfig):
         return NDSPretrainedMethod.build(
             config,
             problem=problem,
-            generate_start_solution=generate_initial_solution,
+            generate_start_solution=start_solution,
             device=device,
         )
     if isinstance(config, RandomDestroyMethodConfig):
         return RandomDestroyMethod.build(
-            config, problem=problem, generate_start_solution=generate_initial_solution
+            config, problem=problem, generate_start_solution=start_solution
         )
     raise TypeError(f"Unknown method config: {type(config).__name__}")
 

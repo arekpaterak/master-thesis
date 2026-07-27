@@ -14,7 +14,7 @@ def test_row_write_roundtrip(tmp_path: Path) -> None:
             config="random_destroy",
             problem_label="cvrp20",
             instance_id="cvrp20-seed7-0000",
-            seed=7,
+            source="seed7",
             initial_objective=5.7,
             final_objective=4.1,
             improvement=1.6,

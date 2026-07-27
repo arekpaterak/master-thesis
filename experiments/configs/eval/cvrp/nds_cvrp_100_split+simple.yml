@@ -1,7 +1,7 @@
 method:
-  type: random-destroy
-  seed: 0
-  search: search/default.yml
+  type: nds-trained
+  run_dir: experiments/runs/featured/nds_cvrp_100_split+simple
+  search: search/sa.yml
 
 problems:
   - problems/cvrp_100_data.yml

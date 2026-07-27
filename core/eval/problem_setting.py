@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,13 @@ class SyntheticProblemSetting(BaseModel):
     @property
     def label(self) -> str:
         return f"{self.problem.name}{self.problem.size}"
+
+    @property
+    def source(self) -> str:
+        """Instance provenance: the dataset file for loaded instances, the seed otherwise."""
+        if self.dataset_path is not None:
+            return Path(self.dataset_path).stem
+        return f"seed{self.test_seed}"
 
 
 class CVRPLibProblemSetting(BaseModel):

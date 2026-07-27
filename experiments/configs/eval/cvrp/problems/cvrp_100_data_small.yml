@@ -1,0 +1,8 @@
+# In-distribution: 100-customer CVRP from a fixed benchmark file.
+kind: synthetic
+problem:
+  name: cvrp
+  size: 100
+dataset_path: data/synthetic/cvrp/vrp100_test_seed1234.pkl
+num_test_instances: 1000
+batch_size: 100

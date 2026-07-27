@@ -1,7 +1,7 @@
 method:
   type: nds-pretrained
   checkpoint_path: experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt
-  search: search/default.yml
+  search: search/sa.yml
 
 problems:
   - problems/cvrp_100_data.yml
