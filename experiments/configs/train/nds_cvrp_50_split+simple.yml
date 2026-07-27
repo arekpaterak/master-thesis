@@ -13,8 +13,6 @@ model:
     type: simple
   encoder:
     norm_type: instance
-    pre_norm: true
-    ff_activation: swiglu
     with_neighbours_encoding: true
     with_route_encoding: true
     num_solution_attention_layers: 0

@@ -35,7 +35,7 @@ def _():
     # (legend label, eval result dir relative to project root)
     RUNS: list[tuple[str, str]] = [
         ("Random", "experiments/results/eval/cvrp/random_destroy/20260727-151500"),
-        # ("Pretrained", "experiments/results/eval/cvrp/nds_pretrained_cvrp_100/<eval_id>"),
+        ("NDS (original)", "experiments/results/eval/cvrp/nds_pretrained_cvrp_100/20260727-160436"),
     ]
 
     # Per-instance time keeps runs comparable regardless of test-set size.

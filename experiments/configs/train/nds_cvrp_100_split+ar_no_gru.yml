@@ -14,8 +14,6 @@ model:
     use_hidden_decoding_state: false
   encoder:
     norm_type: instance
-    pre_norm: true
-    ff_activation: swiglu
     with_neighbours_encoding: true
     with_route_encoding: true
     num_solution_attention_layers: 0
@@ -57,7 +55,6 @@ validation:
   num_instances: 1000
   batch_size: 100
   every_n_epochs: 1
-  seed: 42
   dataset_path: data/synthetic/cvrp/vrp100_valid_seed1233.pkl
   plot_enabled: true
   plot_every_n_improvement_steps: 5

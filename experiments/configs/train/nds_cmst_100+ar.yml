@@ -42,7 +42,7 @@ validation:
   num_instances: 1000
   batch_size: 100
   every_n_epochs: 1
-  seed: 42
+  dataset_path: data/synthetic/cvrp/vrp100_valid_seed1233.pkl
   plot_enabled: false
   search:
     repair_type: greedy_insert
