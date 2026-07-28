@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from core.models.layers.cross_attention import CrossAttentionConfig
-from core.models.layers.decoder_query import DecoderQueryConfig
+from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.nds.decoders.config import SimpleOnePassDecoderConfig, SlotDecoderConfig
 from core.models.nds.decoders.factory import build_decoder
 from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
@@ -19,7 +19,7 @@ def _simple(
     with_poly=True,
     query_pooling="mean",
     query_learned=False,
-    include_context_in_query=True,
+    context_handling="separate",
     skip_mha=False,
     attend_context=False,
     cross_attn_residual=False,
@@ -34,7 +34,7 @@ def _simple(
         query=DecoderQueryConfig(
             pooling=query_pooling,
             learned=query_learned,
-            include_context_in_query=include_context_in_query,
+            context_handling=context_handling,
         ),
         cross_attention=CrossAttentionConfig(
             skip=skip_mha, attend_to_context=attend_context, residual=cross_attn_residual
@@ -47,7 +47,7 @@ def _slot(
     slot_self_attention="post",
     with_poly=True,
     node_pooling="none",
-    include_context_in_query=True,
+    context_handling="merge",
     attend_context=False,
     cross_attn_residual=False,
     skip_cross_attn=False,
@@ -64,9 +64,7 @@ def _slot(
             skip=skip_cross_attn, attend_to_context=attend_context, residual=cross_attn_residual
         ),
         with_poly=with_poly,
-        query=DecoderQueryConfig(
-            pooling=node_pooling, include_context_in_query=include_context_in_query
-        ),
+        query=DecoderQueryConfig(pooling=node_pooling, context_handling=context_handling),
         num_context_nodes=num_context_nodes,
     ), {}
 
@@ -255,7 +253,7 @@ def test_simple_cross_attn_residual_is_wired_to_factory():
 
 def test_simple_context_query_produces_logits():
     decoder, _ = _simple(num_context_nodes=1)
-    assert decoder.query.with_context is True
+    assert decoder.query.context == "separate"
     h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
     action_mask = torch.zeros(B, N, dtype=torch.bool)
@@ -265,17 +263,40 @@ def test_simple_context_query_produces_logits():
     assert logits.shape == (B, R, N)
 
 
+def test_simple_context_merge_produces_logits():
+    decoder, _ = _simple(num_context_nodes=1, context_handling="merge")
+    assert decoder.query.context == "merge"
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+    action_mask = torch.zeros(B, N, dtype=torch.bool)
+
+    logits = decoder.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)
+
+    assert logits.shape == (B, R, N)
+
+
+def test_merge_query_equals_mean_over_all_nodes():
+    query = DecoderQuery(hidden_dim=HIDDEN_DIM, pooling="mean", context="merge")
+    selectable = torch.randn(B, N, HIDDEN_DIM)
+    context = torch.randn(B, 1, HIDDEN_DIM)
+
+    merged = query(selectable, context_embedded_nodes=context)  # (B, 1, D)
+    expected = torch.cat([selectable, context], dim=-2).mean(dim=-2, keepdim=True)
+
+    assert torch.allclose(merged, expected, atol=1e-6)
+
+
 def test_simple_context_off_without_context_nodes():
     decoder, _ = _simple(num_context_nodes=0)
-    assert decoder.query.with_context is False
+    assert decoder.query.context == "exclude"
 
 
-def test_simple_include_context_in_query_toggle_disables_context():
-    decoder, _ = _simple(num_context_nodes=1, include_context_in_query=False)
-    assert decoder.query.with_context is False
+def test_simple_context_handling_exclude_drops_context():
+    decoder, _ = _simple(num_context_nodes=1, context_handling="exclude")
+    assert decoder.query.context == "exclude"
 
 
-@pytest.mark.parametrize("num_context_nodes, expected", [(1, True), (0, False)])
+@pytest.mark.parametrize("num_context_nodes, expected", [(1, "merge"), (0, "exclude")])
 def test_simple_context_is_wired_to_factory(num_context_nodes, expected):
     decoder = build_decoder(
         SimpleOnePassDecoderConfig(seed_dim=SEED_DIM, poly_dim=POLY_DIM),
@@ -286,7 +307,7 @@ def test_simple_context_is_wired_to_factory(num_context_nodes, expected):
 
     assert isinstance(decoder, SimpleOnePassDecoder)
     assert decoder.num_context_nodes == num_context_nodes
-    assert decoder.query.with_context is expected
+    assert decoder.query.context == expected
 
 
 def test_simple_attend_context_defaults_off():
@@ -452,11 +473,20 @@ def test_slot_node_pooling_is_wired_to_factory(node_pooling):
         assert decoder.node_query.pooling == node_pooling
 
 
-def test_slot_context_grounds_without_pooling():
-    # With no pooling but context nodes present, the depot still reaches the slot query.
+def test_slot_context_does_not_ground_without_pooling():
     decoder, _ = _slot(node_pooling="none", num_context_nodes=1)
+    assert decoder.node_query is None
+
+
+def test_slot_no_grounding_without_pooling_or_context():
+    decoder, _ = _slot(node_pooling="none", num_context_nodes=0)
+    assert decoder.node_query is None
+
+
+def test_slot_separate_context_grounds_without_pooling():
+    decoder, _ = _slot(node_pooling="none", context_handling="separate", num_context_nodes=1)
     assert decoder.node_query is not None
-    assert decoder.node_query.with_context is True
+    assert decoder.node_query.context == "separate"
     h_nodes = torch.randn(B, N, HIDDEN_DIM)
     seed = torch.randn(B, R, SEED_DIM)
     action_mask = torch.zeros(B, N, dtype=torch.bool)
@@ -466,16 +496,11 @@ def test_slot_context_grounds_without_pooling():
     assert logits.shape == (B, R, M, N)
 
 
-def test_slot_no_grounding_without_pooling_or_context():
-    decoder, _ = _slot(node_pooling="none", num_context_nodes=0)
-    assert decoder.node_query is None
-
-
-def test_slot_context_is_wired_to_factory():
+def test_slot_separate_context_is_wired_to_factory():
     decoder = build_decoder(
         SlotDecoderConfig(
             num_slots=M,
-            query=DecoderQueryConfig(pooling="none"),
+            query=DecoderQueryConfig(pooling="none", context_handling="separate"),
             seed_dim=SEED_DIM,
             poly_dim=POLY_DIM,
         ),
@@ -486,7 +511,7 @@ def test_slot_context_is_wired_to_factory():
 
     assert isinstance(decoder, SlotDecoder)
     assert decoder.node_query is not None
-    assert decoder.node_query.with_context is True
+    assert decoder.node_query.context == "separate"
 
 
 def test_slot_attend_context_produces_logits():
