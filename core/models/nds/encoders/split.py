@@ -122,7 +122,7 @@ class SplitNDSEncoder(nn.Module):
         # CVRP injects IPE + XPE, TSP injects IPE only (no depot anchor). 0 when PE is disabled.
         pe_components = 2 if problem_name == "cvrp" else 1
         pe_dim = pe_components * self._positional.dim if self._positional is not None else 0
-        self.fusion = SolutionFusionEncoder(
+        self.fusion = SolutionEncoder(
             problem_name=problem_name,
             hidden_dim=hidden_dim,
             pe_dim=pe_dim,
@@ -196,7 +196,7 @@ class SplitNDSEncoder(nn.Module):
         )
 
 
-class SolutionFusionEncoder(nn.Module):
+class SolutionEncoder(nn.Module):
     """Enrich cached instance embeddings with the current solution."""
 
     def __init__(

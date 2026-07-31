@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 from core.lns.acceptance_criterion import (
     AcceptanceCriterionConfig,
     GreedyAcceptanceConfig,
+    SimulatedAnnealingAcceptanceConfig,
     UnconditionalAcceptanceConfig,
 )
 from core.lns.config import SearchParams
@@ -211,7 +212,7 @@ class ValidationConfig(BaseModel):
         default_factory=lambda: SearchParams(
             num_improvement_steps=50,
             num_rollouts=100,
-            acceptance=GreedyAcceptanceConfig(),
+            acceptance=SimulatedAnnealingAcceptanceConfig(),
         ),
     )
 

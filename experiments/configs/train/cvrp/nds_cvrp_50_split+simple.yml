@@ -1,0 +1,74 @@
+problem:
+  name: cvrp
+  size: 50
+
+model:
+  hidden_dim: 128
+  num_heads: 8
+  ff_dim: 512
+  encoder_mode: split
+  positional_encoding:
+    dim: 16
+  decoder:
+    type: simple
+  encoder:
+    norm_type: instance
+    with_neighbours_encoding: true
+    with_route_encoding: true
+    num_solution_attention_layers: 0
+
+optimizer:
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-6
+
+trainer:
+  epochs: 100
+  instances_per_epoch: 1500
+  batch_size: 64
+  num_main_improvement_steps: 100
+
+search:
+  repair_type: greedy_insert
+  num_improvement_steps: 10
+  num_rollouts: 128
+  deconstruction_size: 15
+  improvement_step_type: numba_sequential
+  n_repairs: 5
+  insert_in_new_routes_only: true
+  first_repair_uses_rollout_order: true
+  start_solution_params:
+    num_improvement_steps: 50
+    deconstruction_size: 15
+  acceptance:
+    type: greedy
+
+amp:
+  enabled: true
+  dtype: float16
+
+logging:
+  wandb_project: nds
+
+validation:
+  validate_before_training: true
+  num_instances: 1000
+  batch_size: 100
+  every_n_epochs: 1
+  seed: 42
+  plot_enabled: true
+  plot_every_n_improvement_steps: 5
+  plot_save_to_disk: true
+  search:
+    repair_type: greedy_insert
+    num_improvement_steps: 100
+    num_rollouts: 100
+    deconstruction_size: 15
+    improvement_step_type: numba_sequential
+    first_repair_uses_rollout_order: true
+    insert_in_new_routes_only: true
+    start_solution_params:
+      num_improvement_steps: 50
+      deconstruction_size: 15
+    n_repairs: 5
+    acceptance:
+      type: sa

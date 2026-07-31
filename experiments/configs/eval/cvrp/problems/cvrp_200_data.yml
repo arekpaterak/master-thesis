@@ -1,0 +1,7 @@
+kind: synthetic
+problem:
+  name: cvrp
+  size: 200
+dataset_path: data/synthetic/cvrp/vrp200_test_seed1234.pkl
+num_test_instances: 10000
+batch_size: 100

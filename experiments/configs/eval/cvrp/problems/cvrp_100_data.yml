@@ -1,4 +1,3 @@
-# In-distribution: 100-customer CVRP from a fixed benchmark file.
 kind: synthetic
 problem:
   name: cvrp

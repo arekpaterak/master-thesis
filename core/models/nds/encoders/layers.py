@@ -149,15 +149,6 @@ class NeighboursEncodingLayer(nn.Module):
 
 
 class TreeNeighboursEncodingLayer(nn.Module):
-    """Message passing over a tree's parent-pointer neighbourhood (CMST).
-
-    The CMST analog of :class:`NeighboursEncodingLayer`. A CVRP node has exactly two
-    directed neighbours (prev, next) gathered into fixed slots; a tree node has one parent
-    and a variable number of children. Neighbour information is the **sum** of projected
-    neighbour embeddings -- the parent by a gather, the children by a scatter-add over the
-    parent buckets -- with **separate** projections for the parent and child directions.
-    """
-
     def __init__(
         self, *, hidden_dim: int, norm_type: str = "instance", pre_norm: bool = False
     ) -> None:
@@ -219,7 +210,7 @@ class TreeNeighboursEncodingLayer(nn.Module):
 
 class RouteEncodingLayer(nn.Module):
     """
-    Named Tour Encoding Layer in the original paper (Hottung et al. 2025).
+    Named 'Tour Encoding Layer' in the original paper (Hottung et al. 2025).
     """
 
     def __init__(

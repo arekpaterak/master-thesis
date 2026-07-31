@@ -19,6 +19,7 @@ def render_instance(
     max_coordinate: float | None = None,
     ax: Axes | None = None,
     with_normalized_demand: bool = True,
+    root_label: str = "depot",
 ) -> None:
     if instance.batch_size.numel() > 1:
         raise ValueError(
@@ -70,7 +71,7 @@ def render_instance(
         c="orange",
         s=150,
         marker="s",
-        label="root",
+        label=root_label,
         edgecolors="black",
         linewidths=1,
         zorder=3,
@@ -98,6 +99,7 @@ def render_solution(
     separator: str = " | ",
     palette: str = "tab20",
     scale: float = 1.0,
+    root_label: str = "depot",
 ) -> None:
     if solution.batch_size.numel() > 1:
         raise ValueError(
@@ -135,7 +137,7 @@ def render_solution(
         marker="s",
         edgecolors="black",
         linewidths=1.0 * scale,
-        label="root",
+        label=root_label,
         zorder=5,
     )
 

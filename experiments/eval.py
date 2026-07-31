@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import polars as pl
 import torch
 import typer
 from dotenv import load_dotenv
@@ -59,6 +60,9 @@ def main(
         "--checkpoint-steps",
         help="Improvement steps to report obj, time at.",
     ),
+    force: bool = typer.Option(
+        False, "--force", help="Recompute cells even if already evaluated for this config."
+    ),
 ) -> None:
     """Evaluate a single method across the problem settings listed in the config."""
     load_dotenv(".env")
@@ -67,6 +71,11 @@ def main(
     torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
     settings = _select_problems(eval_config, problem, first)
+    if not force:
+        settings = _drop_evaluated(eval_config.name, settings)
+    if not settings:
+        console.print("All selected cells already evaluated; nothing to do (use --force).")
+        return
     eval_id = datetime.now().strftime("%Y%m%d-%H%M%S")
     eval_dir = RESULTS_DIR / _results_subdir(config_path) / eval_config.name / eval_id
 
@@ -211,6 +220,38 @@ def _select_problems(
     if not settings:
         raise typer.BadParameter("No problem settings selected.")
     return settings
+
+
+def _evaluated_cells() -> set[tuple[str, str]]:
+    """(config, problem_label) pairs already recorded in any results summary.
+
+    A cell counts as evaluated once its (config name, label) appears in a written
+    summary CSV, so re-running a same-named config skips cells another config (or an
+    earlier run) already produced. Matching is by config name only, by design.
+    """
+    done: set[tuple[str, str]] = set()
+    if not RESULTS_DIR.exists():
+        return done
+    for summary in RESULTS_DIR.glob("**/summary_*.csv"):
+        frame = pl.read_csv(summary, columns=["config", "problem_label"])
+        done.update(zip(frame["config"].to_list(), frame["problem_label"].to_list()))
+    return done
+
+
+def _drop_evaluated(
+    config_name: str, settings: list[SyntheticProblemSetting | CVRPLibProblemSetting]
+) -> list[SyntheticProblemSetting | CVRPLibProblemSetting]:
+    done = _evaluated_cells()
+    remaining: list[SyntheticProblemSetting | CVRPLibProblemSetting] = []
+    for setting in settings:
+        if (config_name, setting.label) in done:
+            console.print(
+                f"[dim]{setting.label}: already evaluated for {config_name}; skipping "
+                f"(use --force to recompute).[/dim]"
+            )
+        else:
+            remaining.append(setting)
+    return remaining
 
 
 def _build_method(eval_config: EvaluationConfig, device: torch.device) -> Method:

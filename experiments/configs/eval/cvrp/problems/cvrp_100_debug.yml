@@ -1,4 +1,3 @@
-# Small in-distribution slice for quick smoke tests.
 kind: synthetic
 problem:
   name: cvrp

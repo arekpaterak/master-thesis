@@ -18,11 +18,12 @@ def _():
     mo.md(r"""
     # Objective curves
 
-    Two curves per chosen eval run, read from the saved `<label>_curve.csv` files:
+    One pair of plots per problem, read from the saved `<label>_curve.csv` files:
     objective against wall-clock time, and objective against LNS step. Each run is a
     line whose points are the logged steps.
 
-    Add a run by appending a `(label, eval_dir)` pair to `RUNS`.
+    Add a problem by giving `PROBLEMS` a new titled entry; add a run by appending a
+    `(label, eval_dir)` pair to that problem's `runs`.
 
     Paths are relative to the project root; each `eval_dir` is one timestamped result folder
     under `results/eval/<problem>/<config>/<eval_id>/`.
@@ -32,25 +33,32 @@ def _():
 
 @app.cell
 def _():
-    # (legend label, eval result dir relative to project root)
-    RUNS: list[tuple[str, str]] = [
-        ("Random", "experiments/results/eval/cvrp/random_destroy/20260727-151500"),
-        ("NDS (original)", "experiments/results/eval/cvrp/nds_pretrained_cvrp_100/20260727-160436"),
-    ]
+    # title -> {curve_file, runs: [(legend label, eval result dir relative to project root)]}.
+    # The title (e.g. "CVRP100") labels the plots and names the output subfolder.
+    PROBLEMS: dict[str, dict] = {
+        "CVRP100": {
+            "curve_file": "cvrp100_curve.csv",
+            "runs": [
+                ("Random", "experiments/results/eval/cvrp/random_destroy/20260727-151500"),
+                (
+                    "NDS (original)",
+                    "experiments/results/eval/cvrp/nds_pretrained_cvrp_100/20260727-160436",
+                ),
+            ],
+        },
+    }
 
     # Per-instance time keeps runs comparable regardless of test-set size.
-    CURVE_FILE = "cvrp100_curve.csv"
     X_COLUMN = "time_total_s"
 
-    TIME_FIGURE_PATH = project_root() / "figures" / "out" / "obj_time.pdf"
-    STEP_FIGURE_PATH = project_root() / "figures" / "out" / "obj_step.pdf"
-    return CURVE_FILE, RUNS, STEP_FIGURE_PATH, TIME_FIGURE_PATH, X_COLUMN
+    OUT_DIR = project_root() / "figures" / "out"
+    return OUT_DIR, PROBLEMS, X_COLUMN
 
 
 @app.cell
-def _(CURVE_FILE, RUNS: list[tuple[str, str]], X_COLUMN):
-    def load_curve(eval_dir: str) -> pl.DataFrame:
-        path = project_root() / eval_dir / CURVE_FILE
+def _(PROBLEMS: dict[str, dict], X_COLUMN):
+    def load_curve(eval_dir: str, curve_file: str) -> pl.DataFrame:
+        path = project_root() / eval_dir / curve_file
         if not path.exists():
             raise FileNotFoundError(f"No curve at {path}")
         frame = pl.read_csv(path)
@@ -61,8 +69,11 @@ def _(CURVE_FILE, RUNS: list[tuple[str, str]], X_COLUMN):
             )
         return frame
 
-    curves = {label: load_curve(eval_dir) for label, eval_dir in RUNS}
-    return (curves,)
+    curves_by_problem = {
+        title: {label: load_curve(eval_dir, spec["curve_file"]) for label, eval_dir in spec["runs"]}
+        for title, spec in PROBLEMS.items()
+    }
+    return (curves_by_problem,)
 
 
 @app.cell
@@ -71,92 +82,120 @@ def _():
         start=1, stop=50, step=1, value=10, label="Marker every N steps", show_value=True
     )
     skip_first_ui = mo.ui.slider(
-        start=0, stop=100, step=1, value=10, label="Skip first N steps", show_value=True
+        start=0,
+        stop=100,
+        step=1,
+        value=10,
+        label="Clip y-range past first N steps",
+        show_value=True,
     )
     mo.vstack([marker_every_ui, skip_first_ui])
     return marker_every_ui, skip_first_ui
 
 
+@app.function
+def plot_obj(
+    curves: dict[str, pl.DataFrame],
+    title: str,
+    x_column: str,
+    x_label: str,
+    markevery: int,
+    skip_first: int,
+):
+    fig, ax = plt.subplots(figsize=figsize(1.0))
+
+    # Let matplotlib autoscale the y-axis from the post-skip tail only, so the steep
+    # early descent runs off the top instead of flattening the interesting tail.
+    for frame in curves.values():
+        tail = frame[skip_first:]
+        ax.plot(tail[x_column], tail["obj_mean"])
+    ylim = ax.get_ylim()
+    ax.cla()
+
+    # Redraw the full curves and pin the tail-based y-range back.
+    for label, frame in curves.items():
+        n = len(frame)
+        # Mark every N steps, but always mark the final point too.
+        marks = list(range(0, n, markevery))
+        if n and (n - 1) not in marks:
+            marks.append(n - 1)
+        ax.plot(
+            frame[x_column],
+            frame["obj_mean"],
+            marker="o",
+            markersize=3,
+            markevery=marks,
+            label=label,
+        )
+    ax.set_title(title)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel("Objective")
+    ax.set_xlim(left=0)
+    ax.set_ylim(*ylim)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
 @app.cell
-def _(curves):
-    def plot_obj(x_column: str, x_label: str, markevery: int, skip_first: int):
-        fig, ax = plt.subplots(figsize=figsize(1.0))
-        for label, frame in curves.items():
-            frame = frame[skip_first:]
-            n = len(frame)
-            # Mark every N steps, but always mark the final point too.
-            marks = list(range(0, n, markevery))
-            if n and (n - 1) not in marks:
-                marks.append(n - 1)
-            ax.plot(
-                frame[x_column],
-                frame["obj_mean"],
-                marker="o",
-                markersize=3,
-                markevery=marks,
-                label=label,
-            )
-        ax.set_xlabel(x_label)
-        ax.set_ylabel("Objective")
-        ax.set_xlim(left=0)
-        ax.legend()
-        fig.tight_layout()
-        return fig
-
-    return (plot_obj,)
-
-
-@app.cell
-def _(X_COLUMN, marker_every_ui, plot_obj, skip_first_ui):
+def _(X_COLUMN, curves_by_problem, marker_every_ui, skip_first_ui):
     X_LABELS = {
         "time_per_instance_s": "Time per instance (s)",
         "time_total_s": "Total time (s)",
     }
-    time_fig = plot_obj(
-        X_COLUMN, X_LABELS.get(X_COLUMN, X_COLUMN), marker_every_ui.value, skip_first_ui.value
+    # Per problem: an obj(time) and an obj(step) figure, keyed by output file stem.
+    figures = {
+        title: {
+            "obj_time": plot_obj(
+                curves,
+                title,
+                X_COLUMN,
+                X_LABELS.get(X_COLUMN, X_COLUMN),
+                marker_every_ui.value,
+                skip_first_ui.value,
+            ),
+            "obj_step": plot_obj(
+                curves,
+                title,
+                "lns_step",
+                "Improvement step",
+                marker_every_ui.value,
+                skip_first_ui.value,
+            ),
+        }
+        for title, curves in curves_by_problem.items()
+    }
+
+    mo.vstack(
+        [
+            mo.vstack([mo.md(f"### {title}"), figs["obj_time"], figs["obj_step"]])
+            for title, figs in figures.items()
+        ]
     )
-    time_fig
-    return (time_fig,)
+    return (figures,)
 
 
 @app.cell
 def _():
-    time_save_button = mo.ui.run_button(label="Save obj(time) figure")
-    time_save_button
-    return (time_save_button,)
+    save_button = mo.ui.run_button(label="Save all figures")
+    save_button
+    return (save_button,)
 
 
 @app.cell
-def _(TIME_FIGURE_PATH, time_fig, time_save_button):
-    mo.stop(not time_save_button.value, mo.md("Click **Save obj(time) figure** to write the PDF."))
+def _(OUT_DIR, figures, save_button):
+    mo.stop(not save_button.value, mo.md("Click **Save all figures** to write the PDFs."))
 
-    TIME_FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    time_fig.savefig(TIME_FIGURE_PATH, bbox_inches="tight")
-    mo.md(f"Saved to `{TIME_FIGURE_PATH}`")
-    return
+    saved_paths = []
+    for _title, _figs in figures.items():
+        problem_dir = OUT_DIR / _title.lower()
+        problem_dir.mkdir(parents=True, exist_ok=True)
+        for _stem, _fig in _figs.items():
+            path = problem_dir / f"{_stem}.pdf"
+            _fig.savefig(path, bbox_inches="tight")
+            saved_paths.append(path)
 
-
-@app.cell
-def _(marker_every_ui, plot_obj, skip_first_ui):
-    step_fig = plot_obj("lns_step", "Improvement step", marker_every_ui.value, skip_first_ui.value)
-    step_fig
-    return (step_fig,)
-
-
-@app.cell
-def _():
-    step_save_button = mo.ui.run_button(label="Save obj(step) figure")
-    step_save_button
-    return (step_save_button,)
-
-
-@app.cell
-def _(STEP_FIGURE_PATH, step_fig, step_save_button):
-    mo.stop(not step_save_button.value, mo.md("Click **Save obj(step) figure** to write the PDF."))
-
-    STEP_FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    step_fig.savefig(STEP_FIGURE_PATH, bbox_inches="tight")
-    mo.md(f"Saved to `{STEP_FIGURE_PATH}`")
+    mo.md("Saved:\n" + "\n".join(f"- `{p}`" for p in saved_paths))
     return
 
 

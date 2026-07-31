@@ -22,7 +22,7 @@ def with_warmup(
     if params.num_improvement_steps <= 0:
         return generate_start_solution
 
-    # The warmup is a single-rollout, single-repair loop (the original create_starting_solution);
+    # The warmup is a single-rollout, single-repair loop;
     # everything else (repair_type, improvement_step_type) is inherited from the parent search.
     warmup_search = search.model_copy(
         update={

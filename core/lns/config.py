@@ -13,11 +13,11 @@ RepairType = Literal["greedy_reconnect", "greedy_insert"]
 
 
 class StartSolutionParams(BaseModel):
-    """Random-improvement warmup applied to the initial solution (NDS create_starting_solution).
+    """Random-improvement warmup applied to the initial solution.
 
-    Only the warmup-specific overrides live here; the recreate reuses the parent search's
+    Only the warmup-specific overrides live here; the repair reuses the parent search's
     ``repair_type`` and ``improvement_step_type``. The warmup itself is a single-rollout,
-    single-repair greedy insert-anywhere loop, matching the original NDS.
+    single-repair.
     """
 
     num_improvement_steps: int = Field(

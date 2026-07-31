@@ -33,7 +33,7 @@ class EncoderConfig(BaseModel):
     encoding_order: Literal["route_neighbours", "neighbours_route"] = Field(
         default="route_neighbours",
         title="Encoding order",
-        description="Order of the structural encoding layers.",
+        description="Order of the GNN layers.",
     )
     route_aggregation: Literal["mean", "sum"] = Field(
         default="sum",
@@ -50,15 +50,12 @@ class EncoderConfig(BaseModel):
 
 
 class JointEncoderConfig(EncoderConfig):
-    """Encoder architecture for the joint variant, which re-encodes the solution
-    every step via the structural neighbours/route encoding layers."""
-
     with_neighbours_encoding: bool = Field(
-        default=True, title="With neighbours encoding", description="Use neighbours encoding."
+        default=True, title="Neighbours encoding", description="Use a neighbours encoding layer."
     )
     with_route_encoding: bool | None = Field(
         default=None,
-        description="Use route encoding. None means problem-specific default (True for CVRP, False for TSP).",
+        description="Use a route encoding layer. None means problem-specific default (True for CVRP, False for TSP).",
     )
     num_pre_attention_layers: int = Field(
         default=2,
@@ -73,25 +70,16 @@ class JointEncoderConfig(EncoderConfig):
 
 
 class SplitEncoderConfig(EncoderConfig):
-    """Encoder architecture for the split (LNS-native) variant, which applies the
-    structural neighbours/route encoding layers after positional fusion instead."""
-
     with_neighbours_encoding: bool = Field(
         default=True,
-        title="Fusion neighbours encoding",
-        description="Apply a neighbours encoding layer after positional fusion (before route and attention).",
+        title="Neighbours encoding",
+        description="Use neighbours encoding layer.",
     )
     with_route_encoding: bool | None = Field(
         default=None,
-        title="Fusion route encoding",
-        description="Apply a route encoding layer after positional fusion (before attention). "
+        title="Route encoding",
+        description="Use a route encoding layer. "
         "CVRP only. None means problem-specific default (True for CVRP, False for TSP).",
-    )
-    num_solution_attention_layers: int = Field(
-        default=0,
-        title="Solution attention layers",
-        description="Self-attention layers applied to all nodes after positional fusion. "
-        "0 = disabled.",
     )
     num_instance_attention_layers: int = Field(
         default=4,
@@ -99,6 +87,11 @@ class SplitEncoderConfig(EncoderConfig):
         description="Self-attention layers in the static instance encoder. The structural "
         "neighbours/route encoding layers are always disabled there, so there is no "
         "pre/post split -- this is one contiguous block.",
+    )
+    num_solution_attention_layers: int = Field(
+        default=0,
+        title="Solution attention layers",
+        description="Self-attention layers.",
     )
 
 
