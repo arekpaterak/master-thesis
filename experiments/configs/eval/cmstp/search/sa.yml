@@ -1,0 +1,13 @@
+repair_type: greedy_insert
+num_improvement_steps: 100
+num_rollouts: 100
+deconstruction_size: 15
+n_repairs: 5
+improvement_step_type: numba_sequential
+apply_and_repair_backend: numba
+start_solution_params:
+    num_improvement_steps: 50
+    deconstruction_size: 15
+n_augmentations: 1
+acceptance:
+  type: sa

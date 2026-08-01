@@ -1,0 +1,7 @@
+kind: synthetic
+problem:
+  name: tsp
+  size: 50
+dataset_path: data/synthetic/tsp/tsp50_test_seed1234.pkl
+num_test_instances: 10000
+batch_size: 100
