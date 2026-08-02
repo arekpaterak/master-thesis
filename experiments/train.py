@@ -268,7 +268,11 @@ def _prepare_run_dir(
 def _run_tags(config: TrainConfig) -> list[str]:
     """Tags describing the model variant, for filtering runs in wandb."""
     decoder_tag = "ar" if config.model.decoder.type == "ar" else "nar"
-    return [config.model.encoder_mode, decoder_tag]
+    return [
+        config.model.encoder_mode,
+        decoder_tag,
+        f"M={config.search.deconstruction_size}",
+    ]
 
 
 def _find_latest_checkpoint(run_dir: Path) -> tuple[Path | None, int]:

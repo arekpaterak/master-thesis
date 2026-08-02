@@ -298,7 +298,11 @@ def _run_synthetic(
     _save_synthetic_plots(setting, result, plot_cb, eval_dir)
 
     summary_row = SyntheticSummaryRow.build(
-        config=eval_config.name, method_type=eval_config.method.type, setting=setting, result=result
+        config=eval_config.name,
+        method_type=eval_config.method.type,
+        setting=setting,
+        result=result,
+        destruction_size=method.search.deconstruction_size,
     )
     return summary_row, curve
 
@@ -379,6 +383,7 @@ def _run_cvrplib(
         setting=setting,
         instance_rows=rows,
         total_time_s=elapsed,
+        destruction_size=method.search.deconstruction_size,
     )
 
 
@@ -416,7 +421,11 @@ def _init_wandb(
         name=f"eval-{eval_config.name}-{eval_id}",
         job_type="eval",
         group=source_run_name if trained else eval_config.name,
-        tags=[eval_config.method.type, *(setting.label for setting in settings)],
+        tags=[
+            eval_config.method.type,
+            f"M={eval_config.method.search.deconstruction_size}",
+            *(setting.label for setting in settings),
+        ],
         config={
             "eval_id": eval_id,
             "eval_config": eval_config.model_dump(mode="json"),

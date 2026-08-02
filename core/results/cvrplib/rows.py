@@ -23,6 +23,7 @@ class CvrplibSummaryRow(SummaryRowBase):
     """One row of summary_cvrplib.csv: aggregated gap over a CVRPLIB set."""
 
     set_name: str
+    destruction_size: int
     gap_pct_mean: float
     gap_pct_median: float
     gap_pct_std: float | None
@@ -39,6 +40,7 @@ class CvrplibSummaryRow(SummaryRowBase):
         setting: CVRPLibProblemSetting,
         instance_rows: Sequence[CvrplibInstanceRow],
         total_time_s: float,
+        destruction_size: int,
     ) -> Self:
         gaps = pl.Series("gap_pct", [row.gap_pct for row in instance_rows], dtype=pl.Float64)
         n_at_or_below = sum(1 for row in instance_rows if row.our_cost <= row.bks)
@@ -50,6 +52,7 @@ class CvrplibSummaryRow(SummaryRowBase):
             n_instances=len(instance_rows),
             total_time_s=round(total_time_s, 4),
             set_name=setting.set_name,
+            destruction_size=destruction_size,
             gap_pct_mean=gaps.mean(),
             gap_pct_median=gaps.median(),
             gap_pct_std=gaps.std(),

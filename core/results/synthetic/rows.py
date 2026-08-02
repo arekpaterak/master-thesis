@@ -13,6 +13,7 @@ class SyntheticSummaryRow(SummaryRowBase):
     problem: str
     size: int
     source: str
+    destruction_size: int
     n_steps: int
     time_per_instance_s: float
     obj_initial_mean: float
@@ -34,6 +35,7 @@ class SyntheticSummaryRow(SummaryRowBase):
         method_type: str,
         setting: SyntheticProblemSetting,
         result: EvaluationResult,
+        destruction_size: int,
     ) -> Self:
         objective = result.objective_per_step
         initial, final = objective[0], objective[-1]
@@ -49,6 +51,7 @@ class SyntheticSummaryRow(SummaryRowBase):
             problem=setting.problem.name,
             size=setting.problem.size,
             source=setting.source,
+            destruction_size=destruction_size,
             n_steps=objective.shape[0] - 1,
             time_per_instance_s=round(result.total_time_s / max(n_instances, 1), 6),
             obj_initial_mean=initial.mean().item(),

@@ -47,6 +47,7 @@ def test_row_write_derives_nullable_from_optional_field(tmp_path: Path) -> None:
         n_instances=1,
         total_time_s=1.0,
         set_name="X",
+        destruction_size=15,
         gap_pct_mean=2.0,
         gap_pct_median=2.0,
         gap_pct_std=None,
