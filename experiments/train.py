@@ -213,13 +213,23 @@ def _build_model(config: TrainConfig) -> torch.nn.Module:
     return model
 
 
+# Internal problem name "cmst" is displayed as "cmstp" across configs and dirs.
+_PROBLEM_DIR_NAMES = {"cmst": "cmstp"}
+
+
+def _problem_dir(config: TrainConfig) -> str:
+    """Directory grouping runs by problem, using the display name (cmst -> cmstp)."""
+    name = config.problem.name
+    return _PROBLEM_DIR_NAMES.get(name, name)
+
+
 def _prepare_run_dir(
     config: TrainConfig,
     model: torch.nn.Module,
     resume_run_dir: Path | None,
 ) -> tuple[Path, int]:
     """Create/resolve the run directory, restore model weights on resume, init wandb."""
-    run_dir = resume_run_dir or (RUNS_DIR / f"nds-{config.run_name}")
+    run_dir = resume_run_dir or (RUNS_DIR / _problem_dir(config) / f"nds-{config.run_name}")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     initial_epoch = 0
