@@ -118,7 +118,7 @@ def _():
 
     # Metric file stem -> (BatchTrainSummary attribute, axis label).
     METRICS = {
-        "batch_time": ("batch_time_sec", "Mean batch time (s)"),
+        "batch_time": ("batch_time_sec", "Batch time (s)"),
         "instances_per_sec": ("instances_per_sec", "Instances per second"),
     }
 

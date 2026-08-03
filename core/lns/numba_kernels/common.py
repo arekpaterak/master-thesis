@@ -1,5 +1,3 @@
-"""Numba helpers shared by the per-problem sequential improvement step kernels."""
-
 from __future__ import annotations
 
 import numpy as np

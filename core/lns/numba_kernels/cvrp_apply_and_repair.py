@@ -14,7 +14,10 @@ Both share :func:`_apply_and_repair_one`, the per-element deconstruct + best-of-
 repair core. The kernels operate on raw numpy ``next``/``prev`` arrays (the linked-list
 representation of :class:`CVRPGraphSolution`) plus the instance arrays, folding the
 work into ``njit(parallel=True)`` passes and replacing the hundreds of thousands of
-tiny GPU kernel launches the torch path issues for the same work.
+tiny GPU kernel launches the torch path issues for the same work. Inside the kernels
+the per-element arrays travel bundled as :class:`Solution` (``next``/``prev``) and
+:class:`Instance` (``locations``/``demand``/``capacity``); the batch drivers construct
+these views per element before dispatching.
 
 ``route_id`` is intentionally NOT maintained here; the caller recomputes it once
 via :meth:`CVRPGraphSolution._compute_route_ids`. The greedy-insert policy mirrors
@@ -29,6 +32,8 @@ iteration index -- see :func:`seed_for`.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import numpy as np
 from numba import njit, prange
 
@@ -36,6 +41,17 @@ from .common import dist, seed_for
 
 DEPOT = 0
 UNASSIGNED = -1
+
+
+class Instance(NamedTuple):
+    locations: np.ndarray
+    demand: np.ndarray
+    capacity: float
+
+
+class Solution(NamedTuple):
+    next: np.ndarray
+    prev: np.ndarray
 
 
 def apply_and_repair_sequential(
@@ -100,7 +116,7 @@ def apply_and_repair_parallel(
     first_repair_uses_order: bool = False,
     insert_in_new_routes_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Apply every rollout independently from the same solution, without acceptance.
+    """Apply every rollout independently.
 
     Each of the ``B`` solutions is deconstructed and repaired once per rollout ``k``,
     all from the same starting solution. No acceptance -- every repaired candidate and
@@ -151,13 +167,10 @@ def _sequential_batch(
     prev_out = prev.copy()
     for global_idx in prange(global_size):
         np.random.seed(seed_for(base_seed, global_idx, global_size))
-        _sequential_single(
-            next_out=next_out[global_idx],
-            prev_out=prev_out[global_idx],
+        _sequential_single_(
+            solution=Solution(next_out[global_idx], prev_out[global_idx]),
             nodes_to_remove=nodes_to_remove[global_idx],
-            locations=locations[global_idx],
-            demand=demand[global_idx],
-            capacity=capacity[global_idx],
+            instance=Instance(locations[global_idx], demand[global_idx], capacity[global_idx]),
             n_repairs=n_repairs,
             accept_kind=accept_kind,
             temperature=temperature,
@@ -192,32 +205,27 @@ def _parallel_batch(
     objective = np.empty((num_instances, num_rollouts), np.float64)
 
     for b in prange(num_instances):
+        instance = Instance(locations[b], demand[b], capacity[b])
+        current = Solution(next[b], prev[b])
         for k in range(num_rollouts):
             np.random.seed(seed_for(base_seed, b * num_rollouts + k, total))
             objective[b, k] = _apply_and_repair_one(
-                current_next=next[b],
-                current_prev=prev[b],
+                current=current,
                 nodes=nodes[b, k],
-                locations=locations[b],
-                demand=demand[b],
-                capacity=capacity[b],
+                instance=instance,
                 n_repairs=n_repairs,
                 first_repair_uses_order=first_repair_uses_order,
                 insert_in_new_routes_only=insert_in_new_routes_only,
-                out_next=next_out[b, k],
-                out_prev=prev_out[b, k],
+                out=Solution(next_out[b, k], prev_out[b, k]),
             )
     return next_out, prev_out, objective
 
 
 @njit
-def _sequential_single(
-    next_out: np.ndarray,
-    prev_out: np.ndarray,
+def _sequential_single_(
+    solution: Solution,
     nodes_to_remove: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: float,
+    instance: Instance,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
@@ -228,33 +236,27 @@ def _sequential_single(
     """Apply one element's rollouts sequentially, updating the running solution.
 
     Assumes ``np.random`` has already been reseeded for this element by the caller.
-    Each rollout deconstructs and repairs the current ``next_out``/``prev_out`` via
+    Each rollout deconstructs and repairs the running ``solution`` via
     :func:`_apply_and_repair_one`; the running solution is replaced when accepted.
     """
-    num_nodes = next_out.shape[0]
+    nxt, prv = solution
+    num_nodes = nxt.shape[0]
     num_customers = num_nodes - 1
     num_rollouts = nodes_to_remove.shape[0]
 
-    candidate_next = np.empty(num_nodes, np.int64)
-    candidate_prev = np.empty(num_nodes, np.int64)
+    candidate = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
 
-    current_objective = _objective(
-        nxt=next_out, prv=prev_out, locations=locations, num_customers=num_customers
-    )
+    current_objective = _objective(solution, instance, num_customers)
 
     for r in range(num_rollouts):
         candidate_objective = _apply_and_repair_one(
-            current_next=next_out,
-            current_prev=prev_out,
+            current=solution,
             nodes=nodes_to_remove[r],
-            locations=locations,
-            demand=demand,
-            capacity=capacity,
+            instance=instance,
             n_repairs=n_repairs,
             first_repair_uses_order=first_repair_uses_order,
             insert_in_new_routes_only=insert_in_new_routes_only,
-            out_next=candidate_next,
-            out_prev=candidate_prev,
+            out=candidate,
         )
 
         if accept_kind == 0:
@@ -267,99 +269,70 @@ def _sequential_single(
                 accepted = np.random.random() < np.exp(-max(delta, 0.0) / temperature)
 
         if accepted:
-            next_out[:] = candidate_next
-            prev_out[:] = candidate_prev
+            nxt[:] = candidate.next
+            prv[:] = candidate.prev
             current_objective = candidate_objective
 
 
 @njit
 def _apply_and_repair_one(
-    current_next: np.ndarray,
-    current_prev: np.ndarray,
+    current: Solution,
     nodes: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: float,
+    instance: Instance,
     n_repairs: int,
     first_repair_uses_order: bool,
     insert_in_new_routes_only: bool,
-    out_next: np.ndarray,
-    out_prev: np.ndarray,
+    out: Solution,
 ) -> float:
-    """Deconstruct one customer set and greedily repair it, best of ``n_repairs``.
+    """Deconstruct one customer set and greedily repair it as the best of ``n_repairs`` attempts.
 
-    Writes the best repaired solution into ``out_next``/``out_prev`` and returns its
-    objective. Reads ``current_next``/``current_prev`` (the solution to deconstruct)
-    without mutating them, so callers may apply many node sets to the same solution.
-    No acceptance -- callers decide what to do with the result.
+    Writes the best repaired solution into ``out`` and returns its objective. Reads
+    ``current`` (the solution to deconstruct) without mutating it, so callers may apply
+    many node sets to the same solution.
     """
+    current_next, current_prev = current
     num_nodes = current_next.shape[0]
     num_customers = num_nodes - 1
-    deconstruction_size = nodes.shape[0]
 
-    deconstructed_next = np.empty(num_nodes, np.int64)
-    deconstructed_prev = np.empty(num_nodes, np.int64)
-    repaired_next = np.empty(num_nodes, np.int64)
-    repaired_prev = np.empty(num_nodes, np.int64)
+    deconstructed = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
+    repaired = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
     route_demand = np.empty(num_nodes, np.float64)
     # base_insertable is the destroy-determined mask (same across the n_repairs tries);
-    # insertable is the per-repair working copy that _insert_customer_at_cheapest mutates.
+    # insertable is the per-repair working copy that _insert_customer_at_cheapest_ mutates.
     base_insertable = np.empty(num_nodes, np.bool_)
     insertable = np.empty(num_nodes, np.bool_)
 
     # Mark insertable routes from the current solution, before it is deconstructed.
     if insert_in_new_routes_only:
         base_insertable[:] = False
-        for m in range(deconstruction_size):
-            c = nodes[m]
-            if c < 1:
-                continue
-            if current_prev[c] == UNASSIGNED and current_next[c] == UNASSIGNED:
-                continue
-            _mark_route(current_next, current_prev, c, base_insertable)
+        for c in nodes:
+            if c >= 1 and not _is_free(current, c):
+                _mark_route_(current, c, base_insertable)
     else:
         base_insertable[:] = True
 
-    deconstructed_next[:] = current_next
-    deconstructed_prev[:] = current_prev
-    for m in range(deconstruction_size):
-        c = nodes[m]
-        if c < 1:
-            continue
-        if deconstructed_prev[c] == UNASSIGNED and deconstructed_next[c] == UNASSIGNED:
-            continue
-        _remove_customer_and_stitch(deconstructed_next, deconstructed_prev, c)
+    # Apply destroy
+    deconstructed.next[:] = current_next
+    deconstructed.prev[:] = current_prev
+    for c in nodes:
+        if c >= 1 and not _is_free(deconstructed, c):
+            _remove_customer_and_stitch_(deconstructed, c)
 
     best_repaired_objective = np.inf
     for i in range(n_repairs):
-        repaired_next[:] = deconstructed_next
-        repaired_prev[:] = deconstructed_prev
+        repaired.next[:] = deconstructed.next
+        repaired.prev[:] = deconstructed.prev
         insertable[:] = base_insertable
 
         order = None
         if first_repair_uses_order and i == 0:
             order = nodes
-        _greedy_insert_repair(
-            nxt=repaired_next,
-            prv=repaired_prev,
-            locations=locations,
-            demand=demand,
-            capacity=capacity,
-            num_customers=num_customers,
-            route_demand=route_demand,
-            insertable=insertable,
-            order=order,
-        )
-        objective = _objective(
-            nxt=repaired_next,
-            prv=repaired_prev,
-            locations=locations,
-            num_customers=num_customers,
-        )
+        _greedy_insert_repair_(repaired, instance, num_customers, route_demand, insertable, order)
+        objective = _objective(repaired, instance, num_customers)
         if objective < best_repaired_objective:
             best_repaired_objective = objective
-            out_next[:] = repaired_next
-            out_prev[:] = repaired_prev
+            out.next[:] = repaired.next
+            out.prev[:] = repaired.prev
 
     return best_repaired_objective
 
@@ -368,8 +341,9 @@ def _apply_and_repair_one(
 
 
 @njit(inline="always")
-def _remove_customer_and_stitch(nxt: np.ndarray, prv: np.ndarray, customer: int) -> None:
+def _remove_customer_and_stitch_(solution: Solution, customer: int) -> None:
     """Detach customer and stitch its neighbours."""
+    nxt, prv = solution
     u = prv[customer]
     v = nxt[customer]
     if u > 0:
@@ -382,13 +356,27 @@ def _remove_customer_and_stitch(nxt: np.ndarray, prv: np.ndarray, customer: int)
     prv[DEPOT] = UNASSIGNED
 
 
-@njit
-def _mark_route(nxt: np.ndarray, prv: np.ndarray, member: int, insertable: np.ndarray) -> None:
-    """Mark every customer in member's route as insertable. Route must be intact."""
-    head = member
+@njit(inline="always")
+def _is_free(solution: Solution, node: int) -> bool:
+    """Whether ``node`` is unassigned (not placed in any route)."""
+    return solution.prev[node] == UNASSIGNED and solution.next[node] == UNASSIGNED
+
+
+@njit(inline="always")
+def _get_route_head(solution: Solution, node: int) -> int:
+    """Traverse backwards to find the first node in ``node``'s route."""
+    prv = solution.prev
+    head = node
     while prv[head] != DEPOT:
         head = prv[head]
-    node = head
+    return head
+
+
+@njit
+def _mark_route_(solution: Solution, member: int, insertable: np.ndarray) -> None:
+    """Mark every customer in member's route as insertable. Route must be intact."""
+    nxt = solution.next
+    node = _get_route_head(solution, member)
     while True:
         insertable[node] = True
         node = nxt[node]
@@ -397,9 +385,9 @@ def _mark_route(nxt: np.ndarray, prv: np.ndarray, member: int, insertable: np.nd
 
 
 @njit
-def _objective(
-    nxt: np.ndarray, prv: np.ndarray, locations: np.ndarray, num_customers: int
-) -> float:
+def _objective(solution: Solution, instance: Instance, num_customers: int) -> float:
+    nxt, prv = solution
+    locations = instance.locations
     total_distance = 0.0
     for head in range(1, num_customers + 1):
         if prv[head] == DEPOT:
@@ -416,14 +404,15 @@ def _objective(
 
 
 @njit
-def _compute_route_demand(
-    nxt: np.ndarray,
-    prv: np.ndarray,
-    demand: np.ndarray,
+def _compute_route_demand_(
+    solution: Solution,
+    instance: Instance,
     num_customers: int,
     route_demand: np.ndarray,
 ) -> None:
     """Fill ``route_demand[x]`` with the total demand of x's route (placed x only)."""
+    nxt, prv = solution
+    demand = instance.demand
     for i in range(num_customers + 1):
         route_demand[i] = 0.0
     for head in range(1, num_customers + 1):
@@ -446,26 +435,23 @@ def _compute_route_demand(
 
 
 @njit
-def _pick_random_free_customer(nxt: np.ndarray, prv: np.ndarray, num_customers: int) -> int:
+def _pick_random_free_customer(solution: Solution, num_customers: int) -> int:
     """Pick a random free customer (1..N), or -1 if none are free."""
     chosen = -1
     best_score = -1.0
     for c in range(1, num_customers + 1):
         score = np.random.random()
-        if prv[c] == UNASSIGNED and nxt[c] == UNASSIGNED and score > best_score:
+        if _is_free(solution, c) and score > best_score:
             best_score = score
             chosen = c
     return chosen
 
 
 @njit
-def _insert_customer_at_cheapest(
+def _insert_customer_at_cheapest_(
     customer: int,
-    nxt: np.ndarray,
-    prv: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: float,
+    solution: Solution,
+    instance: Instance,
     num_customers: int,
     route_demand: np.ndarray,
     insertable: np.ndarray,
@@ -475,11 +461,14 @@ def _insert_customer_at_cheapest(
     Only positions ``x`` with ``insertable[x]`` set are considered (everything is
     insertable unless the caller restricts to new routes). The just-placed customer is
     marked insertable so it can host later customers in the same repair.
+
+    ``route_demand`` must already reflect the current routes; it is maintained
+    incrementally here after the customer is placed, so callers seed it once (see
+    :func:`_greedy_insert_repair_`) rather than recomputing it every insertion.
     """
+    nxt, prv = solution
+    locations, demand, capacity = instance
     demand_c = demand[customer]
-    _compute_route_demand(
-        nxt=nxt, prv=prv, demand=demand, num_customers=num_customers, route_demand=route_demand
-    )
 
     # New-route fallback (depot -> c -> depot) is always valid for a feasible
     # single customer, so the argmin is always defined.
@@ -487,7 +476,7 @@ def _insert_customer_at_cheapest(
     best_u = DEPOT
     best_v = DEPOT
     for x in range(1, num_customers + 1):
-        if prv[x] == UNASSIGNED and nxt[x] == UNASSIGNED:
+        if _is_free(solution, x):
             continue  # free customer, not a position
         if not insertable[x]:
             continue  # untouched route, off-limits when inserting in new routes only
@@ -522,14 +511,25 @@ def _insert_customer_at_cheapest(
     # The customer now sits in an affected/new route, so later customers may join it.
     insertable[customer] = True
 
+    # Only the joined route changed: bump every member's cached total by demand_c.
+    if best_v != DEPOT:
+        new_total = route_demand[best_v] + demand_c
+    elif best_u != DEPOT:
+        new_total = route_demand[best_u] + demand_c
+    else:
+        new_total = demand_c  # new route: depot -> customer -> depot
+    node = _get_route_head(solution, customer)
+    while True:
+        route_demand[node] = new_total
+        node = nxt[node]
+        if node == DEPOT:
+            break
+
 
 @njit
-def _greedy_insert_repair(
-    nxt: np.ndarray,
-    prv: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: float,
+def _greedy_insert_repair_(
+    solution: Solution,
+    instance: Instance,
     num_customers: int,
     route_demand: np.ndarray,
     insertable: np.ndarray,
@@ -545,36 +545,24 @@ def _greedy_insert_repair(
 
     ``insertable`` is the per-repair position mask forwarded to each insertion.
     """
+    # Seed the route-demand cache once for the deconstructed routes; each insertion
+    # then maintains it incrementally instead of recomputing all routes every time.
+    _compute_route_demand_(solution, instance, num_customers, route_demand)
+
     if order is not None:
         for k in range(order.shape[0]):
             customer = order[k]
             if customer < 1:
                 continue
-            if prv[customer] == UNASSIGNED and nxt[customer] == UNASSIGNED:
-                _insert_customer_at_cheapest(
-                    customer,
-                    nxt,
-                    prv,
-                    locations,
-                    demand,
-                    capacity,
-                    num_customers,
-                    route_demand,
-                    insertable,
+            if _is_free(solution, customer):
+                _insert_customer_at_cheapest_(
+                    customer, solution, instance, num_customers, route_demand, insertable
                 )
 
     while True:
-        customer = _pick_random_free_customer(nxt, prv, num_customers)
+        customer = _pick_random_free_customer(solution, num_customers)
         if customer == -1:
             break
-        _insert_customer_at_cheapest(
-            customer,
-            nxt,
-            prv,
-            locations,
-            demand,
-            capacity,
-            num_customers,
-            route_demand,
-            insertable,
+        _insert_customer_at_cheapest_(
+            customer, solution, instance, num_customers, route_demand, insertable
         )

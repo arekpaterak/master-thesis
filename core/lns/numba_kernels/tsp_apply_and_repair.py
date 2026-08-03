@@ -20,7 +20,9 @@ Both share :func:`_apply_and_repair_one`, the per-element deconstruct + best-of-
 repair core. The kernels operate on raw numpy ``next``/``prev`` arrays (the linked-list
 representation of :class:`TSPGraphSolution`) plus the instance locations, folding the
 work into ``njit(parallel=True)`` passes and replacing the hundreds of thousands of
-tiny GPU kernel launches the torch path issues for the same work.
+tiny GPU kernel launches the torch path issues for the same work. Inside the kernels
+the per-element arrays travel bundled as :class:`Solution` (``next``/``prev``) and
+:class:`Instance` (``locations``); the batch drivers construct these views per element.
 
 Randomness uses numba's per-thread ``np.random``. To stay reproducible under
 ``prange`` (where draws would otherwise depend on the thread count), each parallel
@@ -30,12 +32,23 @@ iteration index -- see :func:`core.lns.numba_kernels.common.seed_for`.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import numpy as np
 from numba import njit, prange
 
 from .common import dist, seed_for
 
 UNASSIGNED = -1
+
+
+class Instance(NamedTuple):
+    locations: np.ndarray
+
+
+class Solution(NamedTuple):
+    next: np.ndarray
+    prev: np.ndarray
 
 
 def apply_and_repair_sequential(
@@ -87,7 +100,7 @@ def apply_and_repair_parallel(
     base_seed: int,
     first_repair_uses_order: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Apply every rollout independently from the same tour, without acceptance.
+    """Apply every rollout independently.
 
     Each of the ``B`` tours is deconstructed and repaired once per rollout ``k``, all
     from the same starting tour. No acceptance -- every repaired candidate and its
@@ -132,11 +145,10 @@ def _sequential_batch(
     prev_out = prev.copy()
     for global_idx in prange(global_size):
         np.random.seed(seed_for(base_seed, global_idx, global_size))
-        _sequential_single(
-            next_out=next_out[global_idx],
-            prev_out=prev_out[global_idx],
+        _sequential_single_(
+            solution=Solution(next_out[global_idx], prev_out[global_idx]),
             nodes_to_remove=nodes_to_remove[global_idx],
-            locations=locations[global_idx],
+            instance=Instance(locations[global_idx]),
             n_repairs=n_repairs,
             accept_kind=accept_kind,
             temperature=temperature,
@@ -167,27 +179,26 @@ def _parallel_batch(
     objective = np.empty((num_instances, num_rollouts), np.float64)
 
     for b in prange(num_instances):
+        instance = Instance(locations[b])
+        current = Solution(next[b], prev[b])
         for k in range(num_rollouts):
             np.random.seed(seed_for(base_seed, b * num_rollouts + k, total))
             objective[b, k] = _apply_and_repair_one(
-                current_next=next[b],
-                current_prev=prev[b],
+                current=current,
                 nodes=nodes[b, k],
-                locations=locations[b],
+                instance=instance,
                 n_repairs=n_repairs,
                 first_repair_uses_order=first_repair_uses_order,
-                out_next=next_out[b, k],
-                out_prev=prev_out[b, k],
+                out=Solution(next_out[b, k], prev_out[b, k]),
             )
     return next_out, prev_out, objective
 
 
 @njit
-def _sequential_single(
-    next_out: np.ndarray,
-    prev_out: np.ndarray,
+def _sequential_single_(
+    solution: Solution,
     nodes_to_remove: np.ndarray,
-    locations: np.ndarray,
+    instance: Instance,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
@@ -197,27 +208,25 @@ def _sequential_single(
     """Apply one element's rollouts sequentially, updating the running tour.
 
     Assumes ``np.random`` has already been reseeded for this element by the caller.
-    Each rollout deconstructs and repairs the current ``next_out``/``prev_out`` via
+    Each rollout deconstructs and repairs the running ``solution`` via
     :func:`_apply_and_repair_one`; the running tour is replaced when accepted.
     """
-    num_nodes = next_out.shape[0]
+    nxt, prv = solution
+    num_nodes = nxt.shape[0]
     num_rollouts = nodes_to_remove.shape[0]
 
-    candidate_next = np.empty(num_nodes, np.int64)
-    candidate_prev = np.empty(num_nodes, np.int64)
+    candidate = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
 
-    current_objective = _objective(nxt=next_out, locations=locations)
+    current_objective = _objective(solution, instance)
 
     for r in range(num_rollouts):
         candidate_objective = _apply_and_repair_one(
-            current_next=next_out,
-            current_prev=prev_out,
+            current=solution,
             nodes=nodes_to_remove[r],
-            locations=locations,
+            instance=instance,
             n_repairs=n_repairs,
             first_repair_uses_order=first_repair_uses_order,
-            out_next=candidate_next,
-            out_prev=candidate_prev,
+            out=candidate,
         )
 
         if accept_kind == 0:
@@ -230,61 +239,56 @@ def _sequential_single(
                 accepted = np.random.random() < np.exp(-max(delta, 0.0) / temperature)
 
         if accepted:
-            next_out[:] = candidate_next
-            prev_out[:] = candidate_prev
+            nxt[:] = candidate.next
+            prv[:] = candidate.prev
             current_objective = candidate_objective
 
 
 @njit
 def _apply_and_repair_one(
-    current_next: np.ndarray,
-    current_prev: np.ndarray,
+    current: Solution,
     nodes: np.ndarray,
-    locations: np.ndarray,
+    instance: Instance,
     n_repairs: int,
     first_repair_uses_order: bool,
-    out_next: np.ndarray,
-    out_prev: np.ndarray,
+    out: Solution,
 ) -> float:
     """Deconstruct one node set and greedily repair it, best of ``n_repairs``.
 
-    Writes the best repaired tour into ``out_next``/``out_prev`` and returns its
-    objective. Reads ``current_next``/``current_prev`` (the tour to deconstruct)
-    without mutating them, so callers may apply many node sets to the same tour.
-    No acceptance -- callers decide what to do with the result.
+    Writes the best repaired tour into ``out`` and returns its objective. Reads
+    ``current`` (the tour to deconstruct) without mutating it, so callers may apply
+    many node sets to the same tour. No acceptance -- callers decide what to do with
+    the result.
     """
+    current_next, current_prev = current
     num_nodes = current_next.shape[0]
     deconstruction_size = nodes.shape[0]
 
-    deconstructed_next = np.empty(num_nodes, np.int64)
-    deconstructed_prev = np.empty(num_nodes, np.int64)
-    repaired_next = np.empty(num_nodes, np.int64)
-    repaired_prev = np.empty(num_nodes, np.int64)
+    deconstructed = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
+    repaired = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
 
-    deconstructed_next[:] = current_next
-    deconstructed_prev[:] = current_prev
+    deconstructed.next[:] = current_next
+    deconstructed.prev[:] = current_prev
     for m in range(deconstruction_size):
         c = nodes[m]
-        if deconstructed_prev[c] == UNASSIGNED and deconstructed_next[c] == UNASSIGNED:
+        if _is_free(deconstructed, c):
             continue
-        _remove_node_and_stitch(deconstructed_next, deconstructed_prev, c)
+        _remove_node_and_stitch_(deconstructed, c)
 
     best_repaired_objective = np.inf
     for i in range(n_repairs):
-        repaired_next[:] = deconstructed_next
-        repaired_prev[:] = deconstructed_prev
+        repaired.next[:] = deconstructed.next
+        repaired.prev[:] = deconstructed.prev
 
         order = None
         if first_repair_uses_order and i == 0:
             order = nodes
-        _greedy_insert_repair(
-            nxt=repaired_next, prv=repaired_prev, locations=locations, order=order
-        )
-        objective = _objective(nxt=repaired_next, locations=locations)
+        _greedy_insert_repair_(repaired, instance, order)
+        objective = _objective(repaired, instance)
         if objective < best_repaired_objective:
             best_repaired_objective = objective
-            out_next[:] = repaired_next
-            out_prev[:] = repaired_prev
+            out.next[:] = repaired.next
+            out.prev[:] = repaired.prev
 
     return best_repaired_objective
 
@@ -293,8 +297,9 @@ def _apply_and_repair_one(
 
 
 @njit(inline="always")
-def _remove_node_and_stitch(nxt: np.ndarray, prv: np.ndarray, node: int) -> None:
+def _remove_node_and_stitch_(solution: Solution, node: int) -> None:
     """Detach node and stitch its neighbours. Assumes node is currently placed."""
+    nxt, prv = solution
     u = prv[node]
     v = nxt[node]
     nxt[u] = v
@@ -303,9 +308,17 @@ def _remove_node_and_stitch(nxt: np.ndarray, prv: np.ndarray, node: int) -> None
     nxt[node] = UNASSIGNED
 
 
+@njit(inline="always")
+def _is_free(solution: Solution, node: int) -> bool:
+    """Whether ``node`` is unassigned (not placed in the tour)."""
+    return solution.prev[node] == UNASSIGNED and solution.next[node] == UNASSIGNED
+
+
 @njit
-def _objective(nxt: np.ndarray, locations: np.ndarray) -> float:
+def _objective(solution: Solution, instance: Instance) -> float:
     """Total tour length. Requires a complete tour (no UNASSIGNED entries)."""
+    nxt = solution.next
+    locations = instance.locations
     total_distance = 0.0
     for i in range(nxt.shape[0]):
         total_distance += dist(locations, i, nxt[i])
@@ -313,25 +326,20 @@ def _objective(nxt: np.ndarray, locations: np.ndarray) -> float:
 
 
 @njit
-def _pick_random_free_node(nxt: np.ndarray, prv: np.ndarray) -> int:
+def _pick_random_free_node(solution: Solution) -> int:
     """Pick a random free node, or -1 if none are free."""
     chosen = -1
     best_score = -1.0
-    for c in range(nxt.shape[0]):
+    for c in range(solution.next.shape[0]):
         score = np.random.random()
-        if prv[c] == UNASSIGNED and nxt[c] == UNASSIGNED and score > best_score:
+        if _is_free(solution, c) and score > best_score:
             best_score = score
             chosen = c
     return chosen
 
 
 @njit
-def _insert_node_at_cheapest(
-    node: int,
-    nxt: np.ndarray,
-    prv: np.ndarray,
-    locations: np.ndarray,
-) -> None:
+def _insert_node_at_cheapest_(node: int, solution: Solution, instance: Instance) -> None:
     """Insert free ``node`` at its cheapest valid position. In-place.
 
     Candidate positions are every existing edge ``(prev[v], v)`` for placed nodes
@@ -339,6 +347,8 @@ def _insert_node_at_cheapest(
     ``prev`` is UNASSIGNED. At least one such edge always exists as long as one node
     survives destroy (a single surviving node self-loops, giving a valid edge).
     """
+    nxt, prv = solution
+    locations = instance.locations
     best_cost = np.inf
     best_u = -1
     best_v = -1
@@ -359,10 +369,9 @@ def _insert_node_at_cheapest(
 
 
 @njit
-def _greedy_insert_repair(
-    nxt: np.ndarray,
-    prv: np.ndarray,
-    locations: np.ndarray,
+def _greedy_insert_repair_(
+    solution: Solution,
+    instance: Instance,
     order: np.ndarray | None = None,
 ) -> None:
     """Insert every free node at its cheapest valid position. In-place.
@@ -376,11 +385,11 @@ def _greedy_insert_repair(
     if order is not None:
         for k in range(order.shape[0]):
             node = order[k]
-            if prv[node] == UNASSIGNED and nxt[node] == UNASSIGNED:
-                _insert_node_at_cheapest(node, nxt, prv, locations)
+            if _is_free(solution, node):
+                _insert_node_at_cheapest_(node, solution, instance)
 
     while True:
-        node = _pick_random_free_node(nxt, prv)
+        node = _pick_random_free_node(solution)
         if node == -1:
             break
-        _insert_node_at_cheapest(node, nxt, prv, locations)
+        _insert_node_at_cheapest_(node, solution, instance)

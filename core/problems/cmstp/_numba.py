@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import numpy as np
 from numba import njit, prange
 
@@ -9,6 +11,16 @@ from core.lns.numba_kernels.common import dist, seed_for
 
 ROOT = 0
 UNASSIGNED = -1
+
+
+class Instance(NamedTuple):
+    locations: np.ndarray
+    demand: np.ndarray
+    capacity: float
+
+
+class Solution(NamedTuple):
+    parent: np.ndarray
 
 
 def apply_and_repair_parallel(
@@ -104,17 +116,17 @@ def _parallel_batch(
     objective = np.empty((num_instances, num_rollouts), np.float64)
 
     for b in prange(num_instances):
+        instance = Instance(locations[b], demand[b], capacity[b])
+        current = Solution(parent[b])
         for k in range(num_rollouts):
             np.random.seed(seed_for(base_seed, b * num_rollouts + k, total))
             objective[b, k] = _apply_and_repair_one(
-                current_parent=parent[b],
+                current=current,
                 nodes=nodes[b, k],
-                locations=locations[b],
-                demand=demand[b],
-                capacity=capacity[b],
+                instance=instance,
                 n_repairs=n_repairs,
                 first_repair_uses_order=first_repair_uses_order,
-                out_parent=parent_out[b, k],
+                out=Solution(parent_out[b, k]),
             )
     return parent_out, objective
 
@@ -138,12 +150,10 @@ def _sequential_batch(
     parent_out = parent.copy()
     for global_idx in prange(global_size):
         np.random.seed(seed_for(base_seed, global_idx, global_size))
-        _sequential_single(
-            parent_out=parent_out[global_idx],
+        _sequential_single_(
+            solution=Solution(parent_out[global_idx]),
             nodes_to_remove=nodes_to_remove[global_idx],
-            locations=locations[global_idx],
-            demand=demand[global_idx],
-            capacity=capacity[global_idx],
+            instance=Instance(locations[global_idx], demand[global_idx], capacity[global_idx]),
             n_repairs=n_repairs,
             accept_kind=accept_kind,
             temperature=temperature,
@@ -154,12 +164,10 @@ def _sequential_batch(
 
 
 @njit
-def _sequential_single(
-    parent_out: np.ndarray,
+def _sequential_single_(
+    solution: Solution,
     nodes_to_remove: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: float,
+    instance: Instance,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
@@ -170,22 +178,21 @@ def _sequential_single(
 
     Assumes ``np.random`` has already been reseeded for this element by the caller.
     """
-    num_nodes = parent_out.shape[0]
-    candidate_parent = np.empty(num_nodes, np.int64)
+    parent = solution.parent
+    num_nodes = parent.shape[0]
+    candidate = Solution(np.empty(num_nodes, np.int64))
 
-    current_objective = _objective(parent_out, locations)
+    current_objective = _objective(solution, instance)
 
     num_rollouts = nodes_to_remove.shape[0]
     for r in range(num_rollouts):
         candidate_objective = _apply_and_repair_one(
-            current_parent=parent_out,
+            current=solution,
             nodes=nodes_to_remove[r],
-            locations=locations,
-            demand=demand,
-            capacity=capacity,
+            instance=instance,
             n_repairs=n_repairs,
             first_repair_uses_order=first_repair_uses_order,
-            out_parent=candidate_parent,
+            out=candidate,
         )
 
         if accept_kind == 0:
@@ -198,26 +205,25 @@ def _sequential_single(
                 accepted = np.random.random() < np.exp(-max(delta, 0.0) / temperature)
 
         if accepted:
-            parent_out[:] = candidate_parent
+            parent[:] = candidate.parent
             current_objective = candidate_objective
 
 
 @njit
 def _apply_and_repair_one(
-    current_parent: np.ndarray,
+    current: Solution,
     nodes: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: float,
+    instance: Instance,
     n_repairs: int,
     first_repair_uses_order: bool,
-    out_parent: np.ndarray,
+    out: Solution,
 ) -> float:
     """Deconstruct one terminal set and greedily repair it, best of ``n_repairs``.
 
-    Writes the best repaired tree into ``out_parent`` and returns its objective. Reads
-    ``current_parent`` (the tree to deconstruct) without mutating it.
+    Writes the best repaired tree into ``out`` and returns its objective. Reads
+    ``current`` (the tree to deconstruct) without mutating it.
     """
+    current_parent = current.parent
     num_nodes = current_parent.shape[0]
 
     is_removed = np.zeros(num_nodes, np.bool_)
@@ -228,37 +234,35 @@ def _apply_and_repair_one(
 
     deconstructed_parent = _deconstruct(current_parent, is_removed)
 
-    repaired_parent = np.empty(num_nodes, np.int64)
+    repaired = Solution(np.empty(num_nodes, np.int64))
     root_of = np.empty(num_nodes, np.int64)
     subtree_demand = np.empty(num_nodes, np.float64)
 
     best_objective = np.inf
     for i in range(n_repairs):
-        repaired_parent[:] = deconstructed_parent
-        _init_subtrees(repaired_parent, demand, root_of, subtree_demand)
+        repaired.parent[:] = deconstructed_parent
+        _init_subtrees_(repaired, instance, root_of, subtree_demand)
 
         order = None
         if first_repair_uses_order and i == 0:
             order = nodes
-        _greedy_attach_repair(
-            parent=repaired_parent,
-            locations=locations,
-            demand=demand,
-            capacity=capacity,
-            root_of=root_of,
-            subtree_demand=subtree_demand,
-            order=order,
-        )
+        _greedy_attach_repair_(repaired, instance, root_of, subtree_demand, order)
 
-        objective = _objective(repaired_parent, locations)
+        objective = _objective(repaired, instance)
         if objective < best_objective:
             best_objective = objective
-            out_parent[:] = repaired_parent
+            out.parent[:] = repaired.parent
 
     return best_objective
 
 
 # --- graph helpers (single element, length N+1 arrays) ----------------------
+
+
+@njit(inline="always")
+def _is_free(solution: Solution, node: int) -> bool:
+    """Whether ``node`` is a free terminal (not attached to any parent)."""
+    return solution.parent[node] == UNASSIGNED
 
 
 @njit
@@ -287,9 +291,9 @@ def _deconstruct(parent: np.ndarray, is_removed: np.ndarray) -> np.ndarray:
 
 
 @njit
-def _init_subtrees(
-    parent: np.ndarray,
-    demand: np.ndarray,
+def _init_subtrees_(
+    solution: Solution,
+    instance: Instance,
     root_of: np.ndarray,
     subtree_demand: np.ndarray,
 ) -> None:
@@ -298,12 +302,14 @@ def _init_subtrees(
     Free terminals (parent == UNASSIGNED) get ``root_of = UNASSIGNED`` and are skipped;
     they receive a subtree at attach time. ``subtree_demand`` is indexed by root node.
     """
+    parent = solution.parent
+    demand = instance.demand
     num_nodes = parent.shape[0]
     for i in range(num_nodes):
         root_of[i] = UNASSIGNED
         subtree_demand[i] = 0.0
     for v in range(1, num_nodes):
-        if parent[v] == UNASSIGNED:
+        if _is_free(solution, v):
             continue
         node = v
         while parent[node] > ROOT:
@@ -315,13 +321,13 @@ def _init_subtrees(
 
 
 @njit
-def _pick_random_free_terminal(parent: np.ndarray) -> int:
+def _pick_random_free_terminal(solution: Solution) -> int:
     """Pick a random free terminal (parent == UNASSIGNED), or -1 if none are free."""
-    num_nodes = parent.shape[0]
+    num_nodes = solution.parent.shape[0]
     chosen = -1
     best_score = -1.0
     for t in range(1, num_nodes):
-        if parent[t] == UNASSIGNED:
+        if _is_free(solution, t):
             score = np.random.random()
             if score > best_score:
                 best_score = score
@@ -330,12 +336,10 @@ def _pick_random_free_terminal(parent: np.ndarray) -> int:
 
 
 @njit
-def _attach_terminal_at_cheapest(
+def _attach_terminal_at_cheapest_(
     terminal: int,
-    parent: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: float,
+    solution: Solution,
+    instance: Instance,
     root_of: np.ndarray,
     subtree_demand: np.ndarray,
 ) -> None:
@@ -345,6 +349,8 @@ def _attach_terminal_at_cheapest(
     feasible), so the argmin is always defined. Attaching under an assigned node adds the
     terminal's demand to that node's subtree, allowed only within capacity.
     """
+    parent = solution.parent
+    locations, demand, capacity = instance
     num_nodes = parent.shape[0]
     demand_t = demand[terminal]
 
@@ -373,11 +379,9 @@ def _attach_terminal_at_cheapest(
 
 
 @njit
-def _greedy_attach_repair(
-    parent: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: float,
+def _greedy_attach_repair_(
+    solution: Solution,
+    instance: Instance,
     root_of: np.ndarray,
     subtree_demand: np.ndarray,
     order: np.ndarray | None = None,
@@ -391,23 +395,21 @@ def _greedy_attach_repair(
     if order is not None:
         for k in range(order.shape[0]):
             terminal = order[k]
-            if terminal >= 1 and parent[terminal] == UNASSIGNED:
-                _attach_terminal_at_cheapest(
-                    terminal, parent, locations, demand, capacity, root_of, subtree_demand
-                )
+            if terminal >= 1 and _is_free(solution, terminal):
+                _attach_terminal_at_cheapest_(terminal, solution, instance, root_of, subtree_demand)
 
     while True:
-        terminal = _pick_random_free_terminal(parent)
+        terminal = _pick_random_free_terminal(solution)
         if terminal == -1:
             break
-        _attach_terminal_at_cheapest(
-            terminal, parent, locations, demand, capacity, root_of, subtree_demand
-        )
+        _attach_terminal_at_cheapest_(terminal, solution, instance, root_of, subtree_demand)
 
 
 @njit
-def _objective(parent: np.ndarray, locations: np.ndarray) -> float:
+def _objective(solution: Solution, instance: Instance) -> float:
     """Total length of all tree edges (each terminal to its parent)."""
+    parent = solution.parent
+    locations = instance.locations
     num_nodes = parent.shape[0]
     total_distance = 0.0
     for t in range(1, num_nodes):
