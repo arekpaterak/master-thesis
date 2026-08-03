@@ -35,17 +35,34 @@ def _():
 def _():
     # title -> {curve_file, runs: [(legend label, eval result dir relative to project root)]}.
     # The title (e.g. "CVRP100") labels the plots and names the output subfolder.
+    #
+    # One entry per problem x size, each with the 2x2 variants + Random. Fill each eval_dir
+    # with the timestamped result folder once its eval run finishes; empty strings are skipped
+    # so the notebook renders with whatever is available. The folder follows the current
+    # layout: experiments/results/eval/<problem>/main/<config_stem>/<eval_id>, where
+    # <config_stem> is e.g. nds_cvrp_100+ar, nds_cvrp_100_split+simple, or random_destroy.
+    # The curve_file uses the internal problem name (cmst, not cmstp): cmst100_curve.csv.
+    def variant_runs(*, joint_ar="", joint_nar="", split_ar="", split_nar="", random="") -> list:
+        return [
+            ("Joint + AR", joint_ar),
+            ("Joint + NAR", joint_nar),
+            ("Split + AR", split_ar),
+            ("Split + NAR", split_nar),
+            ("Random", random),
+        ]
+
     PROBLEMS: dict[str, dict] = {
+        "TSP50": {"curve_file": "tsp50_curve.csv", "runs": variant_runs()},
+        "TSP100": {"curve_file": "tsp100_curve.csv", "runs": variant_runs()},
+        "CVRP50": {"curve_file": "cvrp50_curve.csv", "runs": variant_runs()},
         "CVRP100": {
             "curve_file": "cvrp100_curve.csv",
-            "runs": [
-                ("Random", "experiments/results/eval/cvrp/random_destroy/20260727-151500"),
-                (
-                    "NDS (original)",
-                    "experiments/results/eval/cvrp/nds_pretrained_cvrp_100/20260727-160436",
-                ),
-            ],
+            "runs": variant_runs(
+                random="experiments/results/eval/cvrp/random_destroy/20260727-151500",
+            ),
         },
+        "CMSTP50": {"curve_file": "cmst50_curve.csv", "runs": variant_runs()},
+        "CMSTP100": {"curve_file": "cmst100_curve.csv", "runs": variant_runs()},
     }
 
     # Per-instance time keeps runs comparable regardless of test-set size.
@@ -69,8 +86,14 @@ def _(PROBLEMS: dict[str, dict], X_COLUMN):
             )
         return frame
 
+    # Skip runs whose eval_dir is an unfilled placeholder; a non-empty path that is missing
+    # still raises in load_curve so typos are caught.
     curves_by_problem = {
-        title: {label: load_curve(eval_dir, spec["curve_file"]) for label, eval_dir in spec["runs"]}
+        title: {
+            label: load_curve(eval_dir, spec["curve_file"])
+            for label, eval_dir in spec["runs"]
+            if eval_dir
+        }
         for title, spec in PROBLEMS.items()
     }
     return (curves_by_problem,)
@@ -163,7 +186,9 @@ def _(X_COLUMN, curves_by_problem, marker_every_ui, skip_first_ui):
                 skip_first_ui.value,
             ),
         }
+        # Skip problems with no filled-in runs yet.
         for title, curves in curves_by_problem.items()
+        if curves
     }
 
     mo.vstack(

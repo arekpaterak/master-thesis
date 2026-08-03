@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib as mpl
+import polars as pl
 from matplotlib.axes import Axes
 
 # Thesis \the\textwidth in points (1 pt = 1/72.27 in). Authoring each figure at its final
@@ -17,8 +19,20 @@ def figsize(fraction: float = 1.0, aspect: float = 0.62) -> tuple[float, float]:
     return (width_in, width_in * aspect)
 
 
+def robust_mean(values: Sequence[float], iqr_factor: float = 1.5) -> float:
+    """Mean of ``values`` after dropping IQR outliers (e.g. warm-up spikes)."""
+    series = pl.Series(values)
+    q1 = series.quantile(0.25)
+    q3 = series.quantile(0.75)
+    iqr = q3 - q1
+    low, high = q1 - iqr_factor * iqr, q3 + iqr_factor * iqr
+    kept = series.filter((series >= low) & (series <= high))
+    return float(kept.mean())
+
+
+# Not applicable to all figures.
 def set_thesis_style() -> None:
-    """Set consistent font sizes (in points, matching the 11 pt thesis body)."""
+    """Set consistent font sizes (in points)."""
     mpl.rcParams.update(
         {
             "font.size": 11,

@@ -8,7 +8,6 @@ with app.setup:
 
     import marimo as mo
     import matplotlib.pyplot as plt
-    import polars as pl
     import torch
     import yaml
 
@@ -17,9 +16,7 @@ with app.setup:
     from core.models.nds.module import NDSModule
     from core.models.optimizer import build_optimizer
     from core.problems.sampler import Sampler
-    from figures.utils import figsize, project_root, set_thesis_style
-
-    set_thesis_style()
+    from figures.utils import figsize, project_root, robust_mean
 
     # Encoder x decoder axes of the 2x2 grid. Assumes "<encoder> + <decoder>" method labels.
     GRID_ENCODERS = ["Joint", "Split"]
@@ -30,7 +27,7 @@ with app.setup:
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    # Train time
+    # Training time per model
 
     For the selected problem, two views of two metrics measured live from its training
     configs in `CONFIGS`: mean training batch time (seconds) and mean training throughput
@@ -116,7 +113,7 @@ def _():
 
     # Timed batches per config (after WARMUP discarded batches) and the device to run on.
     WARMUP = 2
-    N_BATCHES = 4
+    N_BATCHES = 3
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Metric file stem -> (BatchTrainSummary attribute, axis label).
@@ -150,17 +147,6 @@ def _(CONFIGS: dict[str, dict[str, dict[int, str]]]):
     measure_button = mo.ui.run_button(label="Measure")
     mo.hstack([problem_ui, size_ui, batch_size_ui, measure_button], justify="start", gap=1)
     return batch_size_ui, measure_button, problem_ui, size_ui
-
-
-@app.function
-def robust_mean(values: pl.Series, iqr_factor: float = 1.5) -> float:
-    """Mean of ``values`` after dropping IQR outliers (e.g. warm-up spikes)."""
-    q1 = values.quantile(0.25)
-    q3 = values.quantile(0.75)
-    iqr = q3 - q1
-    low, high = q1 - iqr_factor * iqr, q3 + iqr_factor * iqr
-    kept = values.filter((values >= low) & (values <= high))
-    return float(kept.mean())
 
 
 @app.cell
@@ -211,7 +197,7 @@ def _(
         del model, module, optimizer
         if DEVICE.type == "cuda":
             torch.cuda.empty_cache()
-        return {stem: robust_mean(pl.Series(values)) for stem, values in samples.items()}
+        return {stem: robust_mean(values) for stem, values in samples.items()}
 
     problem = problem_ui.value
     size = size_ui.value
@@ -241,7 +227,7 @@ def plot_bars(means: dict[str, dict[str, float]], stem: str, title: str, x_label
     labels = list(means.keys())
     values = [means[label][stem] for label in labels]
 
-    fig, ax = plt.subplots(figsize=figsize(0.5, aspect=0.75))
+    fig, ax = plt.subplots(figsize=figsize(1, aspect=0.75))
     positions = range(len(labels))
     ax.barh(list(positions), values, color="tab:blue")
     ax.set_yticks(list(positions))
@@ -250,13 +236,12 @@ def plot_bars(means: dict[str, dict[str, float]], stem: str, title: str, x_label
 
     # Annotate each bar with its value so exact numbers stay readable.
     for position, value in zip(positions, values):
-        ax.text(value, position, f" {value:.3g}", va="center", fontsize=8)
+        ax.text(value, position, f" {value:.3g}", va="center", fontsize=9)
 
     ax.set_title(title)
     ax.set_xlabel(x_label)
-    ax.set_xlim(left=0)
-    ax.margins(x=0.15)
-    fig.tight_layout()
+    vmax = max(values, default=1.0)
+    ax.set_xlim(0, vmax * 1.15)  # headroom for the value labels
     return fig
 
 
@@ -268,7 +253,7 @@ def plot_grid(means: dict[str, dict[str, float]], stem: str, title: str, cbar_la
         for encoder in GRID_ENCODERS
     ]
 
-    fig, ax = plt.subplots(figsize=figsize(0.5, aspect=0.9))
+    fig, ax = plt.subplots(figsize=figsize(1, aspect=0.9))
     image = ax.imshow(matrix, cmap=GRID_CMAP, aspect="auto")
 
     ax.set_xticks(range(len(GRID_DECODERS)), labels=GRID_DECODERS)
@@ -289,7 +274,7 @@ def plot_grid(means: dict[str, dict[str, float]], stem: str, title: str, cbar_la
             ax.text(j, i, f"{value:.3g}", ha="center", va="center", color=color, fontsize=9)
 
     fig.colorbar(image, ax=ax, label=cbar_label)
-    fig.tight_layout()
+    # fig.tight_layout()
     return fig
 
 
