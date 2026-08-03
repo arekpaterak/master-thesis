@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 from core.lns.operators.repair.base import RepairOperator
-from core.problems.cmst.solution import CMSTSolution
+from core.problems.cmstp.solution import CMSTPSolution
 
 
-class CMSTGreedyInsertRepair(RepairOperator[CMSTSolution]):
-    """Registry entry for CMST greedy attach-repair.
+class CMSTPGreedyInsertRepair(RepairOperator[CMSTPSolution]):
+    """Registry entry for CMSTP greedy attach-repair.
 
     The actual deconstruct + greedy attach lives in the fused numba pass
-    (:mod:`core.problems.cmst._numba`), used by both the training main loop
+    (:mod:`core.problems.cmstp._numba`), used by both the training main loop
     (``NumbaApplyAndRepair``) and validation (``NumbaSequentialImprovementStep``). This
-    operator exists so ``RepairOperator.create("cmst", "greedy_insert")`` resolves and
+    operator exists so ``RepairOperator.create("cmstp", "greedy_insert")`` resolves and
     ``ModelNodeDestroy`` can read ``requires_stitch``; the torch ``__call__`` is never
     invoked on the numba paths and is intentionally not implemented.
     """
 
     repair_type = "greedy_insert"
-    problem_name = "cmst"
+    problem_name = "cmstp"
     requires_stitch = True
 
     def __init__(
@@ -28,7 +28,7 @@ class CMSTGreedyInsertRepair(RepairOperator[CMSTSolution]):
         self._seed = seed
         self._deconstruction_size = deconstruction_size
 
-    def __call__(self, deconstructed_solution: CMSTSolution) -> CMSTSolution:
+    def __call__(self, deconstructed_solution: CMSTPSolution) -> CMSTPSolution:
         raise NotImplementedError(
-            "CMST repair runs through the numba apply-and-repair, not the torch operator."
+            "CMSTP repair runs through the numba apply-and-repair, not the torch operator."
         )

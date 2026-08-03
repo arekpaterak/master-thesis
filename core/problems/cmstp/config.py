@@ -10,8 +10,8 @@ from core.problems.cvrp.config import CAPACITY_PER_SIZE
 
 
 @dataclass(frozen=True)
-class CMST:
-    """Parametrized CMST problem definition consumed by the sampler.
+class CMSTP:
+    """Parametrized CMSTP problem definition consumed by the sampler.
 
     Fields mirror ``CVRP``: the instance data (root + terminals + demand + capacity) is
     identical; only the solution built over it differs (a capacitated spanning tree rooted
@@ -27,7 +27,7 @@ class CMST:
     distribution_of_locations: Literal["uniform"] = "uniform"
 
     @classmethod
-    def for_n(cls, num_terminals: int, **kwargs) -> CMST:
+    def for_n(cls, num_terminals: int, **kwargs) -> CMSTP:
         """Create a problem for a given size, reusing the CVRP capacity schedule."""
         if num_terminals not in CAPACITY_PER_SIZE:
             raise ValueError(
@@ -42,10 +42,10 @@ class CMST:
         )
 
 
-class CMSTConfig(BaseProblemConfig):
-    """Input configuration for CMST."""
+class CMSTPConfig(BaseProblemConfig):
+    """Input configuration for CMSTP."""
 
-    name: Literal["cmst"] = "cmst"
+    name: Literal["cmstp"] = "cmstp"
     capacity_raw: int | None = Field(
         default=None, description="Raw per-subtree capacity. If None, derived from size."
     )
@@ -54,7 +54,7 @@ class CMSTConfig(BaseProblemConfig):
     min_coordinate: float = 0.0
     max_coordinate: float = 1.0
 
-    def to_problem(self) -> CMST:
+    def to_problem(self) -> CMSTP:
         common = {
             "min_demand_raw": self.min_demand_raw,
             "max_demand_raw": self.max_demand_raw,
@@ -62,8 +62,8 @@ class CMSTConfig(BaseProblemConfig):
             "max_coordinate": self.max_coordinate,
         }
         if self.capacity_raw is None:
-            return CMST.for_n(self.size, **common)
-        return CMST(
+            return CMSTP.for_n(self.size, **common)
+        return CMSTP(
             num_terminals=self.size,
             capacity_raw=self.capacity_raw,
             **common,

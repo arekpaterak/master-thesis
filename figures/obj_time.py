@@ -41,7 +41,7 @@ def _():
     # so the notebook renders with whatever is available. The folder follows the current
     # layout: experiments/results/eval/<problem>/main/<config_stem>/<eval_id>, where
     # <config_stem> is e.g. nds_cvrp_100+ar, nds_cvrp_100_split+simple, or random_destroy.
-    # The curve_file uses the internal problem name (cmst, not cmstp): cmst100_curve.csv.
+    # The curve_file uses the internal problem name (cmstp, not cmstp): cmstp100_curve.csv.
     def variant_runs(*, joint_ar="", joint_nar="", split_ar="", split_nar="", random="") -> list:
         return [
             ("Joint + AR", joint_ar),
@@ -61,8 +61,8 @@ def _():
                 random="experiments/results/eval/cvrp/random_destroy/20260727-151500",
             ),
         },
-        "CMSTP50": {"curve_file": "cmst50_curve.csv", "runs": variant_runs()},
-        "CMSTP100": {"curve_file": "cmst100_curve.csv", "runs": variant_runs()},
+        "CMSTP50": {"curve_file": "cmstp50_curve.csv", "runs": variant_runs()},
+        "CMSTP100": {"curve_file": "cmstp100_curve.csv", "runs": variant_runs()},
     }
 
     # Per-instance time keeps runs comparable regardless of test-set size.

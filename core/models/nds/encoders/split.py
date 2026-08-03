@@ -21,9 +21,9 @@ from core.models.nds.encoders.layers import (
     build_norm,
 )
 from core.models.utils import get_model_device
-from core.problems.cmst.features import (
-    CMSTInstanceFeatureExtractor,
-    CMSTSolutionFeatureExtractor,
+from core.problems.cmstp.features import (
+    CMSTPInstanceFeatureExtractor,
+    CMSTPSolutionFeatureExtractor,
 )
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
@@ -54,7 +54,7 @@ class SplitNDSEncoder(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: Literal["tsp", "cvrp", "cmst"],
+        problem_name: Literal["tsp", "cvrp", "cmstp"],
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -66,13 +66,13 @@ class SplitNDSEncoder(nn.Module):
         encoder_config = encoder_config or SplitEncoderConfig()
         with_route_encoding = encoder_config.with_route_encoding
         if with_route_encoding is None:
-            with_route_encoding = problem_name in ("cvrp", "cmst")
-        if with_route_encoding and problem_name not in ("cvrp", "cmst"):
+            with_route_encoding = problem_name in ("cvrp", "cmstp")
+        if with_route_encoding and problem_name not in ("cvrp", "cmstp"):
             raise ValueError(
-                "with_route_encoding is only supported for problem_name in {'cvrp', 'cmst'}."
+                "with_route_encoding is only supported for problem_name in {'cvrp', 'cmstp'}."
             )
-        if positional is not None and problem_name == "cmst":
-            raise NotImplementedError("CMST positional encoding is not implemented yet.")
+        if positional is not None and problem_name == "cmstp":
+            raise NotImplementedError("CMSTP positional encoding is not implemented yet.")
 
         self.problem_name = problem_name
         self._positional = positional
@@ -91,9 +91,9 @@ class SplitNDSEncoder(nn.Module):
                 self.solution_feature_extractor = TSPSolutionFeatureExtractor(
                     with_positional=with_positional
                 )
-            case "cmst":
-                self.instance_feature_extractor = CMSTInstanceFeatureExtractor()
-                self.solution_feature_extractor = CMSTSolutionFeatureExtractor()
+            case "cmstp":
+                self.instance_feature_extractor = CMSTPInstanceFeatureExtractor()
+                self.solution_feature_extractor = CMSTPSolutionFeatureExtractor()
             case _:
                 raise ValueError(f"Unsupported problem_name: {problem_name}")
 
@@ -157,7 +157,7 @@ class SplitNDSEncoder(nn.Module):
             positional = None
         else:
             positional = ipe if cache.xpe is None else torch.cat([ipe, cache.xpe], dim=-1)
-        if self.problem_name == "cmst":
+        if self.problem_name == "cmstp":
             return self.fusion(
                 cache.instance_node_embeddings,
                 positional,
@@ -202,7 +202,7 @@ class SolutionEncoder(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: Literal["tsp", "cvrp", "cmst"] = "cvrp",
+        problem_name: Literal["tsp", "cvrp", "cmstp"] = "cvrp",
         hidden_dim: int,
         pe_dim: int,
         num_heads: int = 8,
@@ -215,7 +215,7 @@ class SolutionEncoder(nn.Module):
         self.encoding_order = _config.encoding_order
         self.projection = nn.Linear(hidden_dim + pe_dim, hidden_dim)
         neighbours_layer_cls = (
-            TreeNeighboursEncodingLayer if problem_name == "cmst" else NeighboursEncodingLayer
+            TreeNeighboursEncodingLayer if problem_name == "cmstp" else NeighboursEncodingLayer
         )
         self.neighbours = (
             neighbours_layer_cls(
@@ -269,8 +269,8 @@ class SolutionEncoder(nn.Module):
             positional: (B, N, pe_dim) per-customer solution positional encoding, or
                 None when positional encoding is disabled.
             num_customers: N, used to split off the depot/non-customer offset.
-            neighbours_index: (B, N, 2) required when neighbours encoding is enabled (non-CMST).
-            parent_index: (B, N) required when neighbours encoding is enabled for CMST.
+            neighbours_index: (B, N, 2) required when neighbours encoding is enabled (non-CMSTP).
+            parent_index: (B, N) required when neighbours encoding is enabled for CMSTP.
             route_index: (B, N) required when route encoding is enabled.
 
         Returns:
@@ -287,7 +287,7 @@ class SolutionEncoder(nn.Module):
         def apply_neighbours(h: torch.Tensor) -> torch.Tensor:
             if self.neighbours is None:
                 return h
-            if self.problem_name == "cmst":
+            if self.problem_name == "cmstp":
                 return self.neighbours(h, parent_index=parent_index)
             return self.neighbours(h, neighbours_index=neighbours_index)
 

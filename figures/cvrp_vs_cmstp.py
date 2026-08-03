@@ -11,7 +11,7 @@ with app.setup:
     from core.lns.config import SearchParams, StartSolutionParams
     from core.methods import RandomDestroyMethodConfig, build_method
     from core.problems import make_problem_config
-    from core.problems.cmst import CMSTSampler
+    from core.problems.cmstp import CMSTPSampler
     from core.problems.cvrp import CVRPSampler
     from core.problems.tsp import TSPSampler
     from core.solve import solve
@@ -142,18 +142,18 @@ def _(DEVICE, N, SEED, build_random_method):
 
 @app.cell
 def _(DEVICE, N, SEED, build_random_method):
-    _instance = CMSTSampler.for_size(N, seed=SEED)(1).to(DEVICE)
+    _instance = CMSTPSampler.for_size(N, seed=SEED)(1).to(DEVICE)
     with torch.no_grad():
-        cmst_solution = solve(build_random_method("cmst", N), _instance)
-    return (cmst_solution,)
+        cmstp_solution = solve(build_random_method("cmstp", N), _instance)
+    return (cmstp_solution,)
 
 
 @app.cell
-def _(cmst_solution, cvrp_solution):
+def _(cmstp_solution, cvrp_solution):
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
     cvrp_solution[0].visualize(ax=axes[0], show_depot_edges=True, palette="tab10")
-    cmst_solution[0].visualize(ax=axes[1], palette="tab10")
+    cmstp_solution[0].visualize(ax=axes[1], palette="tab10")
 
     axes[0].set_title("CVRP")
     axes[1].set_title("CMSTP")

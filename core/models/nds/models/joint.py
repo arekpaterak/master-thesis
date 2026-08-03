@@ -15,9 +15,9 @@ from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
 from core.problems import depot_offset
-from core.problems.cmst.features import (
-    CMSTInstanceFeatureExtractor,
-    CMSTSolutionFeatureExtractor,
+from core.problems.cmstp.features import (
+    CMSTPInstanceFeatureExtractor,
+    CMSTPSolutionFeatureExtractor,
 )
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
@@ -44,7 +44,7 @@ class JointNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: Literal["tsp", "cvrp", "cmst"],
+        problem_name: Literal["tsp", "cvrp", "cmstp"],
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -71,9 +71,9 @@ class JointNDSModel(nn.Module):
                 self.solution_feature_extractor = TSPSolutionFeatureExtractor(
                     with_positional=with_positional
                 )
-            case "cmst":
-                self.instance_feature_extractor = CMSTInstanceFeatureExtractor()
-                self.solution_feature_extractor = CMSTSolutionFeatureExtractor()
+            case "cmstp":
+                self.instance_feature_extractor = CMSTPInstanceFeatureExtractor()
+                self.solution_feature_extractor = CMSTPSolutionFeatureExtractor()
             case _:
                 raise ValueError(f"Unsupported problem_name: {problem_name}")
 

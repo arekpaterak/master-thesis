@@ -1,7 +1,7 @@
 import torch
 
 from core.lns.operators.destroy.base import NodeDestroyOperator
-from core.problems.cmst.solution import CMSTSolution
+from core.problems.cmstp.solution import CMSTPSolution
 from core.problems.cvrp import CVRPGraphSolution, CVRPSolution
 from core.problems.solution import BaseSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
@@ -58,7 +58,7 @@ class RandomNodeDestroy[S: BaseSolution](NodeDestroyOperator[S]):
                     + 1  # offset as customers are indexed from 1 to num_customers, while depot is indexed as 0
                 )
 
-            case CMSTSolution() as s:
+            case CMSTPSolution() as s:
                 num_terminals = s.instance.num_terminals
                 if self.destruction_size > num_terminals:
                     raise ValueError(

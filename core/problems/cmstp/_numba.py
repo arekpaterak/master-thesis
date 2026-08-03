@@ -1,4 +1,4 @@
-"""Numba CPU apply-and-repair for CMST."""
+"""Numba CPU apply-and-repair for CMSTP."""
 
 from __future__ import annotations
 

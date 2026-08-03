@@ -10,7 +10,7 @@ with app.setup:
     import matplotlib.pyplot as plt
     import torch
 
-    from core.problems.cmst import CMSTSampler
+    from core.problems.cmstp import CMSTPSampler
     from core.problems.cvrp import CVRPSampler
     from core.problems.solve import generate_initial_solution
     from core.problems.tsp import TSPSampler
@@ -92,8 +92,8 @@ def _(DEVICE, N, SEED):
 
 @app.cell
 def _(DEVICE, N, SEED):
-    _instance = CMSTSampler.for_size(N, seed=SEED)(1).to(DEVICE)
-    # cmst_start = generate_initial_solution(_instance)
+    _instance = CMSTPSampler.for_size(N, seed=SEED)(1).to(DEVICE)
+    # cmstp_start = generate_initial_solution(_instance)
     return
 
 
@@ -103,7 +103,7 @@ def _(cvrp_start):
     axes = [axes] if not isinstance(axes, Iterable) else axes
 
     cvrp_start[0].visualize(ax=axes[0], show_depot_edges=True, with_direction=False)
-    # cmst_start[0].visualize(ax=axes[1])
+    # cmstp_start[0].visualize(ax=axes[1])
 
     axes[0].set_title("CVRP / CMSTP")
     # axes[1].set_title("CMSTP")

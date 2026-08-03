@@ -69,7 +69,7 @@ class CVRPDestroyState(DestroyState):
 
 
 @dataclass(frozen=True)
-class CMSTDestroyState(DestroyState):
+class CMSTPDestroyState(DestroyState):
     @classmethod
     def build_initial(
         cls,
@@ -78,7 +78,7 @@ class CMSTDestroyState(DestroyState):
         rollout_size: int,
         num_nodes: int,
         device: torch.device,
-    ) -> CMSTDestroyState:
+    ) -> CMSTPDestroyState:
         action_mask = torch.zeros(
             batch_size, rollout_size, num_nodes, dtype=torch.bool, device=device
         )
@@ -96,8 +96,8 @@ def initial_action_mask(
             state_cls: type[DestroyState] = CVRPDestroyState
         case "tsp":
             state_cls = TSPDestroyState
-        case "cmst":
-            state_cls = CMSTDestroyState
+        case "cmstp":
+            state_cls = CMSTPDestroyState
         case _:
             raise ValueError(f"Unsupported problem_name: {problem_name}")
     return state_cls.build_initial(

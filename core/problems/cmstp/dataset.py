@@ -4,17 +4,17 @@ from pathlib import Path
 
 from core.problems.cvrp.dataset import load_cvrp_dataset
 
-from . import CMSTInstance
+from . import CMSTPInstance
 
 
-def load_cmst_dataset(path: str | Path) -> CMSTInstance:
-    """Load a benchmark CVRP dataset file as a single batched ``CMSTInstance``.
+def load_cmstp_dataset(path: str | Path) -> CMSTPInstance:
+    """Load a benchmark CVRP dataset file as a single batched ``CMSTPInstance``.
 
-    CMST and CVRP share the same instance data (root/depot + terminals/customers +
+    CMSTP and CVRP share the same instance data (root/depot + terminals/customers +
     demand + capacity); only the solution built on top differs.
     """
     instance = load_cvrp_dataset(path)
-    return CMSTInstance.create(
+    return CMSTPInstance.create(
         locations=instance.locations,
         demand=instance.demand,
         capacity=instance.capacity,

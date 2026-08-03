@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
-class CMSTInstance(BaseProblemInstance):
+class CMSTPInstance(BaseProblemInstance):
     locations: torch.Tensor
     """(B, N+1, 2) or (N+1, 2) - root first, then N terminals."""
     demand: torch.Tensor
@@ -30,7 +30,7 @@ class CMSTInstance(BaseProblemInstance):
         demand: torch.Tensor,
         capacity: torch.Tensor,
         coordinate_scale: torch.Tensor | None = None,
-    ) -> CMSTInstance:
+    ) -> CMSTPInstance:
         batch_size = locations.shape[0] if locations.dim() == 3 else []
         if coordinate_scale is None:
             shape = (locations.shape[0], 1) if locations.dim() == 3 else (1,)
@@ -122,7 +122,7 @@ class CMSTInstance(BaseProblemInstance):
     def is_normalized(self) -> bool:
         return bool((self.coordinate_scale == 1.0).all())
 
-    def augment(self, n_augmentations: int) -> CMSTInstance:
+    def augment(self, n_augmentations: int) -> CMSTPInstance:
         augmented_locations = apply_d4_transforms(self.locations, n_augmentations)
         expanded_demand = self.demand.unsqueeze(-2).expand(
             *self.batch_size, n_augmentations, self.demand.shape[-1]
@@ -133,7 +133,7 @@ class CMSTInstance(BaseProblemInstance):
         expanded_coordinate_scale = self.coordinate_scale.unsqueeze(-2).expand(
             *self.batch_size, n_augmentations, self.coordinate_scale.shape[-1]
         )
-        return CMSTInstance(
+        return CMSTPInstance(
             locations=augmented_locations,
             demand=expanded_demand.clone(),
             capacity=expanded_capacity.clone(),

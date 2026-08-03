@@ -5,15 +5,15 @@ from typing import TYPE_CHECKING
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 
-from core.problems.cmst import CMSTInstance
+from core.problems.cmstp import CMSTPInstance
 from core.problems.palette import resolve_palette
 
 if TYPE_CHECKING:
-    from core.problems.cmst.solution import CMSTSolution
+    from core.problems.cmstp.solution import CMSTPSolution
 
 
 def render_instance(
-    instance: CMSTInstance,
+    instance: CMSTPInstance,
     *,
     min_coordinate: float | None = None,
     max_coordinate: float | None = None,
@@ -89,7 +89,7 @@ def render_instance(
 
 
 def render_solution(
-    solution: CMSTSolution,
+    solution: CMSTPSolution,
     *,
     min_coordinate: float | None = None,
     max_coordinate: float | None = None,

@@ -20,7 +20,7 @@ from .operators.repair.base import RepairOperator
 from .utils import best_repair, remove_nodes, select_solution
 
 if TYPE_CHECKING:
-    from core.problems.cmst.solution import CMSTSolution
+    from core.problems.cmstp.solution import CMSTPSolution
     from core.problems.cvrp.graph_solution import CVRPGraphSolution
     from core.problems.tsp.graph_solution import TSPGraphSolution
 
@@ -148,17 +148,17 @@ class NumbaSequentialImprovementStep(ImprovementStep):
                 return
             case "tsp" if repair.repair_type == "greedy_insert":
                 return
-            case "cmst" if repair.repair_type == "greedy_insert" and repair.requires_stitch:
+            case "cmstp" if repair.repair_type == "greedy_insert" and repair.requires_stitch:
                 return
         raise NotImplementedError(
             "NumbaSequentialImprovementStep only supports the stitched CVRP "
-            "greedy-insert repair, the TSP greedy-insert repair, or the stitched CMST "
+            "greedy-insert repair, the TSP greedy-insert repair, or the stitched CMSTP "
             f"greedy-insert repair, got {type(repair).__name__} "
             f"(problem_name={getattr(repair, 'problem_name', None)!r})."
         )
 
     def __call__(self, solution: BaseSolution, accept: AcceptanceCriterion) -> BaseSolution:
-        from core.problems.cmst.solution import CMSTSolution
+        from core.problems.cmstp.solution import CMSTPSolution
         from core.problems.cvrp.graph_solution import CVRPGraphSolution
         from core.problems.tsp.graph_solution import TSPGraphSolution
 
@@ -177,20 +177,20 @@ class NumbaSequentialImprovementStep(ImprovementStep):
                 return self._call_cvrp(solution, nodes_to_remove, accept_kind, temperature)
             case TSPGraphSolution():
                 return self._call_tsp(solution, nodes_to_remove, accept_kind, temperature)
-            case CMSTSolution():
-                return self._call_cmst(solution, nodes_to_remove, accept_kind, temperature)
+            case CMSTPSolution():
+                return self._call_cmstp(solution, nodes_to_remove, accept_kind, temperature)
             case _:
                 raise NotImplementedError(
                     f"NumbaSequentialImprovementStep not implemented for {type(solution)}"
                 )
 
-    def _call_cmst(
+    def _call_cmstp(
         self,
-        solution: CMSTSolution,
+        solution: CMSTPSolution,
         nodes_to_remove: np.ndarray,
         accept_kind: int,
         temperature: float,
-    ) -> CMSTSolution:
+    ) -> CMSTPSolution:
         return solution.apply_and_repair_sequential(
             nodes_to_remove,
             n_repairs=self._n_repairs,

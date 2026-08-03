@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import torch
 
 from core.constants import EPS
-from core.problems.cmst.instance import CMSTInstance
+from core.problems.cmstp.instance import CMSTPInstance
 from core.problems.solution import BaseSolution
 
 if TYPE_CHECKING:
@@ -14,13 +14,13 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
-class CMSTSolution(BaseSolution):
+class CMSTPSolution(BaseSolution):
     """Parent-pointer representation of a capacitated minimum spanning tree.
 
     A CVRP route is a degenerate max-degree-2 tree; relaxing that fan-out to any
-    degree gives a CMST. Where CVRP tracks ``next``/``prev``/``route_id``, a tree
+    degree gives a CMSTP. Where CVRP tracks ``next``/``prev``/``route_id``, a tree
     rooted at node 0 needs only one parent pointer per node plus the subtree it
-    hangs off. ``subtree_id`` is the CMST analog of CVRP's ``route_id``: the
+    hangs off. ``subtree_id`` is the CMSTP analog of CVRP's ``route_id``: the
     direct-child-of-root ancestor a node belongs to, and the unit capacity bounds.
 
     All fields are (..., N+1) with node 0 the root. Terminals are 1..N.
@@ -29,7 +29,7 @@ class CMSTSolution(BaseSolution):
     UNASSIGNED = -1
     ROOT = 0
 
-    _instance: CMSTInstance
+    _instance: CMSTPInstance
     _parent: torch.Tensor
     """(..., N+1) parent per node. 0 = root, 1..N = terminal, -1 = unassigned.
 
@@ -45,11 +45,11 @@ class CMSTSolution(BaseSolution):
     """
 
     @classmethod
-    def star(cls, instance: CMSTInstance) -> CMSTSolution:
+    def star(cls, instance: CMSTPInstance) -> CMSTPSolution:
         """Trivial feasible-shaped start: every terminal is a direct child of the root.
 
         Each terminal is its own subtree, so this is feasible iff each single demand
-        is within capacity (always true for standard samplers). The CMST analog of
+        is within capacity (always true for standard samplers). The CMSTP analog of
         CVRP's ``one_customer_per_route``.
         """
         N = instance.num_terminals
@@ -94,7 +94,7 @@ class CMSTSolution(BaseSolution):
             head = head.gather(-1, head)
 
         subtree_id = head.clone()
-        subtree_id[..., 0] = CMSTSolution.UNASSIGNED
+        subtree_id[..., 0] = CMSTPSolution.UNASSIGNED
         return subtree_id
 
     def __post_init__(self) -> None:
@@ -108,7 +108,7 @@ class CMSTSolution(BaseSolution):
         assert (self._parent[..., 0] == self.UNASSIGNED).all(), "Root parent should be unassigned"
 
     @property
-    def instance(self) -> CMSTInstance:
+    def instance(self) -> CMSTPInstance:
         return self._instance
 
     @property
@@ -163,7 +163,7 @@ class CMSTSolution(BaseSolution):
         """(..., N+1) float - total demand accumulated per root subtree.
 
         Subtree IDs are head-node indices (sparse in 1..N). Sized statically to N+1 to
-        avoid a host sync on max(subtree_id); unused indices stay at 0. The CMST analog
+        avoid a host sync on max(subtree_id); unused indices stay at 0. The CMSTP analog
         of CVRP ``demand_per_route``.
         """
         subtree_ids = self._subtree_id[..., 1:]  # (..., N), all >= 1
@@ -226,11 +226,11 @@ class CMSTSolution(BaseSolution):
     def from_numpy_arrays(
         cls,
         *,
-        instance: CMSTInstance,
+        instance: CMSTPInstance,
         parent: np.ndarray,
         batch_size: torch.Size,
         device: torch.device,
-    ) -> CMSTSolution:
+    ) -> CMSTPSolution:
         """Rebuild a solution from numba-produced ``parent`` numpy arrays.
 
         ``subtree_id`` is recomputed from ``parent`` so the result satisfies the class
@@ -257,14 +257,14 @@ class CMSTSolution(BaseSolution):
         n_repairs: int,
         base_seed: int,
         first_repair_uses_order: bool = False,
-    ) -> CMSTSolution:
+    ) -> CMSTPSolution:
         """Deconstruct by each rollout's node set and greedily repair, returning candidates.
 
         Wraps the fused numba parallel pass: every rollout is applied independently from
         this solution, with no acceptance. ``nodes`` is ``(G, K, M)`` int64 (terminals to
         remove per rollout). Returns a ``(*batch, K)`` solution.
         """
-        from core.problems.cmst._numba import apply_and_repair_parallel
+        from core.problems.cmstp._numba import apply_and_repair_parallel
 
         parent_np, locations, demand, capacity = self.to_numpy_arrays()
         parent_out, _ = apply_and_repair_parallel(
@@ -298,13 +298,13 @@ class CMSTSolution(BaseSolution):
         eps: float,
         base_seed: int,
         first_repair_uses_order: bool = False,
-    ) -> CMSTSolution:
+    ) -> CMSTPSolution:
         """Apply each element's rollouts sequentially with acceptance, threading the result.
 
         Wraps the fused numba sequential pass. ``nodes_to_remove`` is ``(G, R, M)`` int64.
         Returns a solution with this solution's batch shape.
         """
-        from core.problems.cmst._numba import apply_and_repair_sequential
+        from core.problems.cmstp._numba import apply_and_repair_sequential
 
         parent_np, locations, demand, capacity = self.to_numpy_arrays()
         parent_out = apply_and_repair_sequential(

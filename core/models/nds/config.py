@@ -43,7 +43,7 @@ class _ModelConfigBase(BaseModel):
     :data:`ModelParams`.
     """
 
-    problem_name: Literal["tsp", "cvrp", "cmst"] = Field(
+    problem_name: Literal["tsp", "cvrp", "cmstp"] = Field(
         title="Problem name",
         description="Problem type the model targets. Under a train config it is resolved from "
         "the problem config when omitted; must match it when set.",

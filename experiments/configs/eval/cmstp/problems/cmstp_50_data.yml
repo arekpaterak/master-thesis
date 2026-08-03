@@ -1,7 +1,7 @@
 # CMSTP evaluated on CVRP-generated instances (shared coordinate/demand generator).
 kind: synthetic
 problem:
-  name: cmst
+  name: cmstp
   size: 50
 dataset_path: data/synthetic/cvrp/vrp50_test_seed1234.pkl
 num_test_instances: 10000

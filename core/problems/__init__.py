@@ -3,8 +3,8 @@ from typing import Annotated
 from pydantic import Field, TypeAdapter
 
 # Import samplers so they register themselves with Sampler._registry.
-from core.problems.cmst.config import CMST, CMSTConfig
-from core.problems.cmst.sampler import CMSTSampler
+from core.problems.cmstp.config import CMSTP, CMSTPConfig
+from core.problems.cmstp.sampler import CMSTPSampler
 from core.problems.cvrp.config import CVRP, CVRPConfig
 from core.problems.cvrp.sampler import CVRPSampler
 from core.problems.solve import generate_initial_solution
@@ -12,7 +12,7 @@ from core.problems.tsp.config import TSP, TSPConfig
 from core.problems.tsp.sampler import TSPSampler
 
 # TODO: Move from __init__
-ProblemConfig = Annotated[CVRPConfig | TSPConfig | CMSTConfig, Field(discriminator="name")]
+ProblemConfig = Annotated[CVRPConfig | TSPConfig | CMSTPConfig, Field(discriminator="name")]
 
 _problem_config_adapter = TypeAdapter(ProblemConfig)
 
@@ -29,18 +29,18 @@ def depot_offset(problem_name: str) -> int:
             return 1
         case "tsp":
             return 0
-        case "cmst":
+        case "cmstp":
             return 1
         case _:
             raise ValueError(f"Unsupported problem_name: {problem_name}")
 
 
 __all__ = [
-    "CMST",
+    "CMSTP",
     "CVRP",
     "TSP",
-    "CMSTConfig",
-    "CMSTSampler",
+    "CMSTPConfig",
+    "CMSTPSampler",
     "CVRPConfig",
     "CVRPSampler",
     "ProblemConfig",

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import torch
 
-from core.problems.cmst.config import CMST
-from core.problems.cmst.instance import CMSTInstance
+from core.problems.cmstp.config import CMSTP
+from core.problems.cmstp.instance import CMSTPInstance
 from core.problems.sampler import Sampler
 
 
-class CMSTSampler(Sampler[CMSTInstance]):
-    problem_name = "cmst"
+class CMSTPSampler(Sampler[CMSTPInstance]):
+    problem_name = "cmstp"
 
-    def __init__(self, config: CMST, seed: int | None = None) -> None:
+    def __init__(self, config: CMSTP, seed: int | None = None) -> None:
         assert config.distribution_of_locations == "uniform"
 
         self._config = config
@@ -23,10 +23,10 @@ class CMSTSampler(Sampler[CMSTInstance]):
         self._generator.set_state(self._initial_state)
 
     @classmethod
-    def for_size(cls, size: int, *, seed: int | None = None) -> CMSTSampler:
-        return cls(CMST.for_n(size), seed=seed)
+    def for_size(cls, size: int, *, seed: int | None = None) -> CMSTPSampler:
+        return cls(CMSTP.for_n(size), seed=seed)
 
-    def __call__(self, batch_size: int) -> CMSTInstance:
+    def __call__(self, batch_size: int) -> CMSTPInstance:
         cfg = self._config
         g = self._generator
 
@@ -40,7 +40,7 @@ class CMSTSampler(Sampler[CMSTInstance]):
         demand = self._sample_demand(batch_size)  # (batch, n+1), raw
         capacity = torch.full((batch_size, 1), float(cfg.capacity_raw))
 
-        return CMSTInstance.create(locations=locations, demand=demand, capacity=capacity)
+        return CMSTPInstance.create(locations=locations, demand=demand, capacity=capacity)
 
     def _sample_demand(self, batch_size: int) -> torch.Tensor:
         cfg = self._config

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from core.models.embeddings.cmst import CMSTInitialEmbedding
+from core.models.embeddings.cmstp import CMSTPInitialEmbedding
 from core.models.embeddings.cvrp import CVRPInitialEmbedding
 from core.models.embeddings.tsp import TSPInitialEmbedding
 from core.models.nds.encoders.config import JointEncoderConfig, PositionalEncodingConfig
@@ -38,9 +38,9 @@ class JointEncoder(nn.Module):
                 raise TypeError(
                     f"Expected TSPInitialEmbedding for problem_name='tsp', got {type(initial_embedding).__name__}"
                 )
-            if problem_name == "cmst" and not isinstance(initial_embedding, CMSTInitialEmbedding):
+            if problem_name == "cmstp" and not isinstance(initial_embedding, CMSTPInitialEmbedding):
                 raise TypeError(
-                    f"Expected CMSTInitialEmbedding for problem_name='cmst', got {type(initial_embedding).__name__}"
+                    f"Expected CMSTPInitialEmbedding for problem_name='cmstp', got {type(initial_embedding).__name__}"
                 )
             self.initial_embedding = initial_embedding
         elif problem_name == "cvrp":
@@ -51,8 +51,8 @@ class JointEncoder(nn.Module):
             self.initial_embedding = TSPInitialEmbedding(
                 hidden_dim=hidden_dim, positional=positional
             )
-        elif problem_name == "cmst":
-            self.initial_embedding = CMSTInitialEmbedding(
+        elif problem_name == "cmstp":
+            self.initial_embedding = CMSTPInitialEmbedding(
                 hidden_dim=hidden_dim, positional=positional
             )
         else:
@@ -61,7 +61,7 @@ class JointEncoder(nn.Module):
         encoder_config = encoder_config or JointEncoderConfig()
         with_route_encoding = encoder_config.with_route_encoding
         if with_route_encoding is None:
-            with_route_encoding = problem_name in ("cvrp", "cmst")
+            with_route_encoding = problem_name in ("cvrp", "cmstp")
 
         attention_layer = lambda: AttentionLayer(
             hidden_dim=hidden_dim,
@@ -76,7 +76,7 @@ class JointEncoder(nn.Module):
         )
         self.encoding_order = encoder_config.encoding_order
         neighbours_layer_cls = (
-            TreeNeighboursEncodingLayer if problem_name == "cmst" else NeighboursEncodingLayer
+            TreeNeighboursEncodingLayer if problem_name == "cmstp" else NeighboursEncodingLayer
         )
         self.neighbours_encoding = (
             neighbours_layer_cls(
@@ -121,7 +121,7 @@ class JointEncoder(nn.Module):
         def apply_neighbours(h: torch.Tensor) -> torch.Tensor:
             if self.neighbours_encoding is None:
                 return h
-            if self.problem_name == "cmst":
+            if self.problem_name == "cmstp":
                 return self.neighbours_encoding(h, parent_index=solution.parent_index)
             return self.neighbours_encoding(h, neighbours_index=solution.neighbours_index)
 

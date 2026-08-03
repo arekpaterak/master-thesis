@@ -3,14 +3,14 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from core.problems.cmst.features import CMSTInstanceFeatures, CMSTSolutionFeatures
+from core.problems.cmstp.features import CMSTPInstanceFeatures, CMSTPSolutionFeatures
 
 
-class CMSTInitialEmbedding(nn.Module):
+class CMSTPInitialEmbedding(nn.Module):
     """Separate linear projections for the root and terminal nodes.
 
-    The CMST analog of ``CVRPInitialEmbedding`` without the positional path: the first
-    CMST runs use content + structural (neighbours/route) signal only, so no in-tree or
+    The CMSTP analog of ``CVRPInitialEmbedding`` without the positional path: the first
+    CMSTP runs use content + structural (neighbours/route) signal only, so no in-tree or
     cross-tree positional encoding is injected here.
     """
 
@@ -26,14 +26,14 @@ class CMSTInitialEmbedding(nn.Module):
         assert root_features_dim > 0
         assert terminal_features_dim > 0
         if positional is not None:
-            raise NotImplementedError("CMST positional encoding is not implemented yet.")
+            raise NotImplementedError("CMSTP positional encoding is not implemented yet.")
         self.root_projection = nn.Linear(root_features_dim, hidden_dim)
         self.terminal_projection = nn.Linear(terminal_features_dim, hidden_dim)
 
     def forward(
         self,
-        instance: CMSTInstanceFeatures,
-        solution: CMSTSolutionFeatures | None = None,
+        instance: CMSTPInstanceFeatures,
+        solution: CMSTPSolutionFeatures | None = None,
     ) -> torch.Tensor:
         """
         Returns:
