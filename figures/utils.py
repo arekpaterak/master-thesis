@@ -6,6 +6,7 @@ from pathlib import Path
 import matplotlib as mpl
 import polars as pl
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 # Thesis \the\textwidth in points (1 pt = 1/72.27 in). Authoring each figure at its final
 # printed width keeps the LaTeX \includegraphics scale factor at 1, so a matplotlib point
@@ -44,6 +45,25 @@ def set_thesis_style() -> None:
             # "font.family": "serif",
         }
     )
+
+
+def set_white_background() -> None:
+    """Force white backgrounds so figures look identical in light/dark notebook modes
+    and export without a black background."""
+    mpl.rcParams.update(
+        {
+            "figure.facecolor": "white",
+            "axes.facecolor": "white",
+            "savefig.facecolor": "white",
+            "savefig.edgecolor": "white",
+        }
+    )
+
+
+def save_figure(fig: Figure, path: str | Path, **kwargs: object) -> None:
+    """Save ``fig`` with a white background regardless of the marimo theme."""
+    kwargs.setdefault("bbox_inches", "tight")
+    fig.savefig(path, facecolor="white", edgecolor="white", **kwargs)
 
 
 def hide_ticks(ax: Axes) -> None:

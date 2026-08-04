@@ -20,9 +20,17 @@ with app.setup:
     from core.models.nds.improvement_step import build_nds_improvement_step
     from core.problems.sampler import Sampler
     from core.problems.solve import generate_initial_solution
-    from figures.utils import figsize, project_root, robust_mean, set_thesis_style
+    from figures.utils import (
+        figsize,
+        project_root,
+        robust_mean,
+        save_figure,
+        set_thesis_style,
+        set_white_background,
+    )
 
     set_thesis_style()
+    set_white_background()
 
     SEED = 0
     # Each method is measured into encode/search (one-time instance encoder), encode/iteration
@@ -415,7 +423,7 @@ def _(OUT_DIR, fig, problem, save_button, size_ui):
     problem_dir = OUT_DIR / problem.lower()
     problem_dir.mkdir(parents=True, exist_ok=True)
     path = problem_dir / f"inference_breakdown_{size_ui.value}.pdf"
-    fig.savefig(path, bbox_inches="tight")
+    save_figure(fig, path)
     mo.md(f"Saved to `{path}`")
     return
 

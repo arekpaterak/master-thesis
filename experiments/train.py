@@ -343,8 +343,16 @@ def _run_training(
                 plot_path = run_dir / "plots"
                 plot_path.mkdir(parents=True, exist_ok=True)
                 stem = plot_path / f"epoch_{val_summary.epoch:04d}"
-                fig.savefig(f"{stem}.pdf", bbox_inches="tight")
-                fig.savefig(f"{stem}.png", bbox_inches="tight", dpi=150)
+                fig.savefig(
+                    f"{stem}.pdf", bbox_inches="tight", facecolor="white", edgecolor="white"
+                )
+                fig.savefig(
+                    f"{stem}.png",
+                    bbox_inches="tight",
+                    dpi=150,
+                    facecolor="white",
+                    edgecolor="white",
+                )
         if config.logging.wandb_project:
             log = {
                 "val/objective_initial": val_summary.objective_initial,

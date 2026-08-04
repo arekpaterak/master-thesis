@@ -34,6 +34,7 @@ def plot_objective_curve(
     ax.set_title(title)
     ax.legend()
     fig.tight_layout()
+    _use_white_background(fig)
     return fig
 
 
@@ -62,4 +63,13 @@ def plot_search_progress(
 
     fig.suptitle(f"Epoch {epoch}", fontsize=12)
     fig.tight_layout()
+    _use_white_background(fig)
     return fig
+
+
+def _use_white_background(fig: Figure) -> None:
+    """Force white figure and axes backgrounds so figures display and export white
+    regardless of the notebook theme."""
+    fig.patch.set_facecolor("white")
+    for ax in fig.axes:
+        ax.set_facecolor("white")

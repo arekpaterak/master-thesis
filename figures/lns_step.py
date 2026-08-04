@@ -16,9 +16,17 @@ with app.setup:
     from core.problems.cvrp.solve import one_customer_per_route_graph
     from core.problems.tsp import TSPSampler
     from core.problems.tsp.solve import random_permutation_graph
-    from figures.utils import figsize, hide_ticks, project_root, set_thesis_style
+    from figures.utils import (
+        figsize,
+        hide_ticks,
+        project_root,
+        save_figure,
+        set_thesis_style,
+        set_white_background,
+    )
 
     set_thesis_style()
+    set_white_background()
 
 
 @app.cell(hide_code=True)
@@ -141,7 +149,7 @@ def _(fig, save_button):
 
     figure_path = project_root() / "figures" / "out" / "lns_step.pdf"
     figure_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(figure_path, bbox_inches="tight")
+    save_figure(fig, figure_path)
     mo.md(f"Saved to `{figure_path}`")
     return
 

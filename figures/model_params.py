@@ -10,9 +10,16 @@ with app.setup:
 
     from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
-    from figures.utils import figsize, project_root, set_thesis_style
+    from figures.utils import (
+        figsize,
+        project_root,
+        save_figure,
+        set_thesis_style,
+        set_white_background,
+    )
 
     set_thesis_style()
+    set_white_background()
 
 
 @app.cell(hide_code=True)
@@ -193,7 +200,7 @@ def _(OUT_DIR, fig, problem_ui, save_button, size_ui):
     problem_dir = OUT_DIR / problem_ui.value.lower()
     problem_dir.mkdir(parents=True, exist_ok=True)
     path = problem_dir / f"params_{size_ui.value}.pdf"
-    fig.savefig(path, bbox_inches="tight")
+    save_figure(fig, path)
     mo.md(f"Saved to `{path}`")
     return
 

@@ -16,7 +16,15 @@ with app.setup:
     from core.models.nds.module import NDSModule
     from core.models.optimizer import build_optimizer
     from core.problems.sampler import Sampler
-    from figures.utils import figsize, project_root, robust_mean
+    from figures.utils import (
+        figsize,
+        project_root,
+        robust_mean,
+        save_figure,
+        set_white_background,
+    )
+
+    set_white_background()
 
     # Encoder x decoder axes of the 2x2 grid. Assumes "<encoder> + <decoder>" method labels.
     GRID_ENCODERS = ["Joint", "Split"]
@@ -315,7 +323,7 @@ def _(OUT_DIR, figures, problem, save_button, size_ui):
     saved_paths = []
     for _stem, _fig in figures.items():
         path = problem_dir / f"{_stem}_{size_ui.value}.pdf"
-        _fig.savefig(path, bbox_inches="tight")
+        save_figure(_fig, path)
         saved_paths.append(path)
 
     mo.md("Saved:\n" + "\n".join(f"- `{p}`" for p in saved_paths))

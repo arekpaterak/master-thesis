@@ -8,9 +8,16 @@ with app.setup:
     import matplotlib.pyplot as plt
     import polars as pl
 
-    from figures.utils import figsize, project_root, set_thesis_style
+    from figures.utils import (
+        figsize,
+        project_root,
+        save_figure,
+        set_thesis_style,
+        set_white_background,
+    )
 
     set_thesis_style()
+    set_white_background()
 
 
 @app.cell(hide_code=True)
@@ -217,7 +224,7 @@ def _(OUT_DIR, figures, save_button):
         problem_dir.mkdir(parents=True, exist_ok=True)
         for _stem, _fig in _figs.items():
             path = problem_dir / f"{_stem}.pdf"
-            _fig.savefig(path, bbox_inches="tight")
+            save_figure(_fig, path)
             saved_paths.append(path)
 
     mo.md("Saved:\n" + "\n".join(f"- `{p}`" for p in saved_paths))

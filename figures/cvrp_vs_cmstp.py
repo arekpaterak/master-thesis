@@ -15,7 +15,9 @@ with app.setup:
     from core.problems.cvrp import CVRPSampler
     from core.problems.tsp import TSPSampler
     from core.solve import solve
-    from figures.utils import project_root
+    from figures.utils import project_root, save_figure, set_white_background
+
+    set_white_background()
 
 
 @app.cell(hide_code=True)
@@ -127,7 +129,7 @@ def _(TSP_FIGURE_PATH, tsp_fig, tsp_save_button):
     mo.stop(not tsp_save_button.value, mo.md("Click **Save TSP figure** to write the PDF."))
 
     TSP_FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tsp_fig.savefig(TSP_FIGURE_PATH, bbox_inches="tight")
+    save_figure(tsp_fig, TSP_FIGURE_PATH)
     mo.md(f"Saved to `{TSP_FIGURE_PATH}`")
     return
 
@@ -175,7 +177,7 @@ def _(FIGURE_PATH, fig, save_button):
     mo.stop(not save_button.value, mo.md("Click **Save figure** to write the PDF."))
 
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURE_PATH, bbox_inches="tight")
+    save_figure(fig, FIGURE_PATH)
     mo.md(f"Saved to `{FIGURE_PATH}`")
     return
 

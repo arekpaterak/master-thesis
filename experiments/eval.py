@@ -319,12 +319,22 @@ def _save_synthetic_plots(
     mean = result.objective_per_step.mean(dim=1).tolist()
     std = result.objective_per_step.std(dim=1).tolist()
     fig = plot_objective_curve(result.step_labels, mean, std, title=f"{setting.label}: objective")
-    fig.savefig(plots_dir / f"{setting.label}_progress.pdf", bbox_inches="tight")
+    fig.savefig(
+        plots_dir / f"{setting.label}_progress.pdf",
+        bbox_inches="tight",
+        facecolor="white",
+        edgecolor="white",
+    )
     plt.close(fig)
 
     for idx, snapshots in enumerate(plot_cb.snapshots):
         fig = plot_search_progress(snapshots, result.step_labels, epoch=0)
-        fig.savefig(plots_dir / f"{setting.label}_routes_{idx:02d}.pdf", bbox_inches="tight")
+        fig.savefig(
+            plots_dir / f"{setting.label}_routes_{idx:02d}.pdf",
+            bbox_inches="tight",
+            facecolor="white",
+            edgecolor="white",
+        )
         plt.close(fig)
 
 
