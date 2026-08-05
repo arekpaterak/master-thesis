@@ -44,6 +44,7 @@ def test_row_write_derives_nullable_from_optional_field(tmp_path: Path) -> None:
         method_type="random-destroy",
         problem_label="cvrplib-X",
         problem_kind="cvrplib",
+        checkpoint_epoch=None,
         n_instances=1,
         total_time_s=1.0,
         set_name="X",

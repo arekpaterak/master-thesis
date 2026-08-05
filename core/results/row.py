@@ -43,5 +43,6 @@ class SummaryRowBase(Row):
     method_type: str
     problem_label: str
     problem_kind: str
+    checkpoint_epoch: int | None
     n_instances: int
     total_time_s: float

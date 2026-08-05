@@ -25,30 +25,27 @@ def _():
     mo.md(r"""
     # Objective curves
 
-    One pair of plots per problem, read from the saved `<label>_curve.csv` files:
-    objective against wall-clock time, and objective against LNS step. Each run is a
-    line whose points are the logged steps.
+    One pair of plots per problem, read from the saved `curve.csv` files: objective
+    against wall-clock time, and objective against LNS step. Each run is a line whose
+    points are the logged steps.
 
-    Add a problem by giving `PROBLEMS` a new titled entry; add a run by appending a
-    `(label, eval_dir)` pair to that problem's `runs`.
-
-    Paths are relative to the project root; each `eval_dir` is one timestamped result folder
-    under `results/eval/<problem>/<config>/<eval_id>/`.
+    Add a problem by giving `PROBLEMS` a new titled entry; add a run by naming its eval
+    config in that problem's `runs`. Each run resolves to
+    `results/eval/<problem>/<method>/<task>/curve.csv`.
     """)
     return
 
 
 @app.cell
 def _():
-    # title -> {curve_file, runs: [(legend label, eval result dir relative to project root)]}.
+    # title -> {problem, task, runs: [(legend label, eval config name)]}.
     # The title (e.g. "CVRP100") labels the plots and names the output subfolder.
     #
-    # One entry per problem x size, each with the 2x2 variants + Random. Fill each eval_dir
-    # with the timestamped result folder once its eval run finishes; empty strings are skipped
-    # so the notebook renders with whatever is available. The folder follows the current
-    # layout: experiments/results/eval/<problem>/main/<config_stem>/<eval_id>, where
-    # <config_stem> is e.g. nds_cvrp_100+ar, nds_cvrp_100_split+simple, or random_destroy.
-    # The curve_file uses the internal problem name (cmstp, not cmstp): cmstp100_curve.csv.
+    # One entry per problem x size, each with the 2x2 variants + Random. Fill each variant
+    # with the name of its eval config (e.g. nds_cvrp_100+ar, nds_cvrp_100_split+simple,
+    # random_destroy); empty strings are skipped so the notebook renders with whatever is
+    # available. Each run resolves to experiments/results/eval/<problem>/<method>/<task>/curve.csv,
+    # where <method> is the config name and <task> is the problem label (cvrp100, cmstp100, ...).
     def variant_runs(*, joint_ar="", joint_nar="", split_ar="", split_nar="", random="") -> list:
         return [
             ("Joint + AR", joint_ar),
@@ -59,17 +56,16 @@ def _():
         ]
 
     PROBLEMS: dict[str, dict] = {
-        "TSP50": {"curve_file": "tsp50_curve.csv", "runs": variant_runs()},
-        "TSP100": {"curve_file": "tsp100_curve.csv", "runs": variant_runs()},
-        "CVRP50": {"curve_file": "cvrp50_curve.csv", "runs": variant_runs()},
+        "TSP50": {"problem": "tsp", "task": "tsp50", "runs": variant_runs()},
+        "TSP100": {"problem": "tsp", "task": "tsp100", "runs": variant_runs()},
+        "CVRP50": {"problem": "cvrp", "task": "cvrp50", "runs": variant_runs()},
         "CVRP100": {
-            "curve_file": "cvrp100_curve.csv",
-            "runs": variant_runs(
-                random="experiments/results/eval/cvrp/random_destroy/20260727-151500",
-            ),
+            "problem": "cvrp",
+            "task": "cvrp100",
+            "runs": variant_runs(random="random_destroy"),
         },
-        "CMSTP50": {"curve_file": "cmstp50_curve.csv", "runs": variant_runs()},
-        "CMSTP100": {"curve_file": "cmstp100_curve.csv", "runs": variant_runs()},
+        "CMSTP50": {"problem": "cmstp", "task": "cmstp50", "runs": variant_runs()},
+        "CMSTP100": {"problem": "cmstp", "task": "cmstp100", "runs": variant_runs()},
     }
 
     # Per-instance time keeps runs comparable regardless of test-set size.
@@ -81,8 +77,10 @@ def _():
 
 @app.cell
 def _(PROBLEMS: dict[str, dict], X_COLUMN):
-    def load_curve(eval_dir: str, curve_file: str) -> pl.DataFrame:
-        path = project_root() / eval_dir / curve_file
+    RESULTS_EVAL = project_root() / "experiments" / "results" / "eval"
+
+    def load_curve(problem: str, method: str, task: str) -> pl.DataFrame:
+        path = RESULTS_EVAL / problem / method / task / "curve.csv"
         if not path.exists():
             raise FileNotFoundError(f"No curve at {path}")
         frame = pl.read_csv(path)
@@ -93,13 +91,13 @@ def _(PROBLEMS: dict[str, dict], X_COLUMN):
             )
         return frame
 
-    # Skip runs whose eval_dir is an unfilled placeholder; a non-empty path that is missing
+    # Skip runs whose method name is an unfilled placeholder; a named-but-missing curve
     # still raises in load_curve so typos are caught.
     curves_by_problem = {
         title: {
-            label: load_curve(eval_dir, spec["curve_file"])
-            for label, eval_dir in spec["runs"]
-            if eval_dir
+            label: load_curve(spec["problem"], method, spec["task"])
+            for label, method in spec["runs"]
+            if method
         }
         for title, spec in PROBLEMS.items()
     }

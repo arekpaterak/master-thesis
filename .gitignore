@@ -17,7 +17,12 @@ wheels/
 .run/
 
 # Project related
-experiments/results/eval/*
+# Track the small, figure-facing eval files; keep raw per-instance data and plots local.
+experiments/results/eval/**
+!experiments/results/eval/**/
+!experiments/results/eval/**/summary.csv
+!experiments/results/eval/**/curve.csv
+!experiments/results/eval/**/config.yml
 experiments/runs/*
 !experiments/runs/NOTES.md
 experiments/pretrained/*

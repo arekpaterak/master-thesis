@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import polars as pl
 import torch
 import typer
 from dotenv import load_dotenv
@@ -61,7 +59,7 @@ def main(
         help="Improvement steps to report obj, time at.",
     ),
     force: bool = typer.Option(
-        False, "--force", help="Recompute cells even if already evaluated for this config."
+        False, "--force", help="Recompute tasks even if already evaluated for this config."
     ),
 ) -> None:
     """Evaluate a single method across the problem settings listed in the config."""
@@ -71,15 +69,15 @@ def main(
     torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
     settings = _select_problems(eval_config, problem, first)
+    method_dir = RESULTS_DIR / eval_config.problem_name / eval_config.name
     if not force:
-        settings = _drop_evaluated(eval_config.name, settings)
+        settings = _drop_evaluated(method_dir, settings)
     if not settings:
-        console.print("All selected cells already evaluated; nothing to do (use --force).")
+        console.print("All selected tasks already evaluated; nothing to do (use --force).")
         return
-    eval_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    eval_dir = RESULTS_DIR / _results_subdir(config_path) / eval_config.name / eval_id
 
     method = _build_method(eval_config, torch_device)
+    checkpoint_epoch = _checkpoint_epoch(eval_config.method)
     labels = ", ".join(setting.label for setting in settings)
     console.print(
         f"[bold]{eval_config.name}[/bold]  |  method: {eval_config.method.type}  |  "
@@ -87,37 +85,39 @@ def main(
     )
 
     log_wandb = bool(eval_config.logging.wandb_project)
-    if log_wandb:
-        _init_wandb(eval_config, eval_id, settings)
 
     synthetic_summaries: list[SyntheticSummaryRow] = []
     cvrplib_summaries: list[CvrplibSummaryRow] = []
-    curves: dict[str, list[SyntheticCurveRow]] = {}
     for setting in settings:
+        # One wandb run per task, so each task's metrics and artifact live under their own run id.
+        if log_wandb:
+            _init_task_wandb(eval_config, setting)
+
+        curve: list[SyntheticCurveRow] | None = None
         if isinstance(setting, CVRPLibProblemSetting):
-            cvrplib_row = _run_cvrplib(
-                method, setting, eval_config, torch_device, eval_dir, log_wandb
+            summary_row = _run_cvrplib(
+                method, setting, eval_config, torch_device, method_dir, checkpoint_epoch, log_wandb
             )
-            if cvrplib_row is not None:
-                cvrplib_summaries.append(cvrplib_row)
+            if summary_row is not None:
+                cvrplib_summaries.append(summary_row)
         else:
             summary_row, curve = _run_synthetic(
-                method, setting, eval_config, torch_device, eval_dir, checkpoint_steps, log_wandb
+                method,
+                setting,
+                eval_config,
+                torch_device,
+                method_dir,
+                checkpoint_epoch,
+                checkpoint_steps,
+                log_wandb,
             )
             synthetic_summaries.append(summary_row)
-            curves[setting.label] = curve
 
-    if synthetic_summaries:
-        SyntheticSummaryRow.write(synthetic_summaries, path=eval_dir / "summary_synthetic.csv")
-    if cvrplib_summaries:
-        CvrplibSummaryRow.write(cvrplib_summaries, path=eval_dir / "summary_cvrplib.csv")
-    eval_config.write_yaml(path=eval_dir / "config.yml")
-    console.print(f"Wrote results to [bold]{eval_dir}[/bold]")
+        if log_wandb:
+            _finalize_task_wandb(eval_config, setting, method_dir, summary_row, curve)
 
-    if log_wandb:
-        _finalize_wandb(
-            eval_config, eval_id, eval_dir, [*synthetic_summaries, *cvrplib_summaries], curves
-        )
+    eval_config.write_yaml(path=method_dir / "config.yml")
+    console.print(f"Wrote results to [bold]{method_dir}[/bold]")
 
 
 class WandbBatchLogger:
@@ -194,12 +194,14 @@ class WandbBatchLogger:
         wandb.log(log)
 
 
-def _results_subdir(config_path: Path) -> Path:
-    """Mirror the config's location under configs/eval/ in the results tree, so e.g. cvrp/random_destroy.yml lands in results/eval/cvrp/random_destroy/<id>."""
-    try:
-        return config_path.resolve().parent.relative_to(EVAL_CONFIGS_DIR.resolve())
-    except ValueError:
-        return Path()
+def _checkpoint_epoch(method_config: object) -> int | None:
+    """Epoch of the checkpoint a trained method loads (None for untrained methods)."""
+    if not isinstance(method_config, NDSTrainedConfig):
+        return None
+    checkpoints = sorted((method_config.run_dir / "checkpoints").glob("epoch_*.pt"))
+    if not checkpoints:
+        return None
+    return int(checkpoints[-1].stem.split("_")[1])
 
 
 def _select_problems(
@@ -222,32 +224,15 @@ def _select_problems(
     return settings
 
 
-def _evaluated_cells() -> set[tuple[str, str]]:
-    """(config, problem_label) pairs already recorded in any results summary.
-
-    A cell counts as evaluated once its (config name, label) appears in a written
-    summary CSV, so re-running a same-named config skips cells another config (or an
-    earlier run) already produced. Matching is by config name only, by design.
-    """
-    done: set[tuple[str, str]] = set()
-    if not RESULTS_DIR.exists():
-        return done
-    for summary in RESULTS_DIR.glob("**/summary_*.csv"):
-        frame = pl.read_csv(summary, columns=["config", "problem_label"])
-        done.update(zip(frame["config"].to_list(), frame["problem_label"].to_list()))
-    return done
-
-
 def _drop_evaluated(
-    config_name: str, settings: list[SyntheticProblemSetting | CVRPLibProblemSetting]
+    method_dir: Path, settings: list[SyntheticProblemSetting | CVRPLibProblemSetting]
 ) -> list[SyntheticProblemSetting | CVRPLibProblemSetting]:
-    done = _evaluated_cells()
+    """Drop settings whose task dir (``<method_dir>/<label>/summary.csv``) already exists."""
     remaining: list[SyntheticProblemSetting | CVRPLibProblemSetting] = []
     for setting in settings:
-        if (config_name, setting.label) in done:
+        if (method_dir / setting.label / "summary.csv").exists():
             console.print(
-                f"[dim]{setting.label}: already evaluated for {config_name}; skipping "
-                f"(use --force to recompute).[/dim]"
+                f"[dim]{setting.label}: already evaluated; skipping (use --force to recompute).[/dim]"
             )
         else:
             remaining.append(setting)
@@ -266,7 +251,8 @@ def _run_synthetic(
     setting: SyntheticProblemSetting,
     eval_config: EvaluationConfig,
     device: torch.device,
-    eval_dir: Path,
+    method_dir: Path,
+    checkpoint_epoch: int | None,
     checkpoint_steps: list[int],
     log_wandb: bool,
 ) -> tuple[SyntheticSummaryRow, list[SyntheticCurveRow]]:
@@ -289,21 +275,24 @@ def _run_synthetic(
     )
     result = evaluator.evaluate(setting, method)
 
+    task_dir = method_dir / setting.label
     SyntheticInstanceRow.write(
         SyntheticInstanceRow.build(config=eval_config.name, setting=setting, result=result),
-        path=eval_dir / f"{setting.label}_instances.csv",
+        path=task_dir / "instances.csv",
     )
     curve = SyntheticCurveRow.build(result)
-    SyntheticCurveRow.write(curve, path=eval_dir / f"{setting.label}_curve.csv")
-    _save_synthetic_plots(setting, result, plot_cb, eval_dir)
+    SyntheticCurveRow.write(curve, path=task_dir / "curve.csv")
+    _save_synthetic_plots(setting, result, plot_cb, task_dir)
 
     summary_row = SyntheticSummaryRow.build(
         config=eval_config.name,
         method_type=eval_config.method.type,
+        checkpoint_epoch=checkpoint_epoch,
         setting=setting,
         result=result,
         destruction_size=method.search.deconstruction_size,
     )
+    SyntheticSummaryRow.write([summary_row], path=task_dir / "summary.csv")
     return summary_row, curve
 
 
@@ -311,9 +300,9 @@ def _save_synthetic_plots(
     setting: SyntheticProblemSetting,
     result: EvaluationResult,
     plot_cb: PlotSnapshotCallback,
-    eval_dir: Path,
+    task_dir: Path,
 ) -> None:
-    plots_dir = eval_dir / "plots"
+    plots_dir = task_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     mean = result.objective_per_step.mean(dim=1).tolist()
@@ -343,7 +332,8 @@ def _run_cvrplib(
     setting: CVRPLibProblemSetting,
     eval_config: EvaluationConfig,
     device: torch.device,
-    eval_dir: Path,
+    method_dir: Path,
+    checkpoint_epoch: int | None,
     log_wandb: bool,
 ) -> CvrplibSummaryRow | None:
     console.rule(f"[bold]{setting.label}[/bold] (CVRPLIB)")
@@ -386,15 +376,19 @@ def _run_cvrplib(
             )
     elapsed = time.perf_counter() - start
 
-    CvrplibInstanceRow.write(rows, path=eval_dir / f"{setting.label}_instances.csv")
-    return CvrplibSummaryRow.build(
+    task_dir = method_dir / setting.label
+    CvrplibInstanceRow.write(rows, path=task_dir / "instances.csv")
+    summary_row = CvrplibSummaryRow.build(
         config=eval_config.name,
         method_type=eval_config.method.type,
+        checkpoint_epoch=checkpoint_epoch,
         setting=setting,
         instance_rows=rows,
         total_time_s=elapsed,
         destruction_size=method.search.deconstruction_size,
     )
+    CvrplibSummaryRow.write([summary_row], path=task_dir / "summary.csv")
+    return summary_row
 
 
 def _cvrplib_paths(setting: CVRPLibProblemSetting) -> list[Path]:
@@ -416,54 +410,57 @@ def _n_customers_from_stem(stem: str) -> int:
         return -1
 
 
-def _init_wandb(
+def _init_task_wandb(
     eval_config: EvaluationConfig,
-    eval_id: str,
-    settings: list[SyntheticProblemSetting | CVRPLibProblemSetting],
+    setting: SyntheticProblemSetting | CVRPLibProblemSetting,
 ) -> None:
-    """Start the eval run before the settings loop so metrics stream live."""
+    """Start a per-task wandb run before evaluating ``setting`` so metrics stream live.
+
+    Every task of an eval shares a wandb ``group`` (the source run or config name) so
+    they stay together in the dashboard while keeping individual run ids.
+    """
     import wandb
 
     trained = isinstance(eval_config.method, NDSTrainedConfig)
     source_run_name = Path(eval_config.method.run_dir).name if trained else None
     wandb.init(
         project=eval_config.logging.wandb_project,
-        name=f"eval-{eval_config.name}-{eval_id}",
+        name=f"eval-{eval_config.name}-{setting.label}",
         job_type="eval",
         group=source_run_name if trained else eval_config.name,
         tags=[
             eval_config.method.type,
             f"M={eval_config.method.search.deconstruction_size}",
-            *(setting.label for setting in settings),
+            setting.label,
         ],
         config={
-            "eval_id": eval_id,
             "eval_config": eval_config.model_dump(mode="json"),
+            "problem_label": setting.label,
         },
+        reinit=True,
     )
 
 
-def _finalize_wandb(
+def _finalize_task_wandb(
     eval_config: EvaluationConfig,
-    eval_id: str,
-    eval_dir: Path,
-    summary_rows: list[SummaryRowBase],
-    curves: dict[str, list[SyntheticCurveRow]],
+    setting: SyntheticProblemSetting | CVRPLibProblemSetting,
+    method_dir: Path,
+    summary_row: SummaryRowBase | None,
+    curve: list[SyntheticCurveRow] | None,
 ) -> None:
-    """Log final summary scalars and obj(step)/obj(time) curves, then upload the artifact."""
+    """Log this task's summary scalars and obj curves, upload its task dir, then finish.
+
+    The artifact is logged to the active per-task run, so it lives under that run's id.
+    """
     import wandb
     from core.results.wandb_artifacts import upload_eval_dir
 
-    trained = isinstance(eval_config.method, NDSTrainedConfig)
-    source_run_name = Path(eval_config.method.run_dir).name if trained else None
-
-    for row in summary_rows:
-        dumped = row.model_dump()
-        label = dumped["problem_label"]
-        for key, value in dumped.items():
+    label = setting.label
+    if summary_row is not None:
+        for key, value in summary_row.model_dump().items():
             if isinstance(value, (int, float)) and key not in {"n_instances", "size"}:
                 wandb.summary[f"eval/{label}/{key}"] = value
-    for label, curve in curves.items():
+    if curve is not None:
         table = wandb.Table(
             columns=["step", "obj_mean", "obj_std", "time_total_s", "time_per_instance_s"],
             data=[
@@ -482,16 +479,16 @@ def _finalize_wandb(
             }
         )
 
+    trained = isinstance(eval_config.method, NDSTrainedConfig)
+    source_run_name = Path(eval_config.method.run_dir).name if trained else None
     upload_eval_dir(
-        run_name=source_run_name or eval_config.name,
-        eval_dir=eval_dir,
-        eval_id=eval_id,
+        run_name=f"{source_run_name or eval_config.name}-{label}",
+        eval_dir=method_dir / label,
         metadata={
-            "eval_id": eval_id,
             "config": eval_config.name,
             "method_type": eval_config.method.type,
+            "problem_label": label,
         },
-        link_checkpoint_alias="final" if trained else None,
     )
     wandb.finish()
 
