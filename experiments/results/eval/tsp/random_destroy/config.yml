@@ -10,7 +10,7 @@ method:
     first_repair_uses_rollout_order: true
     improvement_step_type: numba_sequential
     apply_and_repair_backend: numba
-    insert_in_new_routes_only: false
+    insert_in_affected_routes_only: false
     acceptance:
       type: sa
       temperature_start: 0.1
@@ -24,37 +24,38 @@ method:
       destroy_type: random_node
     n_augmentations: 1
   seed: 0
-problems:
-- kind: synthetic
-  problem:
-    name: tsp
-    size: 20
-    min_coordinate: 0.0
-    max_coordinate: 1.0
-  dataset_path: data/synthetic/tsp/tsp20_test_seed1234.pkl
-  num_test_instances: 10000
-  batch_size: 100
-  test_seed: 2026
-- kind: synthetic
-  problem:
-    name: tsp
-    size: 50
-    min_coordinate: 0.0
-    max_coordinate: 1.0
-  dataset_path: data/synthetic/tsp/tsp50_test_seed1234.pkl
-  num_test_instances: 10000
-  batch_size: 100
-  test_seed: 2026
-- kind: synthetic
-  problem:
-    name: tsp
-    size: 100
-    min_coordinate: 0.0
-    max_coordinate: 1.0
-  dataset_path: data/synthetic/tsp/tsp100_test_seed1234.pkl
-  num_test_instances: 10000
-  batch_size: 100
-  test_seed: 2026
+settings:
+  main:
+  - kind: synthetic
+    problem:
+      name: tsp
+      size: 20
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/tsp/tsp20_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
+  - kind: synthetic
+    problem:
+      name: tsp
+      size: 50
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/tsp/tsp50_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
+  - kind: synthetic
+    problem:
+      name: tsp
+      size: 100
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/tsp/tsp100_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
 num_plot_instances: 0
 logging:
   wandb_project: nds
