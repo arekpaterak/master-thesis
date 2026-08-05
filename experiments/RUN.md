@@ -1,7 +1,7 @@
 Train the NDS model:
 
 ```bash
-python experiments/train.py --config experiments/configs/train/nds_cvrp_100.yml
+python experiments/train.py --config experiments/configs/train/cvrp/nds_cvrp_100.yml
 ```
 
 Evaluate a method:
@@ -19,7 +19,7 @@ under `configs/eval/` is mirrored in the results tree, so
 
 An eval config binds one method to a list of problem settings:
 
-- `configs/eval/<problem>/<name>.yml` -- the method (a `runs/featured/...` run, a
+- `configs/eval/<problem>/<name>.yml` -- the method (a `runs/<problem>/featured/...` run, a
   pretrained checkpoint, or random-destroy) plus its `search`, and the `problems` to
   evaluate on (in-distribution, out-of-distribution sizes, CVRPLIB).
 - `configs/eval/<problem>/problems/*.yml` -- reusable problem settings.
@@ -28,4 +28,4 @@ An eval config binds one method to a list of problem settings:
 `method.search` and each `problems` entry may be a string path (relative to
 `configs/eval/`) or an inline block. 
 Worthy training runs are moved by hand into
-`experiments/runs/featured/` and referenced by `method.run_dir`.
+`experiments/runs/<problem>/featured/` and referenced by `method.run_dir`.

@@ -1,6 +1,6 @@
 method:
   type: nds-trained
-  run_dir: experiments/runs/featured/nds_cvrp_50_split+simple
+  run_dir: experiments/runs/cvrp/featured/nds_cvrp_50_split+simple
   search: ../search/sa.yml
 
 problems:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -161,7 +162,26 @@ def _load_config(
             yaml_data = yaml.safe_load(f) or {}
 
     _merge_overrides(yaml_data, overrides)
+    _backfill_run_name(yaml_data, config_path, resume_run_dir)
     return TrainConfig.model_validate(yaml_data)
+
+
+def _backfill_run_name(
+    yaml_data: dict,
+    config_path: Path | None,
+    resume_run_dir: Path | None,
+) -> None:
+    """Default ``run_name`` to the config filename stem plus a timestamp.
+
+    Only assigned for a fresh run started from a config file, and only when the
+    config did not already set ``run_name``.
+    """
+    if resume_run_dir is not None or config_path is None:
+        return
+    if yaml_data.get("run_name"):
+        return
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    yaml_data["run_name"] = f"{config_path.stem}-{timestamp}"
 
 
 def _merge_overrides(yaml_data: dict, overrides: dict[str, object]) -> None:
