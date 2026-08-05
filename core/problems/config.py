@@ -26,3 +26,16 @@ class BaseProblemConfig(BaseModel):
 
     def to_problem(self) -> CVRP | TSP:
         raise NotImplementedError
+
+
+def depot_offset(problem_name: str) -> int:
+    """Number of leading non-customer nodes in a ``(B, N + offset, D)`` node tensor."""
+    match problem_name:
+        case "cvrp":
+            return 1
+        case "tsp":
+            return 0
+        case "cmstp":
+            return 1
+        case _:
+            raise ValueError(f"Unsupported problem_name: {problem_name}")
