@@ -1,0 +1,11 @@
+method:
+  type: nds-trained
+  run_dir: experiments/runs/featured/nds_tsp_100+simple
+  search: search/sa.yml
+
+settings:
+  main:
+    - problems/tsp_100_data.yml
+
+logging:
+  wandb_project: nds

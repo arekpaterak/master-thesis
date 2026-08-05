@@ -1,11 +1,11 @@
 from core.results.synthetic.rows import (
-    SyntheticCurveRow,
     SyntheticInstanceRow,
+    SyntheticStepRow,
     SyntheticSummaryRow,
 )
 
 __all__ = [
-    "SyntheticCurveRow",
+    "SyntheticStepRow",
     "SyntheticInstanceRow",
     "SyntheticSummaryRow",
 ]

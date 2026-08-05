@@ -1,4 +1,4 @@
-from core.eval.config import EvaluationConfig
+from core.eval.config import EvalRunConfig, EvaluationConfig
 from core.eval.problem_setting import (
     CVRPLibProblemSetting,
     ProblemSetting,
@@ -7,6 +7,7 @@ from core.eval.problem_setting import (
 
 __all__ = [
     "CVRPLibProblemSetting",
+    "EvalRunConfig",
     "EvaluationConfig",
     "ProblemSetting",
     "SyntheticProblemSetting",

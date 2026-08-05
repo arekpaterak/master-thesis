@@ -41,7 +41,8 @@ class Row(BaseModel):
 class SummaryRowBase(Row):
     config: str
     method_type: str
-    problem_label: str
+    setting: str
+    group: str
     problem_kind: str
     checkpoint_epoch: int | None
     n_instances: int

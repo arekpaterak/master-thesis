@@ -33,6 +33,7 @@ class SyntheticSummaryRow(SummaryRowBase):
         *,
         config: str,
         method_type: str,
+        group: str,
         checkpoint_epoch: int | None,
         setting: SyntheticProblemSetting,
         result: EvaluationResult,
@@ -45,7 +46,8 @@ class SyntheticSummaryRow(SummaryRowBase):
         return cls(
             config=config,
             method_type=method_type,
-            problem_label=setting.label,
+            setting=setting.label,
+            group=group,
             problem_kind="synthetic",
             checkpoint_epoch=checkpoint_epoch,
             n_instances=n_instances,
@@ -70,10 +72,11 @@ class SyntheticSummaryRow(SummaryRowBase):
 
 
 class SyntheticInstanceRow(Row):
-    """One row of {label}_instances.csv: a single synthetic instance's outcome."""
+    """One row of instances.csv: a single synthetic instance's outcome."""
 
     config: str
-    problem_label: str
+    setting: str
+    group: str
     instance_id: str
     source: str
     initial_objective: float
@@ -82,7 +85,7 @@ class SyntheticInstanceRow(Row):
 
     @classmethod
     def build(
-        cls, *, config: str, setting: SyntheticProblemSetting, result: EvaluationResult
+        cls, *, config: str, group: str, setting: SyntheticProblemSetting, result: EvaluationResult
     ) -> list[Self]:
         objective = result.objective_per_step
         initial, final = objective[0], objective[-1]
@@ -90,7 +93,8 @@ class SyntheticInstanceRow(Row):
         return [
             cls(
                 config=config,
-                problem_label=setting.label,
+                setting=setting.label,
+                group=group,
                 instance_id=f"{setting.label}-{source}-{i:04d}",
                 source=source,
                 initial_objective=initial[i].item(),
@@ -101,10 +105,10 @@ class SyntheticInstanceRow(Row):
         ]
 
 
-class SyntheticCurveRow(Row):
-    """One row of {label}_curve.csv: mean objective and elapsed time at one step."""
+class SyntheticStepRow(Row):
+    """One row of steps.csv: mean objective and elapsed time at one improvement step."""
 
-    lns_step: int
+    step: int
     obj_mean: float
     obj_std: float
     time_total_s: float
@@ -118,7 +122,7 @@ class SyntheticCurveRow(Row):
         n_instances = max(objective.shape[1], 1)
         return [
             cls(
-                lns_step=step,
+                step=step,
                 obj_mean=mean[idx].item(),
                 obj_std=std[idx].item(),
                 time_total_s=result.time_per_step[idx],

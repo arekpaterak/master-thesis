@@ -12,7 +12,8 @@ def test_row_write_roundtrip(tmp_path: Path) -> None:
     rows = [
         SyntheticInstanceRow(
             config="random_destroy",
-            problem_label="cvrp20",
+            setting="cvrp20",
+            group="main",
             instance_id="cvrp20-seed7-0000",
             source="seed7",
             initial_objective=5.7,
@@ -42,7 +43,8 @@ def test_row_write_derives_nullable_from_optional_field(tmp_path: Path) -> None:
     row = CvrplibSummaryRow(
         config="random_destroy",
         method_type="random-destroy",
-        problem_label="cvrplib-X",
+        setting="cvrplib-X",
+        group="generalisation",
         problem_kind="cvrplib",
         checkpoint_epoch=None,
         n_instances=1,

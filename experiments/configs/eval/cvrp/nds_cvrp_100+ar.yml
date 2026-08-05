@@ -1,0 +1,14 @@
+method:
+  type: nds-trained
+  run_dir: experiments/runs/cvrp/featured/nds_cvrp_100+ar
+  search: search/sa.yml
+
+settings:
+  main:
+    - problems/cvrp_100_data.yml
+  generalisation:
+    - problems/cvrp_200_data.yml
+    - problems/cvrplib_x.yml
+
+logging:
+  wandb_project: nds

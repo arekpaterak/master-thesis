@@ -25,13 +25,13 @@ def _():
     mo.md(r"""
     # Objective curves
 
-    One pair of plots per problem, read from the saved `curve.csv` files: objective
-    against wall-clock time, and objective against LNS step. Each run is a line whose
-    points are the logged steps.
+    One pair of plots per problem, read from the saved `steps.csv` files: objective
+    against wall-clock time, and objective against improvement step. Each run is a line
+    whose points are the logged steps.
 
     Add a problem by giving `PROBLEMS` a new titled entry; add a run by naming its eval
     config in that problem's `runs`. Each run resolves to
-    `results/eval/<problem>/<method>/<task>/curve.csv`.
+    `results/eval/<problem>/<method>/<task>/steps.csv`.
     """)
     return
 
@@ -79,10 +79,10 @@ def _():
 def _(PROBLEMS: dict[str, dict], X_COLUMN):
     RESULTS_EVAL = project_root() / "experiments" / "results" / "eval"
 
-    def load_curve(problem: str, method: str, task: str) -> pl.DataFrame:
-        path = RESULTS_EVAL / problem / method / task / "curve.csv"
+    def load_steps(problem: str, method: str, task: str) -> pl.DataFrame:
+        path = RESULTS_EVAL / problem / method / task / "steps.csv"
         if not path.exists():
-            raise FileNotFoundError(f"No curve at {path}")
+            raise FileNotFoundError(f"No steps file at {path}")
         frame = pl.read_csv(path)
         if X_COLUMN not in frame.columns:
             raise ValueError(
@@ -91,11 +91,11 @@ def _(PROBLEMS: dict[str, dict], X_COLUMN):
             )
         return frame
 
-    # Skip runs whose method name is an unfilled placeholder; a named-but-missing curve
-    # still raises in load_curve so typos are caught.
+    # Skip runs whose method name is an unfilled placeholder; a named-but-missing file
+    # still raises in load_steps so typos are caught.
     curves_by_problem = {
         title: {
-            label: load_curve(spec["problem"], method, spec["task"])
+            label: load_steps(spec["problem"], method, spec["task"])
             for label, method in spec["runs"]
             if method
         }
@@ -185,7 +185,7 @@ def _(X_COLUMN, curves_by_problem, marker_every_ui, skip_first_ui):
             "obj_step": plot_obj(
                 curves,
                 title,
-                "lns_step",
+                "step",
                 "Improvement step",
                 marker_every_ui.value,
                 skip_first_ui.value,

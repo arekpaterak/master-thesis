@@ -1,0 +1,11 @@
+method:
+  type: nds-trained
+  run_dir: experiments/runs/featured/nds_cmstp_100+simple
+  search: search/sa.yml
+
+settings:
+  main:
+    - problems/cmstp_100_data.yml
+
+logging:
+  wandb_project: nds

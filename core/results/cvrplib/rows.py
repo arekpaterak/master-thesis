@@ -37,6 +37,7 @@ class CvrplibSummaryRow(SummaryRowBase):
         *,
         config: str,
         method_type: str,
+        group: str,
         checkpoint_epoch: int | None,
         setting: CVRPLibProblemSetting,
         instance_rows: Sequence[CvrplibInstanceRow],
@@ -48,7 +49,8 @@ class CvrplibSummaryRow(SummaryRowBase):
         return cls(
             config=config,
             method_type=method_type,
-            problem_label=setting.label,
+            setting=setting.label,
+            group=group,
             problem_kind="cvrplib",
             checkpoint_epoch=checkpoint_epoch,
             n_instances=len(instance_rows),

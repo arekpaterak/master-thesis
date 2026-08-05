@@ -6,19 +6,43 @@ from typing import Self
 import yaml
 from pydantic import BaseModel, Field
 
-from core.eval.problem_setting import CVRPLibProblemSetting, ProblemSetting
+from core.eval.problem_setting import (
+    CVRPLibProblemSetting,
+    ProblemSetting,
+)
 from core.logging_config import LoggingConfig
 from core.methods import MethodConfig
 
 
+class EvalRunConfig(BaseModel):
+    """A single method evaluated on a single (grouped) setting -- one eval run."""
+
+    model_config = {"extra": "forbid"}
+
+    name: str
+    group: str
+    method: MethodConfig
+    setting: ProblemSetting
+    num_plot_instances: int = 0
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
+
+    @property
+    def problem_name(self) -> str:
+        if isinstance(self.setting, CVRPLibProblemSetting):
+            return "cvrp"
+        return self.setting.problem.name
+
+
 class EvaluationConfig(BaseModel):
-    """A method evaluated across a list of problem settings."""
+    """A method evaluated across settings, grouped by role (e.g. main, generalisation)."""
 
     model_config = {"extra": "forbid"}
 
     name: str | None = Field(default=None, description="Config name (defaults to the filename).")
     method: MethodConfig = Field(description="The method under evaluation.")
-    problems: list[ProblemSetting] = Field(description="Problem settings to evaluate on.")
+    settings: dict[str, list[ProblemSetting]] = Field(
+        description="Settings grouped by role, e.g. {main: [...], generalisation: [...]}.",
+    )
     num_plot_instances: int = Field(
         default=0, description="Instances to plot per synthetic setting."
     )
@@ -28,11 +52,27 @@ class EvaluationConfig(BaseModel):
     def problem_name(self) -> str:
         names = {
             "cvrp" if isinstance(setting, CVRPLibProblemSetting) else setting.problem.name
-            for setting in self.problems
+            for group in self.settings.values()
+            for setting in group
         }
         if len(names) > 1:
-            raise ValueError(f"All problem settings must share one problem type, got {names}.")
+            raise ValueError(f"All settings must share one problem type, got {names}.")
         return names.pop() if names else "cvrp"
+
+    def runs(self) -> list[EvalRunConfig]:
+        """One :class:`EvalRunConfig` per (group, setting), in declaration order."""
+        return [
+            EvalRunConfig(
+                name=self.name or "",
+                group=group,
+                method=self.method,
+                setting=setting,
+                num_plot_instances=self.num_plot_instances,
+                logging=self.logging,
+            )
+            for group, settings in self.settings.items()
+            for setting in settings
+        ]
 
     @classmethod
     def from_file(cls, path: str | Path, *, root: Path | None = None) -> Self:
@@ -44,8 +84,11 @@ class EvaluationConfig(BaseModel):
         method = raw.get("method")
         if isinstance(method, dict) and "search" in method:
             method["search"] = cls._resolve(method["search"], root)
-        if "problems" in raw:
-            raw["problems"] = [cls._resolve(problem, root) for problem in raw["problems"]]
+        if isinstance(raw.get("settings"), dict):
+            raw["settings"] = {
+                group: [cls._resolve(setting, root) for setting in settings]
+                for group, settings in raw["settings"].items()
+            }
 
         return cls.model_validate(raw)
 

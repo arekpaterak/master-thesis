@@ -1,0 +1,16 @@
+method:
+  type: random-destroy
+  seed: 0
+  search: search/sa.yml
+
+settings:
+  main:
+    - problems/cvrp_20_data.yml
+    - problems/cvrp_50_data.yml
+    - problems/cvrp_100_data.yml
+  generalisation:
+    - problems/cvrp_200_data.yml
+    - problems/cvrplib_x.yml
+
+logging:
+  wandb_project: nds
