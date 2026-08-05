@@ -127,7 +127,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         n_repairs: int = 1,
         seed: int = 0,
         first_repair_uses_rollout_order: bool = False,
-        insert_in_new_routes_only: bool = False,
+        insert_in_affected_routes_only: bool = False,
     ) -> None:
         self._validate_repair(repair)
         self._destroy = destroy
@@ -135,7 +135,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         self._n_repairs = n_repairs
         self._seed = seed
         self._first_repair_uses_rollout_order = first_repair_uses_rollout_order
-        self._insert_in_new_routes_only = insert_in_new_routes_only
+        self._insert_in_affected_routes_only = insert_in_affected_routes_only
 
     @property
     def _operators_with_search_sessions(self) -> tuple[NodeDestroyOperator, ...]:
@@ -191,6 +191,10 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         accept_kind: int,
         temperature: float,
     ) -> CMSTPSolution:
+        if self._insert_in_affected_routes_only:
+            raise NotImplementedError(
+                "insert_in_affected_routes_only is a CVRP-only concept (CMSTP has a tree, not routes)."
+            )
         return solution.apply_and_repair_sequential(
             nodes_to_remove,
             n_repairs=self._n_repairs,
@@ -227,7 +231,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
             eps=EPS,
             base_seed=self._seed,
             first_repair_uses_order=self._first_repair_uses_rollout_order,
-            insert_in_new_routes_only=self._insert_in_new_routes_only,
+            insert_in_affected_routes_only=self._insert_in_affected_routes_only,
         )
         return CVRPGraphSolution.from_numpy_arrays(
             instance=solution.instance,
@@ -249,9 +253,9 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         )
         from core.problems.tsp.graph_solution import TSPGraphSolution
 
-        if self._insert_in_new_routes_only:
+        if self._insert_in_affected_routes_only:
             raise NotImplementedError(
-                "insert_in_new_routes_only is a CVRP-only concept (TSP has a single "
+                "insert_in_affected_routes_only is a CVRP-only concept (TSP has a single "
                 "tour, no routes)."
             )
 

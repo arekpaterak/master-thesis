@@ -85,7 +85,9 @@ class TestTSPNumbaSequentialImprovementStep:
 
         assert torch.equal(first.next_nodes, second.next_nodes)
 
-    def test_insert_in_new_routes_only_is_unsupported(self, solution: TSPGraphSolution) -> None:
+    def test_insert_in_affected_routes_only_is_unsupported(
+        self, solution: TSPGraphSolution
+    ) -> None:
         destroy = RandomNodeDestroy[TSPGraphSolution](destruction_size=10, seed=42)
         step = NumbaSequentialImprovementStep(
             destroy=destroy,
@@ -93,7 +95,7 @@ class TestTSPNumbaSequentialImprovementStep:
             num_rollouts=4,
             n_repairs=3,
             seed=7,
-            insert_in_new_routes_only=True,
+            insert_in_affected_routes_only=True,
         )
 
         with pytest.raises(NotImplementedError):

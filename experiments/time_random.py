@@ -32,7 +32,7 @@ def make_method(
         n_repairs=repairs,
         improvement_step_type=step_type,
         first_repair_uses_rollout_order=True,
-        insert_in_new_routes_only=True,
+        insert_in_affected_routes_only=True,
         n_augmentations=n_aug,
         acceptance=SimulatedAnnealingAcceptanceConfig(),
         start_solution_params=StartSolutionParams(num_improvement_steps=warmup_steps),

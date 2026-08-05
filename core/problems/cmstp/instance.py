@@ -13,15 +13,15 @@ if TYPE_CHECKING:
 
 class CMSTPInstance(BaseProblemInstance):
     locations: torch.Tensor
-    """(B, N+1, 2) or (N+1, 2) - root first, then N terminals."""
+    """(B, N+1, 2) or (N+1, 2) - depot first, then N customers."""
     demand: torch.Tensor
-    """(B, N+1) or (N+1,) - raw (unnormalised) demand, root entry is 0."""
+    """(B, N+1) or (N+1,) - raw (unnormalised) demand, depot entry is 0."""
     capacity: torch.Tensor
     """(B, 1) or (1,) - raw (unnormalised) per-subtree capacity."""
     coordinate_scale: torch.Tensor
     """(B, 1) or (1,) - cumulative scale factor applied by normalize_(). 1.0 for sampler instances."""
 
-    ROOT = 0
+    DEPOT = 0
 
     @classmethod
     def create(
@@ -73,39 +73,39 @@ class CMSTPInstance(BaseProblemInstance):
         return self.locations.shape[-2]
 
     @property
-    def num_terminals(self) -> int:
-        """N, the non-root nodes."""
+    def num_customers(self) -> int:
+        """N, the non-depot nodes."""
         return self.num_nodes - 1
 
     @property
     def problem_size(self) -> int:
-        return self.num_terminals
+        return self.num_customers
 
     @property
-    def root_location(self) -> torch.Tensor:
+    def depot_location(self) -> torch.Tensor:
         return self.locations[..., :1, :]  # (..., 1, 2)
 
     @property
-    def terminal_locations(self) -> torch.Tensor:
+    def customer_locations(self) -> torch.Tensor:
         return self.locations[..., 1:, :]
 
     @property
-    def terminal_demands(self) -> torch.Tensor:
-        """(..., N) raw terminal demands (excludes the root)."""
+    def customer_demands(self) -> torch.Tensor:
+        """(..., N) raw customer demands (excludes the depot)."""
         return self.demand[..., 1:]
 
     @property
     def normalized_demand(self) -> torch.Tensor:
-        """(..., N+1) demand normalised by capacity, in [0, 1] (root is 0)."""
+        """(..., N+1) demand normalised by capacity, in [0, 1] (depot is 0)."""
         return self.demand / self.capacity
 
     @property
-    def normalized_terminal_demands(self) -> torch.Tensor:
-        """(..., N) capacity-normalised terminal demands in (0, 1] (excludes the root)."""
-        return self.terminal_demands / self.capacity
+    def normalized_customer_demands(self) -> torch.Tensor:
+        """(..., N) capacity-normalised customer demands in (0, 1] (excludes the depot)."""
+        return self.customer_demands / self.capacity
 
     def distances(self) -> torch.Tensor:
-        """(..., N+1, N+1) pairwise Euclidean distances between all nodes (root + terminals)."""
+        """(..., N+1, N+1) pairwise Euclidean distances between all nodes (depot + customers)."""
         return torch.cdist(self.locations, self.locations)
 
     def normalize_(self) -> None:
@@ -143,15 +143,15 @@ class CMSTPInstance(BaseProblemInstance):
         )
 
     @property
-    def terminal_features(self) -> torch.Tensor:
+    def customer_features(self) -> torch.Tensor:
         """(..., N, 3) content features [x, y, normalized_demand] for the encoder."""
-        terminal_locations = self.locations[..., 1:, :]
-        terminal_demands = self.normalized_terminal_demands.unsqueeze(-1)
-        return torch.cat([terminal_locations, terminal_demands], dim=-1)
+        customer_locations = self.locations[..., 1:, :]
+        customer_demands = self.normalized_customer_demands.unsqueeze(-1)
+        return torch.cat([customer_locations, customer_demands], dim=-1)
 
-    def root_anchored_polar_angle(self) -> torch.Tensor:
-        """(..., N) float - root-anchored polar angle of each terminal in [-pi, pi]."""
-        relative = self.terminal_locations - self.root_location  # (..., N, 2)
+    def depot_anchored_polar_angle(self) -> torch.Tensor:
+        """(..., N) float - depot-anchored polar angle of each customer in [-pi, pi]."""
+        relative = self.customer_locations - self.depot_location  # (..., N, 2)
         return torch.atan2(relative[..., 1], relative[..., 0])  # (..., N) in [-pi, pi]
 
     def visualize(

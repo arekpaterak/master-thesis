@@ -69,7 +69,7 @@ class TestNumbaModelSequentialImprovementStep:
         assert improved.is_complete.all()
         assert improved.is_feasible.all()
 
-    def test_insert_in_new_routes_only_stays_complete_and_feasible(
+    def test_insert_in_affected_routes_only_stays_complete_and_feasible(
         self, model: JointNDSModel, solution: CVRPGraphSolution
     ) -> None:
         destroy = ModelNodeDestroy(model=model, deconstruction_size=10, stitch=True)
@@ -79,7 +79,7 @@ class TestNumbaModelSequentialImprovementStep:
             num_rollouts=4,
             n_repairs=2,
             seed=7,
-            insert_in_new_routes_only=True,
+            insert_in_affected_routes_only=True,
         )
 
         improved = step(solution, GreedyAcceptance())

@@ -31,11 +31,11 @@ class CMSTPSampler(Sampler[CMSTPInstance]):
         g = self._generator
 
         span = cfg.max_coordinate - cfg.min_coordinate
-        terminal_locations = (
-            torch.rand(batch_size, cfg.num_terminals, 2, generator=g) * span + cfg.min_coordinate
+        customer_locations = (
+            torch.rand(batch_size, cfg.num_customers, 2, generator=g) * span + cfg.min_coordinate
         )
-        root_location = torch.rand(batch_size, 1, 2, generator=g) * span + cfg.min_coordinate
-        locations = torch.cat([root_location, terminal_locations], dim=1)  # (batch, n+1, 2)
+        depot_location = torch.rand(batch_size, 1, 2, generator=g) * span + cfg.min_coordinate
+        locations = torch.cat([depot_location, customer_locations], dim=1)  # (batch, n+1, 2)
 
         demand = self._sample_demand(batch_size)  # (batch, n+1), raw
         capacity = torch.full((batch_size, 1), float(cfg.capacity_raw))
@@ -49,10 +49,10 @@ class CMSTPSampler(Sampler[CMSTPInstance]):
         demand = torch.randint(
             cfg.min_demand_raw,
             cfg.max_demand_raw + 1,
-            (batch_size, cfg.num_terminals),
+            (batch_size, cfg.num_customers),
             generator=g,
         ).float()
 
-        # The root does not have a demand.
-        root_demand = torch.zeros(batch_size, 1)
-        return torch.cat([root_demand, demand], dim=1)  # (batch, n+1)
+        # The depot does not have a demand.
+        depot_demand = torch.zeros(batch_size, 1)
+        return torch.cat([depot_demand, demand], dim=1)  # (batch, n+1)

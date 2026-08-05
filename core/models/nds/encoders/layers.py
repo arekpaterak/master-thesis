@@ -168,28 +168,28 @@ class TreeNeighboursEncodingLayer(nn.Module):
     ) -> torch.Tensor:
         """
         Args:
-            h: (B, N+1, hidden_dim) node embeddings. h[:, 0] is the root.
-            parent_index: (B, N) parent node index per terminal. 0 = root, 1..N = terminal.
+            h: (B, N+1, hidden_dim) node embeddings. h[:, 0] is the depot.
+            parent_index: (B, N) parent node index per customer. 0 = depot, 1..N = customer.
 
         Returns:
             (B, N+1, hidden_dim) updated node embeddings after message passing.
         """
         B, N = parent_index.shape
         hidden_dim = h.shape[-1]
-        offset = h.shape[-2] - N  # 1 (the root)
+        offset = h.shape[-2] - N  # 1 (the depot)
 
         source = self.norm(h) if self.pre_norm else h
-        terminal_embeddings = source[:, offset:]  # (B, N, hidden_dim)
+        customer_embeddings = source[:, offset:]  # (B, N, hidden_dim)
 
-        # Parent message: gather each terminal's parent embedding over the full node set.
+        # Parent message: gather each customer's parent embedding over the full node set.
         parent_gather = source.gather(
             1, parent_index[:, :, None].expand(B, N, hidden_dim)
         )  # (B, N, hidden_dim)
         parent_info = self.parent_projector(parent_gather)
 
-        # Children message: scatter-add each terminal's projected embedding into its
-        # parent's bucket (sum aggregation). Bucket 0 (the root) is discarded below.
-        child_projected = self.child_projector(terminal_embeddings)  # (B, N, hidden_dim)
+        # Children message: scatter-add each customer's projected embedding into its
+        # parent's bucket (sum aggregation). Bucket 0 (the depot) is discarded below.
+        child_projected = self.child_projector(customer_embeddings)  # (B, N, hidden_dim)
         child_buckets = torch.zeros(
             B, N + offset, hidden_dim, device=h.device, dtype=child_projected.dtype
         )
@@ -199,7 +199,7 @@ class TreeNeighboursEncodingLayer(nn.Module):
         child_info = child_buckets[:, offset:]  # (B, N, hidden_dim)
 
         neighbour_info = parent_info + child_info
-        combined = torch.cat([terminal_embeddings, neighbour_info], dim=-1)
+        combined = torch.cat([customer_embeddings, neighbour_info], dim=-1)
         update = self.feedforward_layer(F.relu(self.neighbour_combiner(combined)))
 
         raw = h[:, offset:]

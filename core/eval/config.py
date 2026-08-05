@@ -14,7 +14,7 @@ from core.logging_config import LoggingConfig
 from core.methods import MethodConfig
 
 
-class EvalRunConfig(BaseModel):
+class EvaluationRunConfig(BaseModel):
     """A single method evaluated on a single (grouped) setting -- one eval run."""
 
     model_config = {"extra": "forbid"}
@@ -59,10 +59,10 @@ class EvaluationConfig(BaseModel):
             raise ValueError(f"All settings must share one problem type, got {names}.")
         return names.pop() if names else "cvrp"
 
-    def runs(self) -> list[EvalRunConfig]:
-        """One :class:`EvalRunConfig` per (group, setting), in declaration order."""
+    def runs(self) -> list[EvaluationRunConfig]:
+        """One :class:`EvaluationRunConfig` per (group, setting), in declaration order."""
         return [
-            EvalRunConfig(
+            EvaluationRunConfig(
                 name=self.name or "",
                 group=group,
                 method=self.method,

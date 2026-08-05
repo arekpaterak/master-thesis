@@ -33,7 +33,7 @@ def cvrp_solution() -> CVRPSolution:
 def cmstp_solution() -> CMSTPSolution:
     batch_size = 3
     n = 10
-    instance = CMSTPSampler(CMSTP(num_terminals=n, capacity_raw=30), seed=0)(batch_size)
+    instance = CMSTPSampler(CMSTP(num_customers=n, capacity_raw=30), seed=0)(batch_size)
     return CMSTPSolution.star(instance)
 
 
@@ -85,14 +85,14 @@ def test_random_node_fail_on_too_large_destruction_size(
 @pytest.mark.parametrize("destruction_size", [0, 1, 5, 10])
 def test_random_node_select_nodes_cmstp(cmstp_solution: CMSTPSolution, destruction_size: int):
     num_rollouts = 4
-    num_terminals = cmstp_solution.instance.num_terminals
+    num_customers = cmstp_solution.instance.num_customers
     destroy = RandomNodeDestroy(destruction_size=destruction_size, seed=42)
 
     nodes = destroy.select_nodes(cmstp_solution, num_rollouts)
 
     assert nodes.shape == (*cmstp_solution.batch_size, num_rollouts, destruction_size)
-    # The root (index 0) is never removed and every rollout picks distinct terminals.
-    assert (nodes >= 1).all() and (nodes <= num_terminals).all()
+    # The depot (index 0) is never removed and every rollout picks distinct customers.
+    assert (nodes >= 1).all() and (nodes <= num_customers).all()
     for per_rollout in nodes.flatten(end_dim=-2).tolist():
         assert len(set(per_rollout)) == destruction_size
 

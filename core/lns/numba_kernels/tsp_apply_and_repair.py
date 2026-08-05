@@ -4,7 +4,7 @@ Mirrors :mod:`core.lns.numba_kernels.cvrp_apply_and_repair`, minus the
 depot/capacity/route bookkeeping CVRP needs: TSP has no depot and forms a single
 cycle over all nodes, so destroy always stitches directly (no route fragments to
 special-case) and repair has no new-route fallback, no capacity check and no
-``insert_in_new_routes_only`` concept (there are no routes to restrict insertion to).
+``insert_in_affected_routes_only`` concept (there are no routes to restrict insertion to).
 
 Both entry points take externally supplied node sets and, per element, deconstruct
 the tour (stitch-remove those nodes) and greedily reconstruct it via best-of-n

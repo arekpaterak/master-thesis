@@ -68,7 +68,7 @@ def apply_and_repair_sequential(
     eps: float,
     base_seed: int,
     first_repair_uses_order: bool = False,
-    insert_in_new_routes_only: bool = False,
+    insert_in_affected_routes_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Apply each solution's rollouts sequentially with acceptance.
 
@@ -79,7 +79,7 @@ def apply_and_repair_sequential(
     When ``first_repair_uses_order`` is set, the first of the ``n_repairs`` greedy
     insertions follows the provided removal order instead of a random order.
 
-    When ``insert_in_new_routes_only`` is set, removed customers may only be reinserted
+    When ``insert_in_affected_routes_only`` is set, removed customers may only be reinserted
     into routes the destroy touched (their remnants) or routes created during this repair,
     never an untouched route.
 
@@ -99,7 +99,7 @@ def apply_and_repair_sequential(
         eps=float(eps),
         base_seed=int(base_seed),
         first_repair_uses_order=bool(first_repair_uses_order),
-        insert_in_new_routes_only=bool(insert_in_new_routes_only),
+        insert_in_affected_routes_only=bool(insert_in_affected_routes_only),
     )
 
 
@@ -114,7 +114,7 @@ def apply_and_repair_parallel(
     n_repairs: int,
     base_seed: int,
     first_repair_uses_order: bool = False,
-    insert_in_new_routes_only: bool = False,
+    insert_in_affected_routes_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Apply every rollout independently.
 
@@ -141,7 +141,7 @@ def apply_and_repair_parallel(
         n_repairs=int(n_repairs),
         base_seed=int(base_seed),
         first_repair_uses_order=bool(first_repair_uses_order),
-        insert_in_new_routes_only=bool(insert_in_new_routes_only),
+        insert_in_affected_routes_only=bool(insert_in_affected_routes_only),
     )
 
 
@@ -160,7 +160,7 @@ def _sequential_batch(
     eps: float,
     base_seed: int,
     first_repair_uses_order: bool,
-    insert_in_new_routes_only: bool,
+    insert_in_affected_routes_only: bool,
 ) -> tuple[np.ndarray, np.ndarray]:
     global_size = next.shape[0]
     next_out = next.copy()
@@ -176,7 +176,7 @@ def _sequential_batch(
             temperature=temperature,
             eps=eps,
             first_repair_uses_order=first_repair_uses_order,
-            insert_in_new_routes_only=insert_in_new_routes_only,
+            insert_in_affected_routes_only=insert_in_affected_routes_only,
         )
     return next_out, prev_out
 
@@ -193,7 +193,7 @@ def _parallel_batch(
     n_repairs: int,
     base_seed: int,
     first_repair_uses_order: bool,
-    insert_in_new_routes_only: bool,
+    insert_in_affected_routes_only: bool,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     num_instances = next.shape[0]
     num_rollouts = nodes.shape[1]
@@ -215,7 +215,7 @@ def _parallel_batch(
                 instance=instance,
                 n_repairs=n_repairs,
                 first_repair_uses_order=first_repair_uses_order,
-                insert_in_new_routes_only=insert_in_new_routes_only,
+                insert_in_affected_routes_only=insert_in_affected_routes_only,
                 out=Solution(next_out[b, k], prev_out[b, k]),
             )
     return next_out, prev_out, objective
@@ -231,7 +231,7 @@ def _sequential_single_(
     temperature: float,
     eps: float,
     first_repair_uses_order: bool,
-    insert_in_new_routes_only: bool,
+    insert_in_affected_routes_only: bool,
 ) -> None:
     """Apply one element's rollouts sequentially, updating the running solution.
 
@@ -255,7 +255,7 @@ def _sequential_single_(
             instance=instance,
             n_repairs=n_repairs,
             first_repair_uses_order=first_repair_uses_order,
-            insert_in_new_routes_only=insert_in_new_routes_only,
+            insert_in_affected_routes_only=insert_in_affected_routes_only,
             out=candidate,
         )
 
@@ -281,7 +281,7 @@ def _apply_and_repair_one(
     instance: Instance,
     n_repairs: int,
     first_repair_uses_order: bool,
-    insert_in_new_routes_only: bool,
+    insert_in_affected_routes_only: bool,
     out: Solution,
 ) -> float:
     """Deconstruct one customer set and greedily repair it as the best of ``n_repairs`` attempts.
@@ -303,7 +303,7 @@ def _apply_and_repair_one(
     insertable = np.empty(num_nodes, np.bool_)
 
     # Mark insertable routes from the current solution, before it is deconstructed.
-    if insert_in_new_routes_only:
+    if insert_in_affected_routes_only:
         base_insertable[:] = False
         for c in nodes:
             if c >= 1 and not _is_free(current, c):

@@ -7,7 +7,7 @@ from core.problems.cmstp.features import CMSTPInstanceFeatures, CMSTPSolutionFea
 
 
 class CMSTPInitialEmbedding(nn.Module):
-    """Separate linear projections for the root and terminal nodes.
+    """Separate linear projections for the depot and customer nodes.
 
     The CMSTP analog of ``CVRPInitialEmbedding`` without the positional path: the first
     CMSTP runs use content + structural (neighbours/route) signal only, so no in-tree or
@@ -18,17 +18,17 @@ class CMSTPInitialEmbedding(nn.Module):
         self,
         *,
         hidden_dim: int,
-        root_features_dim: int = 2,
-        terminal_features_dim: int = 3,
+        depot_features_dim: int = 2,
+        customer_features_dim: int = 3,
         positional: object | None = None,
     ) -> None:
         super().__init__()
-        assert root_features_dim > 0
-        assert terminal_features_dim > 0
+        assert depot_features_dim > 0
+        assert customer_features_dim > 0
         if positional is not None:
             raise NotImplementedError("CMSTP positional encoding is not implemented yet.")
-        self.root_projection = nn.Linear(root_features_dim, hidden_dim)
-        self.terminal_projection = nn.Linear(terminal_features_dim, hidden_dim)
+        self.depot_projection = nn.Linear(depot_features_dim, hidden_dim)
+        self.customer_projection = nn.Linear(customer_features_dim, hidden_dim)
 
     def forward(
         self,
@@ -39,6 +39,6 @@ class CMSTPInitialEmbedding(nn.Module):
         Returns:
             (..., N+1, H)
         """
-        root_embedding = self.root_projection(instance.root_features)
-        terminal_embeddings = self.terminal_projection(instance.terminal_features)
-        return torch.cat([root_embedding, terminal_embeddings], dim=-2)
+        depot_embedding = self.depot_projection(instance.depot_features)
+        customer_embeddings = self.customer_projection(instance.customer_features)
+        return torch.cat([depot_embedding, customer_embeddings], dim=-2)

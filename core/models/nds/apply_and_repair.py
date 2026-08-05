@@ -56,7 +56,7 @@ class NumbaApplyAndRepair(ApplyAndRepair):
     Distances are computed on the fly in the kernel, so the ``(B, K, N+1, N+1)`` distance
     matrix the torch repair materialises never exists. The kernel reimplements the greedy
     insertion, so no ``RepairOperator`` is needed here; ``first_repair_uses_rollout_order``
-    and ``insert_in_new_routes_only`` mirror the numba search repair (unlike the torch
+    and ``insert_in_affected_routes_only`` mirror the numba search repair (unlike the torch
     backend, whose ``CVRPGreedyInsertRepair`` ignores both).
     """
 
@@ -65,12 +65,12 @@ class NumbaApplyAndRepair(ApplyAndRepair):
         *,
         n_repairs: int,
         first_repair_uses_rollout_order: bool = False,
-        insert_in_new_routes_only: bool = False,
+        insert_in_affected_routes_only: bool = False,
         seed: int = 0,
     ) -> None:
         self._n_repairs = n_repairs
         self._first_repair_uses_rollout_order = first_repair_uses_rollout_order
-        self._insert_in_new_routes_only = insert_in_new_routes_only
+        self._insert_in_affected_routes_only = insert_in_affected_routes_only
         self._seed = seed
 
     def __call__(self, solution: BaseSolution, rollout: Rollout) -> BaseSolution:
@@ -115,7 +115,7 @@ class NumbaApplyAndRepair(ApplyAndRepair):
             n_repairs=self._n_repairs,
             base_seed=self._seed,
             first_repair_uses_order=self._first_repair_uses_rollout_order,
-            insert_in_new_routes_only=self._insert_in_new_routes_only,
+            insert_in_affected_routes_only=self._insert_in_affected_routes_only,
         )
         return self._rebuild(CVRPGraphSolution, solution, next_out, prev_out)
 
@@ -123,9 +123,9 @@ class NumbaApplyAndRepair(ApplyAndRepair):
         from core.lns.numba_kernels.tsp_apply_and_repair import apply_and_repair_parallel
         from core.problems.tsp.graph_solution import TSPGraphSolution
 
-        if self._insert_in_new_routes_only:
+        if self._insert_in_affected_routes_only:
             raise NotImplementedError(
-                "insert_in_new_routes_only is a CVRP-only concept (TSP has a single "
+                "insert_in_affected_routes_only is a CVRP-only concept (TSP has a single "
                 "tour, no routes)."
             )
 
@@ -189,7 +189,7 @@ def build_apply_and_repair(
             return NumbaApplyAndRepair(
                 n_repairs=search.n_repairs,
                 first_repair_uses_rollout_order=search.first_repair_uses_rollout_order,
-                insert_in_new_routes_only=search.insert_in_new_routes_only,
+                insert_in_affected_routes_only=search.insert_in_affected_routes_only,
                 seed=seed,
             )
 

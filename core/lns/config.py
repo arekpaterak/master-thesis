@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from core.lns.acceptance_criterion import (
     AcceptanceCriterionConfig,
@@ -42,6 +42,8 @@ class SearchParams(BaseModel):
     Configuration for an LNS-style search (destroy / repair / accept loop).
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     repair_type: RepairType = Field(
         default="greedy_insert", title="Repair type", description="Repair type."
     )
@@ -76,14 +78,17 @@ class SearchParams(BaseModel):
         title="Apply-and-repair backend",
         description=("Backend for the training deconstruct+repair of each rollout."),
     )
-    insert_in_new_routes_only: bool = Field(
+    insert_in_affected_routes_only: bool = Field(
         default=False,
-        title="Insert in new routes only",
+        validation_alias=AliasChoices(
+            "insert_in_affected_routes_only", "insert_in_new_routes_only"
+        ),
+        title="Insert in affected routes only",
         description=(
             "If set, removed customers may only be reinserted into routes the destroy "
             "touched (their remnants) or routes created during this repair, never an "
             "untouched route. Only supported by the numba_sequential improvement step, "
-            "and only for CVRP (TSP has a single tour, no routes)."
+            "and only for CVRP (TSP and CMSTP reject it)."
         ),
     )
     acceptance: AcceptanceCriterionConfig = Field(

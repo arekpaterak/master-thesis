@@ -108,9 +108,9 @@ class TestNumbaApplyAndRepairTSP:
 
         assert torch.equal(first.next_nodes, second.next_nodes)
 
-    def test_insert_in_new_routes_only_rejected(self, tsp_solution: TSPGraphSolution) -> None:
+    def test_insert_in_affected_routes_only_rejected(self, tsp_solution: TSPGraphSolution) -> None:
         rollout = _rollout(tsp_solution, stitch=False, seed=1)
-        op = NumbaApplyAndRepair(n_repairs=3, insert_in_new_routes_only=True, seed=7)
+        op = NumbaApplyAndRepair(n_repairs=3, insert_in_affected_routes_only=True, seed=7)
 
         with pytest.raises(NotImplementedError):
             op(tsp_solution, rollout)

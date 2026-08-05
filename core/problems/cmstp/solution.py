@@ -21,42 +21,42 @@ class CMSTPSolution(BaseSolution):
     degree gives a CMSTP. Where CVRP tracks ``next``/``prev``/``route_id``, a tree
     rooted at node 0 needs only one parent pointer per node plus the subtree it
     hangs off. ``subtree_id`` is the CMSTP analog of CVRP's ``route_id``: the
-    direct-child-of-root ancestor a node belongs to, and the unit capacity bounds.
+    direct-child-of-depot ancestor a node belongs to, and the unit capacity bounds.
 
-    All fields are (..., N+1) with node 0 the root. Terminals are 1..N.
+    All fields are (..., N+1) with node 0 the depot. Customers are 1..N.
     """
 
     UNASSIGNED = -1
-    ROOT = 0
+    DEPOT = 0
 
     _instance: CMSTPInstance
     _parent: torch.Tensor
-    """(..., N+1) parent per node. 0 = root, 1..N = terminal, -1 = unassigned.
+    """(..., N+1) parent per node. 0 = depot, 1..N = customer, -1 = unassigned.
 
-    Root (index 0) is always -1. A terminal whose parent is 0 is a direct child of
-    the root (a subtree head); a terminal with parent -1 is a detached fragment.
+    Depot (index 0) is always -1. A customer whose parent is 0 is a direct child of
+    the depot (a subtree head); a customer with parent -1 is a detached fragment.
     """
     _subtree_id: torch.Tensor
-    """(..., N+1) which root subtree each node belongs to.
+    """(..., N+1) which depot subtree each node belongs to.
 
-    Always -1 for the root. For terminals, equals the index of the direct-child-of-root
-    ancestor (the subtree head). A detached/isolated terminal is its own head, so its
-    subtree_id equals its own index -- mirrors CVRP's route_id fragment convention.
+    Always -1 for the depot. For customers, equals the index of the direct-child-of-depot
+    ancestor (the subtree head). A detached/isolated customer is its own head, so its
+    subtree_id equals its own index.
     """
 
     @classmethod
     def star(cls, instance: CMSTPInstance) -> CMSTPSolution:
-        """Trivial feasible-shaped start: every terminal is a direct child of the root.
+        """Trivial feasible-shaped start: every customer is a direct child of the depot.
 
-        Each terminal is its own subtree, so this is feasible iff each single demand
+        Each customer is its own subtree, so this is feasible iff each single demand
         is within capacity (always true for standard samplers). The CMSTP analog of
         CVRP's ``one_customer_per_route``.
         """
-        N = instance.num_terminals
+        N = instance.num_customers
         batch_size = instance.batch_size
         device = instance.locations.device
 
-        _parent = torch.full((*batch_size, N + 1), cls.ROOT, dtype=torch.long, device=device)
+        _parent = torch.full((*batch_size, N + 1), cls.DEPOT, dtype=torch.long, device=device)
         _parent[..., 0] = cls.UNASSIGNED
 
         _subtree_id = (
@@ -72,22 +72,22 @@ class CMSTPSolution(BaseSolution):
         )
 
     @staticmethod
-    def _compute_subtree_ids(parent: torch.Tensor, num_terminals: int) -> torch.Tensor:
+    def _compute_subtree_ids(parent: torch.Tensor, num_customers: int) -> torch.Tensor:
         """Recompute subtree IDs from scratch (torch, GPU-safe).
 
         Args:
             parent: Parent pointers of shape (..., N+1).
-            num_terminals: N, excluding the root.
+            num_customers: N, excluding the depot.
 
         Returns:
-            Subtree ID tensor of shape (..., N+1). Only the root (index 0) is -1.
+            Subtree ID tensor of shape (..., N+1). Only the depot (index 0) is -1.
         """
-        V = num_terminals + 1
+        V = num_customers + 1
         device = parent.device
         batch_shape = parent.shape[:-1]
         arange = torch.arange(V, device=device).expand(*batch_shape, V)
 
-        # parent > 0: follow the parent. parent <= 0 (root child or detached): self-loop.
+        # parent > 0: follow the parent. parent <= 0 (depot child or detached): self-loop.
         head = torch.where(parent > 0, parent, arange)
 
         for _ in range(math.ceil(math.log2(V + 1))):
@@ -100,12 +100,12 @@ class CMSTPSolution(BaseSolution):
     def __post_init__(self) -> None:
         assert self._parent.shape == self._subtree_id.shape
 
-        N = self.instance.num_terminals
+        N = self.instance.num_customers
         assert ((self._parent >= -1) & (self._parent <= N)).all(), "Invalid node index in _parent"
 
-        assert (self._subtree_id[..., 1:] >= 0).all(), "Terminal subtree IDs must be >= 0"
-        assert (self._subtree_id[..., 0] == self.UNASSIGNED).all(), "Root subtree ID must be -1"
-        assert (self._parent[..., 0] == self.UNASSIGNED).all(), "Root parent should be unassigned"
+        assert (self._subtree_id[..., 1:] >= 0).all(), "Customer subtree IDs must be >= 0"
+        assert (self._subtree_id[..., 0] == self.UNASSIGNED).all(), "Depot subtree ID must be -1"
+        assert (self._parent[..., 0] == self.UNASSIGNED).all(), "Depot parent should be unassigned"
 
     @property
     def instance(self) -> CMSTPInstance:
@@ -119,12 +119,10 @@ class CMSTPSolution(BaseSolution):
     def subtree_ids(self) -> torch.Tensor:
         return self._subtree_id
 
-    def parent_per_terminal(self) -> torch.Tensor:
-        """(..., N) int - parent node index per terminal. 0 = root, 1..N = terminal."""
+    def parent_per_customer(self) -> torch.Tensor:
         return self._parent[..., 1:]
 
-    def subtree_per_terminal(self) -> torch.Tensor:
-        """(..., N) int - subtree (root-branch) ID per terminal. Always >= 1."""
+    def subtree_per_customer(self) -> torch.Tensor:
         return self._subtree_id[..., 1:]
 
     @property
@@ -133,34 +131,34 @@ class CMSTPSolution(BaseSolution):
 
     @property
     def is_feasible(self) -> torch.Tensor:
-        """(...) bool - complete AND every root subtree is within capacity."""
+        """(...) bool - complete AND every depot subtree is within capacity."""
         subtree_demands = self.demand_per_subtree()
         return self.is_complete & (subtree_demands <= self._instance.capacity + EPS).all(dim=-1)
 
     @property
     def num_unassigned(self) -> torch.Tensor:
-        """(...) int - number of terminals without a parent."""
+        """(...) int - number of customers without a parent."""
         return (self._parent[..., 1:] == self.UNASSIGNED).sum(dim=-1)
 
     def node_degree(self) -> torch.Tensor:
-        """(..., N) int - tree degree per terminal: parent edge plus child edges.
+        """(..., N) int - tree degree per customer: parent edge plus child edges.
 
         Unlike CVRP (bounded at 2), a tree node's degree is unbounded, so children are
         counted with a scatter-add over the parent array rather than a single ``has_next``.
         """
-        N = self._instance.num_terminals
+        N = self._instance.num_customers
         has_parent = (self._parent[..., 1:] != self.UNASSIGNED).long()  # (..., N)
 
         safe_parent = self._parent.clamp(min=0)  # (..., N+1); detached -> 0, ignored below
         child_count = torch.zeros(
             *self._parent.shape[:-1], N + 1, dtype=torch.long, device=self._parent.device
         )
-        is_edge = (self._parent != self.UNASSIGNED).long()  # exclude root and detached
+        is_edge = (self._parent != self.UNASSIGNED).long()  # exclude depot and detached
         child_count.scatter_add_(-1, safe_parent, is_edge)
         return has_parent + child_count[..., 1:]
 
     def demand_per_subtree(self) -> torch.Tensor:
-        """(..., N+1) float - total demand accumulated per root subtree.
+        """(..., N+1) float - total demand accumulated per depot subtree.
 
         Subtree IDs are head-node indices (sparse in 1..N). Sized statically to N+1 to
         avoid a host sync on max(subtree_id); unused indices stay at 0. The CMSTP analog
@@ -168,7 +166,7 @@ class CMSTPSolution(BaseSolution):
         """
         subtree_ids = self._subtree_id[..., 1:]  # (..., N), all >= 1
         demands = self._instance.demand[..., 1:]  # (..., N)
-        N = self._instance.num_terminals
+        N = self._instance.num_customers
         out = torch.zeros(
             *subtree_ids.shape[:-1], N + 1, dtype=demands.dtype, device=demands.device
         )
@@ -178,21 +176,21 @@ class CMSTPSolution(BaseSolution):
     def total_distance(self, *, rounded: bool = False) -> torch.Tensor:
         """(...) float - total length of all tree edges (each node to its parent).
 
-        A tree over N+1 nodes has exactly N edges; summing each terminal's edge to its
-        parent counts every edge once (the root has no parent edge).
+        A tree over N+1 nodes has exactly N edges; summing each customer's edge to its
+        parent counts every edge once (the depot has no parent edge).
         """
         assert self.is_complete.all(), (
-            "total_distance() requires all terminals to be assigned; "
+            "total_distance() requires all customers to be assigned; "
             f"found {self.num_unassigned.max().item()} unassigned in at least one batch element"
         )
         locations = self._instance.locations  # (..., N+1, 2)
         if rounded:
             locations = locations * self._instance.coordinate_scale.unsqueeze(-1)
 
-        terminal_locs = locations[..., 1:, :]  # (..., N, 2)
+        customer_locs = locations[..., 1:, :]  # (..., N, 2)
         parent = self._parent[..., 1:]  # (..., N), all >= 0 when complete
         parent_locs = locations.gather(-2, parent.unsqueeze(-1).expand(*parent.shape, 2))
-        edge_dists = (terminal_locs - parent_locs).pow(2).sum(-1).sqrt()  # (..., N)
+        edge_dists = (customer_locs - parent_locs).pow(2).sum(-1).sqrt()  # (..., N)
         if rounded:
             edge_dists = edge_dists.round()
         return edge_dists.sum(-1)
@@ -212,7 +210,7 @@ class CMSTPSolution(BaseSolution):
             ``(parent, locations, demand, capacity)`` with shapes ``(G, N+1)`` int64,
             ``(G, N+1, 2)`` float64, ``(G, N+1)`` float64 and ``(G,)`` float64.
         """
-        N = self._instance.num_terminals
+        N = self._instance.num_customers
         instance = self._instance
         parent = self._parent.reshape(-1, N + 1).detach().cpu().contiguous().numpy()
         locations = (
@@ -236,13 +234,13 @@ class CMSTPSolution(BaseSolution):
         ``subtree_id`` is recomputed from ``parent`` so the result satisfies the class
         invariants without the numba pass having to maintain it.
         """
-        num_terminals = instance.num_terminals
+        num_customers = instance.num_customers
         parent_tensor = (
             torch.from_numpy(parent)
             .to(device=device, dtype=torch.long)
-            .reshape(*batch_size, num_terminals + 1)
+            .reshape(*batch_size, num_customers + 1)
         )
-        subtree_id = cls._compute_subtree_ids(parent_tensor, num_terminals)
+        subtree_id = cls._compute_subtree_ids(parent_tensor, num_customers)
         return cls(
             _instance=instance,
             _parent=parent_tensor,
@@ -261,7 +259,7 @@ class CMSTPSolution(BaseSolution):
         """Deconstruct by each rollout's node set and greedily repair, returning candidates.
 
         Wraps the fused numba parallel pass: every rollout is applied independently from
-        this solution, with no acceptance. ``nodes`` is ``(G, K, M)`` int64 (terminals to
+        this solution, with no acceptance. ``nodes`` is ``(G, K, M)`` int64 (customers to
         remove per rollout). Returns a ``(*batch, K)`` solution.
         """
         from core.problems.cmstp._numba import apply_and_repair_parallel

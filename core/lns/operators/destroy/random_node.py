@@ -59,18 +59,18 @@ class RandomNodeDestroy[S: BaseSolution](NodeDestroyOperator[S]):
                 )
 
             case CMSTPSolution() as s:
-                num_terminals = s.instance.num_terminals
-                if self.destruction_size > num_terminals:
+                num_customers = s.instance.num_customers
+                if self.destruction_size > num_customers:
                     raise ValueError(
-                        f"Destruction size {self.destruction_size} exceeds number of terminals {num_terminals}"
+                        f"Destruction size {self.destruction_size} exceeds number of customers {num_customers}"
                     )
                 return (
                     torch.rand(
-                        (*batch_size, num_rollouts, num_terminals), generator=self._generator
+                        (*batch_size, num_rollouts, num_customers), generator=self._generator
                     )
                     .topk(self.destruction_size, dim=-1)
                     .indices.to(device=device)
-                    + 1  # offset as terminals are indexed from 1 to num_terminals, while the root is indexed as 0
+                    + 1  # offset as customers are indexed from 1 to num_customers, while the depot is indexed as 0
                 )
 
             case _:

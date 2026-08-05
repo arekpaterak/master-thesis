@@ -82,7 +82,7 @@ class CMSTPDestroyState(DestroyState):
         action_mask = torch.zeros(
             batch_size, rollout_size, num_nodes, dtype=torch.bool, device=device
         )
-        # Root cannot be selected for removal.
+        # Depot cannot be selected for removal.
         action_mask[:, :, 0] = True
         return cls(action_mask=action_mask, last_node_idx=None)
 

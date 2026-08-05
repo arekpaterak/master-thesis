@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from tqdm import tqdm
 
-from core.eval.config import EvalRunConfig, EvaluationConfig
+from core.eval.config import EvaluationConfig, EvaluationRunConfig
 from core.eval.problem_setting import CVRPLibProblemSetting, SyntheticProblemSetting
 from core.evaluation import (
     BatchEvaluationResult,
@@ -199,8 +199,8 @@ def _checkpoint_epoch(method_config: object) -> int | None:
 
 
 def _select_runs(
-    runs: list[EvalRunConfig], labels: list[str] | None, first: bool
-) -> list[EvalRunConfig]:
+    runs: list[EvaluationRunConfig], labels: list[str] | None, first: bool
+) -> list[EvaluationRunConfig]:
     if labels:
         available = {run.setting.label for run in runs}
         unknown = [label for label in labels if label not in available]
@@ -217,9 +217,9 @@ def _select_runs(
     return runs
 
 
-def _drop_evaluated(method_dir: Path, runs: list[EvalRunConfig]) -> list[EvalRunConfig]:
+def _drop_evaluated(method_dir: Path, runs: list[EvaluationRunConfig]) -> list[EvaluationRunConfig]:
     """Drop runs whose setting dir (``<method_dir>/<label>/summary.csv``) already exists."""
-    remaining: list[EvalRunConfig] = []
+    remaining: list[EvaluationRunConfig] = []
     for run in runs:
         if (method_dir / run.setting.label / "summary.csv").exists():
             console.print(
@@ -240,7 +240,7 @@ def _build_method(eval_config: EvaluationConfig, device: torch.device) -> Method
 
 def _run_synthetic(
     method: Method,
-    run: EvalRunConfig,
+    run: EvaluationRunConfig,
     device: torch.device,
     method_dir: Path,
     checkpoint_epoch: int | None,
@@ -324,7 +324,7 @@ def _save_synthetic_plots(
 
 def _run_cvrplib(
     method: Method,
-    run: EvalRunConfig,
+    run: EvaluationRunConfig,
     device: torch.device,
     method_dir: Path,
     checkpoint_epoch: int | None,
@@ -406,7 +406,7 @@ def _n_customers_from_stem(stem: str) -> int:
         return -1
 
 
-def _init_run_wandb(run: EvalRunConfig) -> None:
+def _init_run_wandb(run: EvaluationRunConfig) -> None:
     """Start a per-run wandb run before evaluating ``run.setting`` so metrics stream live.
 
     Every run of an eval shares a wandb ``group`` (the source run or config name) so they
@@ -445,7 +445,7 @@ def _init_run_wandb(run: EvalRunConfig) -> None:
 
 
 def _finalize_run_wandb(
-    run: EvalRunConfig,
+    run: EvaluationRunConfig,
     method_dir: Path,
     summary_row: SummaryRowBase | None,
     curve: list[SyntheticStepRow] | None,

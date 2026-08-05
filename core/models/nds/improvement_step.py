@@ -52,7 +52,7 @@ def build_nds_improvement_step(
                 n_repairs=search.n_repairs,
                 seed=seed,
                 first_repair_uses_rollout_order=search.first_repair_uses_rollout_order,
-                insert_in_new_routes_only=search.insert_in_new_routes_only,
+                insert_in_affected_routes_only=search.insert_in_affected_routes_only,
             )
         case _:
             raise ValueError(f"Unknown improvement_step_type: {search.improvement_step_type!r}")

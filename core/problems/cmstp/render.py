@@ -19,7 +19,7 @@ def render_instance(
     max_coordinate: float | None = None,
     ax: Axes | None = None,
     with_normalized_demand: bool = True,
-    root_label: str = "depot",
+    depot_label: str = "depot",
 ) -> None:
     if instance.batch_size.numel() > 1:
         raise ValueError(
@@ -36,42 +36,42 @@ def render_instance(
     if ax is None:
         ax = plt.gca()
 
-    terminal_locations = instance.terminal_locations.cpu().numpy()
-    terminal_demands = (
+    customer_locations = instance.customer_locations.cpu().numpy()
+    customer_demands = (
         (
-            instance.normalized_terminal_demands
+            instance.normalized_customer_demands
             if with_normalized_demand
-            else instance.terminal_demands
+            else instance.customer_demands
         )
         .cpu()
         .numpy()
     )
-    root = instance.root_location.squeeze(0).cpu().numpy()
+    depot = instance.depot_location.squeeze(0).cpu().numpy()
 
     if min_coordinate is None or max_coordinate is None:
-        min_coordinate = float(terminal_locations.min())
-        max_coordinate = float(terminal_locations.max())
+        min_coordinate = float(customer_locations.min())
+        max_coordinate = float(customer_locations.max())
 
     scatter = ax.scatter(
-        terminal_locations[:, 0],
-        terminal_locations[:, 1],
-        c=terminal_demands,
+        customer_locations[:, 0],
+        customer_locations[:, 1],
+        c=customer_demands,
         cmap="Reds",
         s=100,
         vmin=0,
-        vmax=1.0 if with_normalized_demand else float(terminal_demands.max()),
+        vmax=1.0 if with_normalized_demand else float(customer_demands.max()),
         edgecolors="black",
         linewidths=1,
         zorder=2,
     )
 
     ax.scatter(
-        root[0],
-        root[1],
+        depot[0],
+        depot[1],
         c="orange",
         s=150,
         marker="s",
-        label=root_label,
+        label=depot_label,
         edgecolors="black",
         linewidths=1,
         zorder=3,
@@ -84,7 +84,7 @@ def render_instance(
     ax.set_ylim(min_coordinate - 0.1, max_coordinate + 0.1)
     ax.set_aspect("equal", adjustable="box")
     ax.legend(loc="upper right")
-    ax.set_title(f"CMSTP({instance.num_terminals})")
+    ax.set_title(f"CMSTP({instance.num_customers})")
     ax.grid(True, linestyle="--", alpha=0.4)
 
 
@@ -99,7 +99,7 @@ def render_solution(
     separator: str = " | ",
     palette: str = "tab20",
     scale: float = 1.0,
-    root_label: str = "depot",
+    depot_label: str = "depot",
 ) -> None:
     if solution.batch_size.numel() > 1:
         raise ValueError(
@@ -114,9 +114,9 @@ def render_solution(
         ax = plt.gca()
 
     all_nodes = instance.locations.cpu().numpy()
-    root = instance.root_location.squeeze(0).cpu().numpy()
-    parent = solution.parent_nodes.cpu().numpy()  # (N+1,), 0 = root, -1 = unassigned
-    subtree_id = solution.subtree_ids.cpu().numpy()  # (N+1,), -1 for root
+    depot = instance.depot_location.squeeze(0).cpu().numpy()
+    parent = solution.parent_nodes.cpu().numpy()  # (N+1,), 0 = depot, -1 = unassigned
+    subtree_id = solution.subtree_ids.cpu().numpy()  # (N+1,), -1 for depot
 
     if min_coordinate is None or max_coordinate is None:
         min_coordinate = float(all_nodes.min())
@@ -130,18 +130,18 @@ def render_solution(
     }
 
     ax.scatter(
-        root[0],
-        root[1],
+        depot[0],
+        depot[1],
         c="orange",
         s=120 * scale,
         marker="s",
         edgecolors="black",
         linewidths=1.0 * scale,
-        label=root_label,
+        label=depot_label,
         zorder=5,
     )
 
-    for i in range(1, instance.num_terminals + 1):
+    for i in range(1, instance.num_customers + 1):
         if parent[i] == solution.UNASSIGNED:
             ax.scatter(
                 all_nodes[i, 0],
@@ -180,7 +180,7 @@ def render_solution(
 
     title_parts = []
     if with_problem_size:
-        title_parts.append(f"CMSTP({instance.num_terminals})")
+        title_parts.append(f"CMSTP({instance.num_customers})")
     num_unassigned = int(solution.num_unassigned.item())
     if num_unassigned > 0:
         title_parts.append(f"{num_unassigned} unassigned")

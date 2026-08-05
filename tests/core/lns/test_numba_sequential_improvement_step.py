@@ -123,7 +123,7 @@ def _two_route_problem() -> dict:
 class TestInsertInNewRoutesOnly:
     def test_unrestricted_pulls_customer_into_untouched_route(self) -> None:
         next_out, _ = apply_and_repair_sequential(
-            **_two_route_problem(), insert_in_new_routes_only=False
+            **_two_route_problem(), insert_in_affected_routes_only=False
         )
 
         # Geometry check: without the restriction, customer 1 lands next to customer 3,
@@ -132,7 +132,7 @@ class TestInsertInNewRoutesOnly:
 
     def test_restricted_keeps_customer_out_of_untouched_route(self) -> None:
         next_out, prev_out = apply_and_repair_sequential(
-            **_two_route_problem(), insert_in_new_routes_only=True
+            **_two_route_problem(), insert_in_affected_routes_only=True
         )
 
         # Untouched route B stays exactly intact.
@@ -152,7 +152,7 @@ class TestInsertInNewRoutesOnly:
             num_rollouts=4,
             n_repairs=3,
             seed=7,
-            insert_in_new_routes_only=True,
+            insert_in_affected_routes_only=True,
         )
 
         repaired = step(solution, GreedyAcceptance())
