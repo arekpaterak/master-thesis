@@ -2,11 +2,28 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from core.problems.solution import BaseSolution
+
+
+def save_figure(fig: Figure, path: str | Path, *, dpi: int | None = None) -> None:
+    """Save a figure with a white background and tight bounding box.
+
+    Passing ``dpi`` selects a raster format (e.g. PNG); leave it ``None`` for vector
+    formats such as PDF.
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(
+        path,
+        bbox_inches="tight",
+        facecolor="white",
+        edgecolor="white",
+        dpi=dpi,
+    )
 
 
 def plot_objective_curve(

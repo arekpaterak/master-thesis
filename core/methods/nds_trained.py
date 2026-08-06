@@ -13,7 +13,7 @@ from core.methods.base import Method
 from core.models.nds.config import TrainConfig
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
-from core.models.utils import find_checkpoint
+from core.models.utils import checkpoint_epoch, find_checkpoint, list_checkpoints
 
 
 class NDSTrainedConfig(BaseModel):
@@ -24,6 +24,15 @@ class NDSTrainedConfig(BaseModel):
         description="Epoch of the checkpoint to load (defaults to the latest checkpoint).",
     )
     search: SearchParams = Field(default_factory=SearchParams)
+
+    def resolved_checkpoint_epoch(self) -> int | None:
+        """Epoch of the checkpoint this config loads, or ``None`` if none exist yet."""
+        if self.checkpoint_epoch is not None:
+            return self.checkpoint_epoch
+        checkpoints = list_checkpoints(self.run_dir)
+        if not checkpoints:
+            return None
+        return checkpoint_epoch(checkpoints[-1])
 
 
 def _load_train_config(run_dir: Path, checkpoint: dict) -> TrainConfig:

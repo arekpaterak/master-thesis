@@ -111,3 +111,31 @@ def load_cvrplib_solution_bks(path: str | Path) -> int:
     coordinates, matching CVRPSolution.total_distance(rounded=True).
     """
     return vrplib.read_solution(str(path))["cost"]
+
+
+def cvrplib_instance_paths(
+    set_dir: str | Path, *, min_customers: int, max_customers: int
+) -> list[Path]:
+    """Sorted .vrp paths in a CVRPLIB set directory whose customer count is in range.
+
+    Raises ``ValueError`` if the directory does not exist.
+    """
+    set_dir = Path(set_dir)
+    if not set_dir.exists():
+        raise ValueError(f"CVRPLIB set dir not found: {set_dir}")
+    return [
+        path
+        for path in sorted(set_dir.glob("*.vrp"))
+        if min_customers <= num_customers_from_stem(path.stem) <= max_customers
+    ]
+
+
+def num_customers_from_stem(stem: str) -> int:
+    """Customer count encoded in a CVRPLIB filename stem, e.g. ``X-n101-k25`` -> 100.
+
+    Returns -1 when the stem does not follow the ``*-n<nodes>-*`` convention.
+    """
+    try:
+        return int(stem.split("-n")[1].split("-")[0]) - 1
+    except (IndexError, ValueError):
+        return -1

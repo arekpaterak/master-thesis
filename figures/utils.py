@@ -8,6 +8,8 @@ import polars as pl
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from core.results.plots import save_figure as _save_figure
+
 # Thesis \the\textwidth in points (1 pt = 1/72.27 in). Authoring each figure at its final
 # printed width keeps the LaTeX \includegraphics scale factor at 1, so a matplotlib point
 # equals a document point and the font size is consistent across figures of any width.
@@ -60,10 +62,9 @@ def set_white_background() -> None:
     )
 
 
-def save_figure(fig: Figure, path: str | Path, **kwargs: object) -> None:
+def save_figure(fig: Figure, path: str | Path, *, dpi: int | None = None) -> None:
     """Save ``fig`` with a white background regardless of the marimo theme."""
-    kwargs.setdefault("bbox_inches", "tight")
-    fig.savefig(path, facecolor="white", edgecolor="white", **kwargs)
+    _save_figure(fig, path, dpi=dpi)
 
 
 def hide_ticks(ax: Axes) -> None:

@@ -34,7 +34,7 @@ from core.models.utils import (
 )
 from core.problems.dataset import DatasetSampler
 from core.problems.sampler import Sampler
-from core.results.plots import plot_search_progress
+from core.results.plots import plot_search_progress, save_figure
 from core.results.wandb_artifacts import upload_final_checkpoint
 
 EXPERIMENTS_DIR = Path(__file__).parent
@@ -373,19 +373,9 @@ def _run_training(
                 val_summary.snapshots, val_summary.step_labels, epoch=val_summary.epoch
             )
             if config.validation.plot_save_to_disk:
-                plot_path = run_dir / "plots"
-                plot_path.mkdir(parents=True, exist_ok=True)
-                stem = plot_path / f"epoch_{val_summary.epoch:04d}"
-                fig.savefig(
-                    f"{stem}.pdf", bbox_inches="tight", facecolor="white", edgecolor="white"
-                )
-                fig.savefig(
-                    f"{stem}.png",
-                    bbox_inches="tight",
-                    dpi=150,
-                    facecolor="white",
-                    edgecolor="white",
-                )
+                stem = run_dir / "plots" / f"epoch_{val_summary.epoch:04d}"
+                save_figure(fig, f"{stem}.pdf")
+                save_figure(fig, f"{stem}.png", dpi=150)
         if config.logging.wandb_project:
             log = {
                 "val/objective_initial": val_summary.objective_initial,
