@@ -23,6 +23,7 @@ from core.methods import build_method
 from core.methods.base import Method
 from core.methods.nds_trained import NDSTrainedConfig
 from core.models.metric import MeanMetric, MetricCollection, SumMetric
+from core.models.utils import checkpoint_epoch, list_checkpoints
 from core.problems import make_problem_config
 from core.problems.cvrp.dataset import load_cvrplib_instance, load_cvrplib_solution_bks
 from core.results.cvrplib import CVRPLibInstanceRow, CVRPLibSummaryRow
@@ -210,10 +211,12 @@ def _checkpoint_epoch(method_config: object) -> int | None:
     """Epoch of the checkpoint a trained method loads (None for untrained methods)."""
     if not isinstance(method_config, NDSTrainedConfig):
         return None
-    checkpoints = sorted((method_config.run_dir / "checkpoints").glob("epoch_*.pt"))
+    if method_config.checkpoint_epoch is not None:
+        return method_config.checkpoint_epoch
+    checkpoints = list_checkpoints(method_config.run_dir)
     if not checkpoints:
         return None
-    return int(checkpoints[-1].stem.split("_")[1])
+    return checkpoint_epoch(checkpoints[-1])
 
 
 def _select_runs(

@@ -13,19 +13,17 @@ from core.methods.base import Method
 from core.models.nds.config import TrainConfig
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
+from core.models.utils import find_checkpoint
 
 
 class NDSTrainedConfig(BaseModel):
     type: Literal["nds-trained"] = "nds-trained"
     run_dir: Path = Field(description="Path to the training run directory.")
+    checkpoint_epoch: int | None = Field(
+        default=None,
+        description="Epoch of the checkpoint to load (defaults to the latest checkpoint).",
+    )
     search: SearchParams = Field(default_factory=SearchParams)
-
-
-def _find_latest_checkpoint(run_dir: Path) -> Path:
-    checkpoints = sorted((run_dir / "checkpoints").glob("epoch_*.pt"))
-    if not checkpoints:
-        raise ValueError(f"No checkpoint found under {(run_dir / 'checkpoints').resolve()}.")
-    return checkpoints[-1]
 
 
 def _load_train_config(run_dir: Path, checkpoint: dict) -> TrainConfig:
@@ -45,7 +43,9 @@ class NDSTrainedMethod:
         device: torch.device,
     ) -> Method:
         ckpt = torch.load(
-            _find_latest_checkpoint(config.run_dir), map_location=device, weights_only=True
+            find_checkpoint(config.run_dir, config.checkpoint_epoch),
+            map_location=device,
+            weights_only=True,
         )
         train_config = _load_train_config(config.run_dir, ckpt)
         model = build_model(train_config.model).to(device)

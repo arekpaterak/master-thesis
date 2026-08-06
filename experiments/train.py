@@ -26,7 +26,12 @@ from core.models.nds.training import BatchTrainSummary, EpochTrainSummary
 from core.models.nds.validation import EpochValidationSummary
 from core.models.optimizer import build_optimizer
 from core.models.trainer import Trainer
-from core.models.utils import load_checkpoint, save_checkpoint
+from core.models.utils import (
+    checkpoint_epoch,
+    list_checkpoints,
+    load_checkpoint,
+    save_checkpoint,
+)
 from core.problems.dataset import DatasetSampler
 from core.problems.sampler import Sampler
 from core.results.plots import plot_search_progress
@@ -306,12 +311,11 @@ def _run_tags(config: TrainConfig) -> list[str]:
 
 def _find_latest_checkpoint(run_dir: Path) -> tuple[Path | None, int]:
     """Return the highest-numbered checkpoint in ``run_dir`` and its epoch."""
-    checkpoints = sorted((run_dir / "checkpoints").glob("epoch_*.pt"))
+    checkpoints = list_checkpoints(run_dir)
     if not checkpoints:
         return None, 0
     latest = checkpoints[-1]
-    epoch = int(latest.stem.split("_")[1])
-    return latest, epoch
+    return latest, checkpoint_epoch(latest)
 
 
 def _run_training(
