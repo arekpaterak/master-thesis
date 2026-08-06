@@ -126,7 +126,7 @@ def main(
             synthetic_summaries.append(summary_row)
 
         if log_wandb:
-            _finalize_run_wandb(run, method_dir, summary_row, curve)
+            _finalize_run_wandb(run, summary_row, curve)
 
     eval_config.write_yaml(path=method_dir / "config.yml")
     console.print(f"Wrote results to [bold]{method_dir}[/bold]")
@@ -466,12 +466,10 @@ def _init_run_wandb(run: EvaluationRunConfig) -> None:
 
 def _finalize_run_wandb(
     run: EvaluationRunConfig,
-    method_dir: Path,
     summary_row: SummaryRowBase | None,
     curve: list[SyntheticStepRow] | None,
 ) -> None:
     import wandb
-    from core.results.wandb_artifacts import upload_eval_dir
 
     label = run.setting.label
     if summary_row is not None:
@@ -497,18 +495,6 @@ def _finalize_run_wandb(
             }
         )
 
-    trained = isinstance(run.method, NDSTrainedConfig)
-    source_run_name = Path(run.method.run_dir).name if trained else None
-    upload_eval_dir(
-        run_name=f"{source_run_name or run.name}-{label}",
-        eval_dir=method_dir / label,
-        metadata={
-            "config": run.name,
-            "group": run.group,
-            "method_type": run.method.type,
-            "setting": label,
-        },
-    )
     wandb.finish()
 
 

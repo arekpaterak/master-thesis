@@ -30,7 +30,7 @@ from core.models.utils import load_checkpoint, save_checkpoint
 from core.problems.dataset import DatasetSampler
 from core.problems.sampler import Sampler
 from core.results.plots import plot_search_progress
-from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
+from core.results.wandb_artifacts import upload_final_checkpoint
 
 EXPERIMENTS_DIR = Path(__file__).parent
 PROJECT_ROOT = EXPERIMENTS_DIR.parent
@@ -449,8 +449,6 @@ def _run_training(
                     checkpoint_path=final_checkpoint,
                     epoch=final_epoch,
                 )
-            if error is None:
-                upload_validation_plots(run_name=config.run_name, plots_dir=run_dir / "plots")
             wandb.finish(exit_code=1 if error is not None else 0)
 
     if error is not None:
