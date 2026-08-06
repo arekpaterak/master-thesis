@@ -1,0 +1,11 @@
+method:
+  type: nds-trained
+  run_dir: experiments/runs/tsp/featured/nds_tsp_100_split+simple
+  search: search/unconditional.yml
+
+settings:
+  main:
+    - problems/tsp_100_data.yml
+
+logging:
+  wandb_project: nds
