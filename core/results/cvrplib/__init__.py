@@ -1,6 +1,6 @@
-from core.results.cvrplib.rows import CvrplibInstanceRow, CvrplibSummaryRow
+from core.results.cvrplib.rows import CVRPLibInstanceRow, CVRPLibSummaryRow
 
 __all__ = [
-    "CvrplibInstanceRow",
-    "CvrplibSummaryRow",
+    "CVRPLibInstanceRow",
+    "CVRPLibSummaryRow",
 ]

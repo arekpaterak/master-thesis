@@ -1,6 +1,6 @@
 method:
   type: nds-trained
-  run_dir: experiments/runs/featured/nds_tsp_50+ar
+  run_dir: experiments/runs/tsp/featured/nds_tsp_50+ar
   search: search/sa.yml
 
 settings:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from core.methods.nds_trained import NDSTrainedConfig
 from core.models.metric import MeanMetric, MetricCollection, SumMetric
 from core.problems import make_problem_config
 from core.problems.cvrp.dataset import load_cvrplib_instance, load_cvrplib_solution_bks
-from core.results.cvrplib import CvrplibInstanceRow, CvrplibSummaryRow
+from core.results.cvrplib import CVRPLibInstanceRow, CVRPLibSummaryRow
 from core.results.plots import plot_objective_curve, plot_search_progress
 from core.results.row import SummaryRowBase
 from core.results.synthetic import (
@@ -35,6 +36,7 @@ from core.results.synthetic import (
 from core.solve import solve
 
 EXPERIMENTS_DIR = Path(__file__).parent
+PROJECT_ROOT = EXPERIMENTS_DIR.parent
 EVAL_CONFIGS_DIR = EXPERIMENTS_DIR / "configs" / "eval"
 CVRPLIB_DIR = EXPERIMENTS_DIR.parent / "data" / "cvrplib"
 RESULTS_DIR = EXPERIMENTS_DIR / "results" / "eval"
@@ -47,33 +49,49 @@ DEFAULT_CHECKPOINT_STEPS = [10, 20, 50, 100]
 
 @app.command()
 def main(
-    config: Path = typer.Option(..., help="Eval config file (path, or name under configs/eval)."),
+    config_arg: Path = typer.Argument(
+        None, help="Eval config file (path, or name under configs/eval)."
+    ),
+    config_option: Path = typer.Option(
+        None, help="Eval config file (path, or name under configs/eval)."
+    ),
     device: str | None = typer.Option(None, help="Torch device (default: cuda if available)."),
     setting: list[str] = typer.Option(
         None, "--setting", "-s", help="Only run these settings, by label."
     ),
-    first: bool = typer.Option(False, "--first", help="Run only the first (selected) setting."),
+    group: list[str] = typer.Option(
+        None, "--group", "-g", help="Only run settings in these groups (e.g. main)."
+    ),
     checkpoint_steps: list[int] = typer.Option(
         DEFAULT_CHECKPOINT_STEPS,
         "--checkpoint-steps",
-        help="Improvement steps to report obj, time at.",
+        help="Improvement steps to report measurements at.",
     ),
     force: bool = typer.Option(
-        False, "--force", help="Recompute settings even if already evaluated for this config."
+        False, "--force", help="Reevaluate on config settings even if already done for this config."
     ),
 ) -> None:
-    """Evaluate a single method across the settings listed in the config."""
+    """Evaluate a single method across the problem settings listed in the config."""
+    if config_arg and config_option:
+        raise ValueError("Expected config passed as either argument or option.")
+    config = config_arg or config_option
+    if config is None:
+        raise ValueError("Expected config")
+
+    config_path = (config if config.exists() else EVAL_CONFIGS_DIR / config).resolve()
+    os.chdir(PROJECT_ROOT)
     load_dotenv(".env")
-    config_path = config if config.exists() else EVAL_CONFIGS_DIR / config
     eval_config = EvaluationConfig.from_file(config_path)
     torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
-    runs = _select_runs(eval_config.runs(), setting, first)
+    runs = _select_runs(eval_config.runs(), setting, group)
     method_dir = RESULTS_DIR / eval_config.problem_name / eval_config.name
     if not force:
         runs = _drop_evaluated(method_dir, runs)
     if not runs:
-        console.print("All selected settings already evaluated; nothing to do (use --force).")
+        console.print(
+            "All selected problem settings already evaluated; nothing to do (use --force to reevaluate)."
+        )
         return
 
     method = _build_method(eval_config, torch_device)
@@ -87,7 +105,7 @@ def main(
     log_wandb = bool(eval_config.logging.wandb_project)
 
     synthetic_summaries: list[SyntheticSummaryRow] = []
-    cvrplib_summaries: list[CvrplibSummaryRow] = []
+    cvrplib_summaries: list[CVRPLibSummaryRow] = []
     for run in runs:
         # One wandb run per setting, so each setting's metrics and artifact live under
         # their own run id.
@@ -199,8 +217,19 @@ def _checkpoint_epoch(method_config: object) -> int | None:
 
 
 def _select_runs(
-    runs: list[EvaluationRunConfig], labels: list[str] | None, first: bool
+    runs: list[EvaluationRunConfig],
+    labels: list[str] | None,
+    groups: list[str] | None,
 ) -> list[EvaluationRunConfig]:
+    if groups:
+        available = {run.group for run in runs}
+        unknown = [group for group in groups if group not in available]
+        if unknown:
+            raise typer.BadParameter(
+                f"Unknown group(s): {', '.join(unknown)}. Available: {', '.join(available)}"
+            )
+        wanted = set(groups)
+        runs = [run for run in runs if run.group in wanted]
     if labels:
         available = {run.setting.label for run in runs}
         unknown = [label for label in labels if label not in available]
@@ -210,8 +239,6 @@ def _select_runs(
             )
         wanted = set(labels)
         runs = [run for run in runs if run.setting.label in wanted]
-    if first:
-        runs = runs[:1]
     if not runs:
         raise typer.BadParameter("No settings selected.")
     return runs
@@ -329,7 +356,7 @@ def _run_cvrplib(
     method_dir: Path,
     checkpoint_epoch: int | None,
     log_wandb: bool,
-) -> CvrplibSummaryRow | None:
+) -> CVRPLibSummaryRow | None:
     setting = run.setting
     console.rule(f"[bold]{setting.label}[/bold] ({run.group}, CVRPLIB)")
     vrp_paths = _cvrplib_paths(setting)
@@ -337,7 +364,7 @@ def _run_cvrplib(
     if not vrp_paths:
         return None
 
-    rows: list[CvrplibInstanceRow] = []
+    rows: list[CVRPLibInstanceRow] = []
     running_gap = MeanMetric()
     start = time.perf_counter()
     for idx, vrp_path in enumerate(tqdm(vrp_paths, desc="Instances")):
@@ -350,7 +377,7 @@ def _run_cvrplib(
         our_cost = int(final_solution.total_distance(rounded=True).item())
         gap_pct = round((our_cost - bks) / bks * 100, 2)
         rows.append(
-            CvrplibInstanceRow(
+            CVRPLibInstanceRow(
                 instance=vrp_path.stem,
                 n_customers=int(instance.num_customers),
                 bks=bks,
@@ -372,8 +399,8 @@ def _run_cvrplib(
     elapsed = time.perf_counter() - start
 
     setting_dir = method_dir / setting.label
-    CvrplibInstanceRow.write(rows, path=setting_dir / "instances.csv")
-    summary_row = CvrplibSummaryRow.build(
+    CVRPLibInstanceRow.write(rows, path=setting_dir / "instances.csv")
+    summary_row = CVRPLibSummaryRow.build(
         config=run.name,
         method_type=run.method.type,
         group=run.group,
@@ -383,7 +410,7 @@ def _run_cvrplib(
         total_time_s=elapsed,
         destruction_size=method.search.deconstruction_size,
     )
-    CvrplibSummaryRow.write([summary_row], path=setting_dir / "summary.csv")
+    CVRPLibSummaryRow.write([summary_row], path=setting_dir / "summary.csv")
     return summary_row
 
 
@@ -407,13 +434,6 @@ def _n_customers_from_stem(stem: str) -> int:
 
 
 def _init_run_wandb(run: EvaluationRunConfig) -> None:
-    """Start a per-run wandb run before evaluating ``run.setting`` so metrics stream live.
-
-    Every run of an eval shares a wandb ``group`` (the source run or config name) so they
-    stay together in the dashboard while keeping individual run ids. A top-level
-    ``problem`` block and ``group`` are logged so ``problem.name`` / ``problem.size`` /
-    ``group`` are filterable, like train.
-    """
     import wandb
 
     setting = run.setting
@@ -450,10 +470,6 @@ def _finalize_run_wandb(
     summary_row: SummaryRowBase | None,
     curve: list[SyntheticStepRow] | None,
 ) -> None:
-    """Log this run's summary scalars and obj curves, upload its setting dir, then finish.
-
-    The artifact is logged to the active per-run run, so it lives under that run's id.
-    """
     import wandb
     from core.results.wandb_artifacts import upload_eval_dir
 

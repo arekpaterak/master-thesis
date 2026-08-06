@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +33,7 @@ from core.results.plots import plot_search_progress
 from core.results.wandb_artifacts import upload_final_checkpoint, upload_validation_plots
 
 EXPERIMENTS_DIR = Path(__file__).parent
+PROJECT_ROOT = EXPERIMENTS_DIR.parent
 TRAIN_CONFIGS_DIR = EXPERIMENTS_DIR / "configs" / "train"
 RUNS_DIR = EXPERIMENTS_DIR / "runs"
 
@@ -61,12 +63,19 @@ def main(
         _print_usage()
         raise typer.Exit()
 
-    load_dotenv(".env")
-
     config_path = config or config_arg
     if config_path is None and resume is None:
         _print_usage()
         raise typer.Exit()
+
+    # Resolve user-supplied paths against the invocation cwd, then run from the project root
+    # so config-relative paths (dataset_path, .env) resolve regardless of where invoked.
+    if config_path is not None:
+        config_path = config_path.resolve()
+    if resume is not None:
+        resume = resume.resolve()
+    os.chdir(PROJECT_ROOT)
+    load_dotenv(".env")
 
     overrides = _parse_overrides(ctx.args)
     train_config: TrainConfig = _load_config(config_path, resume, overrides)
@@ -239,7 +248,7 @@ def _prepare_run_dir(
     resume_run_dir: Path | None,
 ) -> tuple[Path, int]:
     """Create/resolve the run directory, restore model weights on resume, init wandb."""
-    run_dir = resume_run_dir or (RUNS_DIR / config.problem.name / f"nds-{config.run_name}")
+    run_dir = resume_run_dir or (RUNS_DIR / config.problem.name / config.run_name)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     initial_epoch = 0

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
-from core.results.cvrplib import CvrplibSummaryRow
+from core.results.cvrplib import CVRPLibSummaryRow
 from core.results.synthetic import SyntheticInstanceRow
 
 
@@ -40,7 +40,7 @@ def test_row_write_empty_writes_header(tmp_path: Path) -> None:
 def test_row_write_derives_nullable_from_optional_field(tmp_path: Path) -> None:
     # gap_pct_std is Optional; a None must round-trip as a null column, and the base
     # columns must come before the subclass columns.
-    row = CvrplibSummaryRow(
+    row = CVRPLibSummaryRow(
         config="random_destroy",
         method_type="random-destroy",
         setting="cvrplib-X",
@@ -58,8 +58,8 @@ def test_row_write_derives_nullable_from_optional_field(tmp_path: Path) -> None:
         gap_pct_max=2.0,
         n_at_or_below_bks=0,
     )
-    path = CvrplibSummaryRow.write([row], path=tmp_path / "summary_cvrplib.csv")
+    path = CVRPLibSummaryRow.write([row], path=tmp_path / "summary_cvrplib.csv")
 
     df = pl.read_csv(path)
-    assert df.columns == list(CvrplibSummaryRow.model_fields)
+    assert df.columns == list(CVRPLibSummaryRow.model_fields)
     assert df["gap_pct_std"].to_list() == [None]

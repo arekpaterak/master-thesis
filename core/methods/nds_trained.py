@@ -24,7 +24,7 @@ class NDSTrainedConfig(BaseModel):
 def _find_latest_checkpoint(run_dir: Path) -> Path:
     checkpoints = sorted((run_dir / "checkpoints").glob("epoch_*.pt"))
     if not checkpoints:
-        raise ValueError(f"No checkpoint found under {run_dir / 'checkpoints'}.")
+        raise ValueError(f"No checkpoint found under {(run_dir / 'checkpoints').resolve()}.")
     return checkpoints[-1]
 
 

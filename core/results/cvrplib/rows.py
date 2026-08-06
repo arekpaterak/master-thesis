@@ -9,7 +9,7 @@ from core.eval.problem_setting import CVRPLibProblemSetting
 from core.results.row import Row, SummaryRowBase
 
 
-class CvrplibInstanceRow(Row):
+class CVRPLibInstanceRow(Row):
     """One row of {label}_instances.csv: a single CVRPLIB instance vs its BKS."""
 
     instance: str
@@ -19,7 +19,7 @@ class CvrplibInstanceRow(Row):
     gap_pct: float
 
 
-class CvrplibSummaryRow(SummaryRowBase):
+class CVRPLibSummaryRow(SummaryRowBase):
     """One row of summary_cvrplib.csv: aggregated gap over a CVRPLIB set."""
 
     set_name: str
@@ -40,7 +40,7 @@ class CvrplibSummaryRow(SummaryRowBase):
         group: str,
         checkpoint_epoch: int | None,
         setting: CVRPLibProblemSetting,
-        instance_rows: Sequence[CvrplibInstanceRow],
+        instance_rows: Sequence[CVRPLibInstanceRow],
         total_time_s: float,
         destruction_size: int,
     ) -> Self:
