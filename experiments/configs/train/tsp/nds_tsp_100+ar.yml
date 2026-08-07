@@ -29,14 +29,13 @@ search:
   repair_type: greedy_insert
   num_improvement_steps: 10
   num_rollouts: 128
-  deconstruction_size: 25
+  deconstruction_size: 15
   improvement_step_type: numba_sequential
   n_repairs: 5
   first_repair_uses_rollout_order: true
   start_solution_params:
     num_improvement_steps: 50
-    deconstruction_size: 25
-  acceptance:
+    deconstruction_size: 15
     type: greedy
 
 amp:
@@ -59,12 +58,12 @@ validation:
     repair_type: greedy_insert
     num_improvement_steps: 50
     num_rollouts: 100
-    deconstruction_size: 25
+    deconstruction_size: 15
     improvement_step_type: numba_sequential
     first_repair_uses_rollout_order: true
     start_solution_params:
       num_improvement_steps: 50
-      deconstruction_size: 25
+      deconstruction_size: 15
     n_repairs: 5
     n_augmentations: 1
     acceptance:
