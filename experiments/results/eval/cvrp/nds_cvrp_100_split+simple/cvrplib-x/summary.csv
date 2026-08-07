@@ -1,0 +1,4 @@
+config,method_type,setting,group,problem_kind,checkpoint_epoch,n_instances,total_time_s,set_name,destruction_size,customer_range,mean_time_s,gap_pct_mean,gap_pct_median,gap_pct_std,gap_pct_min,gap_pct_max,n_at_or_below_bks
+nds_cvrp_100_split+simple,nds-trained,cvrplib-x,generalisation,cvrplib,24,11,58.1036,X,15,"[100, 150)",5.2821,1.5836363636363637,1.08,1.2416301601304047,0.27,4.38,0
+nds_cvrp_100_split+simple,nds-trained,cvrplib-x,generalisation,cvrplib,24,11,63.2566,X,15,"[150, 200]",5.7506,2.6799999999999997,2.16,2.1479013012706143,0.5,7.11,0
+nds_cvrp_100_split+simple,nds-trained,cvrplib-x,generalisation,cvrplib,24,22,121.3602,X,15,all,5.5164,2.1318181818181823,1.645,1.8016173589930544,0.27,7.11,0

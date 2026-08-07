@@ -1,7 +1,8 @@
 name: nds_cvrp_100_split+simple
 method:
   type: nds-trained
-  run_dir: experiments\runs\featured\nds_cvrp_100_split+simple
+  run_dir: experiments\runs\cvrp\featured\nds_cvrp_100_split+simple
+  checkpoint_epoch: 24
   search:
     repair_type: greedy_insert
     num_improvement_steps: 100
@@ -11,7 +12,7 @@ method:
     first_repair_uses_rollout_order: true
     improvement_step_type: numba_sequential
     apply_and_repair_backend: numba
-    insert_in_new_routes_only: true
+    insert_in_affected_routes_only: true
     acceptance:
       type: sa
       temperature_start: 0.1
@@ -24,20 +25,39 @@ method:
       deconstruction_size: 15
       destroy_type: random_node
     n_augmentations: 1
-problems:
-- kind: synthetic
-  problem:
-    name: cvrp
-    size: 100
-    vehicle_capacity_raw: null
-    min_demand_raw: 1
-    max_demand_raw: 9
-    min_coordinate: 0.0
-    max_coordinate: 1.0
-  dataset_path: data/synthetic/cvrp/vrp100_test_seed1234.pkl
-  num_test_instances: 10000
-  batch_size: 100
-  test_seed: 2026
+settings:
+  main:
+  - kind: synthetic
+    problem:
+      name: cvrp
+      size: 100
+      vehicle_capacity_raw: null
+      min_demand_raw: 1
+      max_demand_raw: 9
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/cvrp/vrp100_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
+  generalisation:
+  - kind: synthetic
+    problem:
+      name: cvrp
+      size: 200
+      vehicle_capacity_raw: null
+      min_demand_raw: 1
+      max_demand_raw: 9
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/cvrp/vrp200_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
+  - kind: cvrplib
+    set_name: X
+    min_customers: 0
+    max_customers: 200
 num_plot_instances: 0
 logging:
   wandb_project: nds

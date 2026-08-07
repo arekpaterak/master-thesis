@@ -1,0 +1,4 @@
+config,method_type,setting,group,problem_kind,checkpoint_epoch,n_instances,total_time_s,set_name,destruction_size,customer_range,mean_time_s,gap_pct_mean,gap_pct_median,gap_pct_std,gap_pct_min,gap_pct_max,n_at_or_below_bks
+random_destroy,random-destroy,cvrplib-x,generalisation,cvrplib,,11,42.1433,X,15,"[100, 150)",3.8312,2.516363636363636,2.22,1.1923277462784527,1.25,4.7,0
+random_destroy,random-destroy,cvrplib-x,generalisation,cvrplib,,11,49.2977,X,15,"[150, 200]",4.4816,3.6109090909090913,3.04,2.407710341986571,0.94,8.81,0
+random_destroy,random-destroy,cvrplib-x,generalisation,cvrplib,,22,91.441,X,15,all,4.1564,3.063636363636364,2.545,1.9368151212371338,0.94,8.81,0

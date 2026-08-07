@@ -50,7 +50,7 @@ class CVRPLibProblemSetting(BaseModel):
 
     @property
     def label(self) -> str:
-        return f"cvrplib-{self.set_name}"
+        return f"cvrplib-{self.set_name}".lower()
 
 
 ProblemSetting = Annotated[

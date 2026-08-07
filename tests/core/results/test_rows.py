@@ -43,7 +43,7 @@ def test_row_write_derives_nullable_from_optional_field(tmp_path: Path) -> None:
     row = CVRPLibSummaryRow(
         config="random_destroy",
         method_type="random-destroy",
-        setting="cvrplib-X",
+        setting="cvrplib-x",
         group="generalisation",
         problem_kind="cvrplib",
         checkpoint_epoch=None,
@@ -51,6 +51,8 @@ def test_row_write_derives_nullable_from_optional_field(tmp_path: Path) -> None:
         total_time_s=1.0,
         set_name="X",
         destruction_size=15,
+        customer_range="all",
+        mean_time_s=1.0,
         gap_pct_mean=2.0,
         gap_pct_median=2.0,
         gap_pct_std=None,

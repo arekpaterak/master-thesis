@@ -199,7 +199,7 @@ def _(OUT_DIR, fig, problem_ui, save_button, size_ui):
 
     problem_dir = OUT_DIR / problem_ui.value.lower()
     problem_dir.mkdir(parents=True, exist_ok=True)
-    path = problem_dir / f"params_{size_ui.value}.pdf"
+    path = problem_dir / f"params_{problem_ui.value.lower()}{size_ui.value}.pdf"
     save_figure(fig, path)
     mo.md(f"Saved to `{path}`")
     return

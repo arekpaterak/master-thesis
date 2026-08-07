@@ -422,7 +422,7 @@ def _(OUT_DIR, fig, problem, save_button, size_ui):
 
     problem_dir = OUT_DIR / problem.lower()
     problem_dir.mkdir(parents=True, exist_ok=True)
-    path = problem_dir / f"inference_breakdown_{size_ui.value}.pdf"
+    path = problem_dir / f"inference_breakdown_{problem.lower()}{size_ui.value}.pdf"
     save_figure(fig, path)
     mo.md(f"Saved to `{path}`")
     return

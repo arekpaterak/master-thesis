@@ -23,6 +23,7 @@ experiments/results/eval/**
 !experiments/results/eval/**/summary.csv
 !experiments/results/eval/**/steps.csv
 !experiments/results/eval/**/config.yml
+!experiments/results/eval/**/cvrplib-*/instances.csv
 experiments/runs/*
 !experiments/runs/NOTES.md
 experiments/pretrained/*

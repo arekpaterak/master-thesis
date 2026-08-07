@@ -68,6 +68,11 @@ def main(
     force: bool = typer.Option(
         False, "--force", help="Reevaluate on config settings even if already done for this config."
     ),
+    cvrplib_warmup: int = typer.Option(
+        3,
+        "--cvrplib-warmup",
+        help="Untimed warm-up solves before timing CVRPLIB instances (0 to disable).",
+    ),
 ) -> None:
     """Evaluate a single method across the problem settings listed in the config."""
     if config_arg and config_option:
@@ -109,7 +114,7 @@ def main(
         with eval_run_logger(run, enabled=log_wandb) as logger:
             if isinstance(run.setting, CVRPLibProblemSetting):
                 logger.summary_row = _run_cvrplib(
-                    method, run, torch_device, method_dir, checkpoint_epoch, logger
+                    method, run, torch_device, method_dir, checkpoint_epoch, logger, cvrplib_warmup
                 )
             else:
                 logger.summary_row, logger.curve = _run_synthetic(
@@ -141,14 +146,15 @@ def _select_runs(
         wanted = set(groups)
         runs = [run for run in runs if run.group in wanted]
     if labels:
-        available = {run.setting.label for run in runs}
-        unknown = [label for label in labels if label not in available]
+        # Match setting labels case-insensitively (e.g. cvrplib-X == cvrplib-x, TSP100 == tsp100).
+        wanted = {label.lower() for label in labels}
+        available = {run.setting.label.lower() for run in runs}
+        unknown = [label for label in wanted if label not in available]
         if unknown:
             raise typer.BadParameter(
                 f"Unknown setting label(s): {', '.join(unknown)}. Available: {', '.join(available)}"
             )
-        wanted = set(labels)
-        runs = [run for run in runs if run.setting.label in wanted]
+        runs = [run for run in runs if run.setting.label.lower() in wanted]
     if not runs:
         raise typer.BadParameter("No settings selected.")
     return runs
@@ -252,6 +258,7 @@ def _run_cvrplib(
     method_dir: Path,
     checkpoint_epoch: int | None,
     logger: EvalRunLogger,
+    warmup: int,
 ) -> CVRPLibSummaryRow | None:
     setting = run.setting
     console.rule(f"[bold]{setting.label}[/bold] ({run.group}, CVRPLIB)")
@@ -267,45 +274,55 @@ def _run_cvrplib(
     if not vrp_paths:
         return None
 
+    # Untimed warm-up so first-call overhead (lazy init, GPU kernel/JIT caches) does not
+    # inflate the per-instance timings of the measured run.
+    warmup = min(warmup, len(vrp_paths))
+    if warmup:
+        console.print(f"Warming up on {warmup} instance(s) before timing.")
+        for vrp_path in tqdm(vrp_paths[:warmup], desc="Warm-up", leave=False):
+            instance = load_cvrplib_instance(vrp_path).unsqueeze(0).to(device)
+            with torch.no_grad():
+                solve(method, instance)
+
     rows: list[CVRPLibInstanceRow] = []
-    start = time.perf_counter()
     for idx, vrp_path in enumerate(tqdm(vrp_paths, desc="Instances")):
         instance = load_cvrplib_instance(vrp_path).unsqueeze(0).to(device)
         bks = load_cvrplib_solution_bks(vrp_path.with_suffix(".sol"))
 
+        start = time.perf_counter()
         with torch.no_grad():
             final_solution = solve(method, instance)
+        instance_time_s = time.perf_counter() - start
 
-        our_cost = int(final_solution.total_distance(rounded=True).item())
-        gap_pct = round((our_cost - bks) / bks * 100, 2)
+        obj = int(final_solution.total_distance(rounded=True).item())
+        gap_pct = round((obj - bks) / bks * 100, 2)
         rows.append(
             CVRPLibInstanceRow(
                 instance=vrp_path.stem,
                 n_customers=int(instance.num_customers),
                 bks=bks,
-                our_cost=our_cost,
+                obj=obj,
                 gap_pct=gap_pct,
+                time_s=round(instance_time_s, 4),
             )
         )
         logger.log_cvrplib_instance(
             setting.label, gap_pct=gap_pct, progress=(idx + 1) / len(vrp_paths)
         )
-    elapsed = time.perf_counter() - start
 
     setting_dir = method_dir / setting.label
     CVRPLibInstanceRow.write(rows, path=setting_dir / "instances.csv")
-    summary_row = CVRPLibSummaryRow.build(
+    summary_rows = CVRPLibSummaryRow.build(
         config=run.name,
         method_type=run.method.type,
         group=run.group,
         checkpoint_epoch=checkpoint_epoch,
         setting=setting,
         instance_rows=rows,
-        total_time_s=elapsed,
         destruction_size=method.search.deconstruction_size,
     )
-    CVRPLibSummaryRow.write([summary_row], path=setting_dir / "summary.csv")
-    return summary_row
+    CVRPLibSummaryRow.write(summary_rows, path=setting_dir / "summary.csv")
+    return next((row for row in summary_rows if row.customer_range == "all"), None)
 
 
 if __name__ == "__main__":
