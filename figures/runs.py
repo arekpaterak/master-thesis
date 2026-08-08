@@ -10,6 +10,16 @@ METHOD_COLORS: dict[str, str] = {
     "Split + NAR": "tab:red",
 }
 
+# Distinct marker per method so series stay identifiable in grayscale and where lines
+# overlap, shared across figures for consistency with METHOD_COLORS.
+METHOD_MARKERS: dict[str, str] = {
+    "Random": "o",
+    "Joint + AR": "s",
+    "Joint + NAR": "^",
+    "Split + AR": "D",
+    "Split + NAR": "v",
+}
+
 
 def variant_train_runs(
     *, joint_ar: str = "", joint_nar: str = "", split_ar: str = "", split_nar: str = ""

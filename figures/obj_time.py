@@ -8,7 +8,7 @@ with app.setup:
     import matplotlib.pyplot as plt
     import polars as pl
 
-    from figures.runs import EVAL_RUNS, METHOD_COLORS
+    from figures.runs import EVAL_RUNS, METHOD_COLORS, METHOD_MARKERS
     from figures.utils import (
         figsize,
         project_root,
@@ -96,7 +96,7 @@ def _(problem_ui):
 def _():
     # Divisor from seconds; the label is the unit shown on the time axis.
     TIME_UNITS = {"s": 1.0, "min": 60.0, "h": 3600.0}
-    unit_ui = mo.ui.dropdown(options=list(TIME_UNITS), value="s", label="Time unit")
+    unit_ui = mo.ui.dropdown(options=list(TIME_UNITS), value="min", label="Time unit")
     return TIME_UNITS, unit_ui
 
 
@@ -134,8 +134,11 @@ def _(unit_ui):
         label="Clip y-range past first N steps",
         show_value=True,
     )
-    mo.vstack([marker_every_ui, skip_first_ui, unit_ui])
-    return marker_every_ui, skip_first_ui
+    marker_size_ui = mo.ui.slider(
+        start=0, stop=12, step=1, value=5, label="Marker size", show_value=True
+    )
+    mo.vstack([marker_every_ui, skip_first_ui, marker_size_ui, unit_ui])
+    return marker_every_ui, marker_size_ui, skip_first_ui
 
 
 @app.function
@@ -147,6 +150,7 @@ def plot_obj(
     markevery: int,
     skip_first: int,
     x_divisor: float = 1.0,
+    markersize: float = 6,
 ):
     fig, ax = plt.subplots(figsize=figsize(1.0))
 
@@ -168,8 +172,8 @@ def plot_obj(
         ax.plot(
             frame[x_column] / x_divisor,
             frame["obj_mean"],
-            marker="o",
-            markersize=3,
+            marker=METHOD_MARKERS.get(label, "o"),
+            markersize=markersize,
             markevery=marks,
             label=label,
             color=METHOD_COLORS.get(label),
@@ -190,6 +194,7 @@ def _(
     X_COLUMN,
     curves,
     marker_every_ui,
+    marker_size_ui,
     skip_first_ui,
     title,
     unit_ui,
@@ -212,6 +217,7 @@ def _(
                 marker_every_ui.value,
                 skip_first_ui.value,
                 x_divisor=unit_divisor,
+                markersize=marker_size_ui.value,
             ),
             "obj_step": plot_obj(
                 curves,
@@ -220,6 +226,7 @@ def _(
                 "Improvement step",
                 marker_every_ui.value,
                 skip_first_ui.value,
+                markersize=marker_size_ui.value,
             ),
         }
         if curves

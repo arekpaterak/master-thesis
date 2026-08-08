@@ -11,7 +11,7 @@ with app.setup:
     import polars as pl
 
     import wandb
-    from figures.runs import METHOD_COLORS, TRAIN_RUNS, WANDB_PROJECT
+    from figures.runs import METHOD_COLORS, METHOD_MARKERS, TRAIN_RUNS, WANDB_PROJECT
     from figures.utils import (
         figsize,
         project_root,
@@ -178,7 +178,21 @@ def plot_metric(
         values = frame[metric_key]
         if smooth_window > 1:
             values = values.rolling_mean(window_size=smooth_window, min_periods=1)
-        ax.plot(frame[x_key], values, label=label, color=METHOD_COLORS.get(label))
+        # Mark ~12 evenly-spaced points (and always the last) so the dense per-step series
+        # stays readable while the marker still identifies the method.
+        n = len(frame)
+        marks = list(range(0, n, max(1, n // 12)))
+        if n and (n - 1) not in marks:
+            marks.append(n - 1)
+        ax.plot(
+            frame[x_key],
+            values,
+            label=label,
+            color=METHOD_COLORS.get(label),
+            marker=METHOD_MARKERS.get(label, "o"),
+            markersize=3,
+            markevery=marks,
+        )
     ax.set_title(title)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
