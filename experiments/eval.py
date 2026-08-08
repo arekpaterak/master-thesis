@@ -51,7 +51,7 @@ def main(
         None, help="Eval config file (path, or name under configs/eval)."
     ),
     config_option: Path = typer.Option(
-        None, help="Eval config file (path, or name under configs/eval)."
+        None, "--config", help="Eval config file (path, or name under configs/eval)."
     ),
     device: str | None = typer.Option(None, help="Torch device (default: cuda if available)."),
     setting: list[str] = typer.Option(
@@ -68,10 +68,10 @@ def main(
     force: bool = typer.Option(
         False, "--force", help="Reevaluate on config settings even if already done for this config."
     ),
-    cvrplib_warmup: int = typer.Option(
+    warmup: int = typer.Option(
         3,
         "--cvrplib-warmup",
-        help="Untimed warm-up solves before timing CVRPLIB instances (0 to disable).",
+        help="Untimed warm-up batches before evaluating CVRPLib instances (0 to disable).",
     ),
 ) -> None:
     """Evaluate a single method across the problem settings listed in the config."""
@@ -114,7 +114,7 @@ def main(
         with eval_run_logger(run, enabled=log_wandb) as logger:
             if isinstance(run.setting, CVRPLibProblemSetting):
                 logger.summary_row = _run_cvrplib(
-                    method, run, torch_device, method_dir, checkpoint_epoch, logger, cvrplib_warmup
+                    method, run, torch_device, method_dir, checkpoint_epoch, logger, warmup
                 )
             else:
                 logger.summary_row, logger.curve = _run_synthetic(

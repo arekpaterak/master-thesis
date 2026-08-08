@@ -418,7 +418,9 @@ def _run_training(
             validation_batch_size=config.validation.batch_size,
             validate_every_n_epochs=config.validation.every_n_epochs,
             on_epoch_validation_end=[on_epoch_validation_end],
-            epoch_progress=lambda it: tqdm(it, desc="Epochs", total=config.trainer.epochs),
+            epoch_progress=lambda it: tqdm(
+                it, desc="Epochs", total=config.trainer.epochs, initial=initial_epoch
+            ),
             batch_progress=lambda it: tqdm(it, desc="Batches", leave=False),
             validation_batch_progress=lambda it: tqdm(it, desc="Validation batches", leave=False),
             strict_number_of_instances=config.trainer.strict_number_of_instances,
