@@ -100,7 +100,7 @@ class NumbaApplyAndRepair(ApplyAndRepair):
         )
 
     def _call_cvrp(self, solution: CVRPGraphSolution, rollout: Rollout) -> CVRPGraphSolution:
-        from core.lns.numba_kernels.cvrp_apply_and_repair import apply_and_repair_parallel
+        from core.lns.numba.cvrp_apply_and_repair import apply_and_repair_parallel
         from core.problems.cvrp.graph_solution import CVRPGraphSolution
 
         next_np, prev_np, locations, demand, capacity = solution.to_numpy_arrays()
@@ -120,7 +120,7 @@ class NumbaApplyAndRepair(ApplyAndRepair):
         return self._rebuild(CVRPGraphSolution, solution, next_out, prev_out)
 
     def _call_tsp(self, solution: TSPGraphSolution, rollout: Rollout) -> TSPGraphSolution:
-        from core.lns.numba_kernels.tsp_apply_and_repair import apply_and_repair_parallel
+        from core.lns.numba.tsp_apply_and_repair import apply_and_repair_parallel
         from core.problems.tsp.graph_solution import TSPGraphSolution
 
         if self._insert_in_affected_routes_only:

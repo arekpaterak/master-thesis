@@ -2,9 +2,13 @@ import numpy as np
 import pytest
 import torch
 
-from core.lns.acceptance_criterion import GreedyAcceptance, SimulatedAnnealingAcceptance
+from core.lns.acceptance_criterion import (
+    GreedyAcceptance,
+    SimulatedAnnealingAcceptance,
+    UnconditionalAcceptance,
+)
 from core.lns.improvement_step import NumbaSequentialImprovementStep
-from core.lns.numba_kernels.cvrp_apply_and_repair import apply_and_repair_sequential
+from core.lns.numba.cvrp_apply_and_repair import apply_and_repair_sequential
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
 from core.problems.cvrp import CVRP, CVRPSampler
@@ -71,6 +75,12 @@ class TestNumbaSequentialImprovementStep:
     def test_with_simulated_annealing(self, solution: CVRPGraphSolution) -> None:
         criterion = SimulatedAnnealingAcceptance(temperature=0.1, decay=0.9)
         repaired = _make_improvement_step()(solution, criterion)
+
+        assert repaired.is_complete.all()
+        assert repaired.is_feasible.all()
+
+    def test_with_unconditional_acceptance(self, solution: CVRPGraphSolution) -> None:
+        repaired = _make_improvement_step()(solution, UnconditionalAcceptance())
 
         assert repaired.is_complete.all()
         assert repaired.is_feasible.all()

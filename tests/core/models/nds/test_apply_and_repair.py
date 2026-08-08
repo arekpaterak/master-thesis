@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from core.lns.numba_kernels.cvrp_apply_and_repair import apply_and_repair_parallel
+from core.lns.numba.cvrp_apply_and_repair import apply_and_repair_parallel
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
 from core.models.nds.apply_and_repair import NumbaApplyAndRepair, TorchApplyAndRepair

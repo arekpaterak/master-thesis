@@ -14,7 +14,9 @@ from .acceptance_criterion import (
     AcceptanceCriterion,
     GreedyAcceptance,
     SimulatedAnnealingAcceptance,
+    UnconditionalAcceptance,
 )
+from .numba.common import ACCEPT_GREEDY, ACCEPT_SA, ACCEPT_UNCONDITIONAL
 from .operators.destroy.base import NodeDestroyOperator
 from .operators.repair.base import RepairOperator
 from .utils import best_repair, remove_nodes, select_solution
@@ -212,7 +214,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         accept_kind: int,
         temperature: float,
     ) -> CVRPGraphSolution:
-        from core.lns.numba_kernels.cvrp_apply_and_repair import (
+        from core.lns.numba.cvrp_apply_and_repair import (
             apply_and_repair_sequential as cvrp_apply_and_repair_sequential,
         )
         from core.problems.cvrp.graph_solution import CVRPGraphSolution
@@ -248,7 +250,7 @@ class NumbaSequentialImprovementStep(ImprovementStep):
         accept_kind: int,
         temperature: float,
     ) -> TSPGraphSolution:
-        from core.lns.numba_kernels.tsp_apply_and_repair import (
+        from core.lns.numba.tsp_apply_and_repair import (
             apply_and_repair_sequential as tsp_apply_and_repair_sequential,
         )
         from core.problems.tsp.graph_solution import TSPGraphSolution
@@ -326,9 +328,12 @@ def build_random_destroy_step(
 def _acceptance_to_kernel(accept: AcceptanceCriterion) -> tuple[int, float]:
     """Map an acceptance criterion to the (kind, temperature) the numba kernel expects."""
     if isinstance(accept, GreedyAcceptance):
-        return 0, 0.0
+        return ACCEPT_GREEDY, 0.0
+    if isinstance(accept, UnconditionalAcceptance):
+        return ACCEPT_UNCONDITIONAL, 0.0
     if isinstance(accept, SimulatedAnnealingAcceptance):
-        return 1, float(accept.temperature)
+        return ACCEPT_SA, float(accept.temperature)
     raise NotImplementedError(
-        f"Numba ImprovementSteps support GreedyAcceptance and SimulatedAnnealingAcceptance, got {type(accept)}"
+        "Numba ImprovementSteps support GreedyAcceptance, UnconditionalAcceptance and "
+        f"SimulatedAnnealingAcceptance, got {type(accept)}"
     )

@@ -92,6 +92,23 @@ def test_apply_and_repair_sequential_greedy_never_worsens(instance):
     assert bool((result.objective() <= solution.objective() + 1e-6).all())
 
 
+def test_apply_and_repair_sequential_unconditional_is_feasible(instance):
+    from core.lns.numba.common import ACCEPT_UNCONDITIONAL
+
+    solution = CMSTPSolution.star(instance)
+    nodes = _random_nodes(instance.batch_size[0], 8, 5, instance.num_customers, seed=1)
+    result = solution.apply_and_repair_sequential(
+        nodes,
+        n_repairs=3,
+        accept_kind=ACCEPT_UNCONDITIONAL,
+        temperature=1.0,
+        eps=1e-9,
+        base_seed=7,
+    )
+    assert bool(result.is_complete.all())
+    assert bool(result.is_feasible.all())
+
+
 def test_initial_action_mask_forbids_only_root():
     mask = initial_action_mask("cmstp", batch_size=3, num_nodes=6, device=torch.device("cpu"))
     assert bool(mask[:, 0].all())

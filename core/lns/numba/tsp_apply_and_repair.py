@@ -1,6 +1,6 @@
 """Numba CPU kernels for TSP apply-and-repair.
 
-Mirrors :mod:`core.lns.numba_kernels.cvrp_apply_and_repair`, minus the
+Mirrors :mod:`core.lns.numba.cvrp_apply_and_repair`, minus the
 depot/capacity/route bookkeeping CVRP needs: TSP has no depot and forms a single
 cycle over all nodes, so destroy always stitches directly (no route fragments to
 special-case) and repair has no new-route fallback, no capacity check and no
@@ -27,7 +27,7 @@ the per-element arrays travel bundled as :class:`Solution` (``next``/``prev``) a
 Randomness uses numba's per-thread ``np.random``. To stay reproducible under
 ``prange`` (where draws would otherwise depend on the thread count), each parallel
 iteration reseeds ``np.random`` from a seed derived only from ``base_seed`` and the
-iteration index -- see :func:`core.lns.numba_kernels.common.seed_for`.
+iteration index -- see :func:`core.lns.numba.common.seed_for`.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from typing import NamedTuple
 import numpy as np
 from numba import njit, prange
 
-from .common import dist, seed_for
+from .common import accept_move, dist, seed_for
 
 UNASSIGNED = -1
 
@@ -229,14 +229,9 @@ def _sequential_single_(
             out=candidate,
         )
 
-        if accept_kind == 0:
-            accepted = candidate_objective < current_objective
-        else:
-            delta = candidate_objective - current_objective
-            if delta < eps:
-                accepted = True
-            else:
-                accepted = np.random.random() < np.exp(-max(delta, 0.0) / temperature)
+        accepted = accept_move(
+            candidate_objective, current_objective, accept_kind, temperature, eps
+        )
 
         if accepted:
             nxt[:] = candidate.next

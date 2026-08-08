@@ -3,6 +3,28 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 
+ACCEPT_GREEDY = 0
+ACCEPT_SA = 1
+ACCEPT_UNCONDITIONAL = 2
+
+
+@njit(inline="always")
+def accept_move(
+    candidate_objective: float,
+    current_objective: float,
+    accept_kind: int,
+    temperature: float,
+    eps: float,
+) -> bool:
+    if accept_kind == ACCEPT_GREEDY:
+        return candidate_objective < current_objective
+    if accept_kind == ACCEPT_UNCONDITIONAL:
+        return True
+    delta = candidate_objective - current_objective
+    if delta < eps:
+        return True
+    return np.random.random() < np.exp(-max(delta, 0.0) / temperature)
+
 
 @njit(inline="always")
 def seed_for(base_seed: int, index: int, count: int) -> int:

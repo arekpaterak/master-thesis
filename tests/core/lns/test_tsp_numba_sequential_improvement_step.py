@@ -1,7 +1,11 @@
 import pytest
 import torch
 
-from core.lns.acceptance_criterion import GreedyAcceptance, SimulatedAnnealingAcceptance
+from core.lns.acceptance_criterion import (
+    GreedyAcceptance,
+    SimulatedAnnealingAcceptance,
+    UnconditionalAcceptance,
+)
 from core.lns.improvement_step import NumbaSequentialImprovementStep
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair.insert.tsp import TSPGreedyInsertRepair
@@ -62,6 +66,12 @@ class TestTSPNumbaSequentialImprovementStep:
     def test_with_simulated_annealing(self, solution: TSPGraphSolution) -> None:
         criterion = SimulatedAnnealingAcceptance(temperature=0.1, decay=0.9)
         repaired = _make_improvement_step()(solution, criterion)
+
+        assert repaired.is_complete.all()
+        assert (repaired.node_degree() == 2).all()
+
+    def test_with_unconditional_acceptance(self, solution: TSPGraphSolution) -> None:
+        repaired = _make_improvement_step()(solution, UnconditionalAcceptance())
 
         assert repaired.is_complete.all()
         assert (repaired.node_degree() == 2).all()

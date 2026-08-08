@@ -37,7 +37,7 @@ from typing import NamedTuple
 import numpy as np
 from numba import njit, prange
 
-from .common import dist, seed_for
+from .common import accept_move, dist, seed_for
 
 DEPOT = 0
 UNASSIGNED = -1
@@ -259,14 +259,9 @@ def _sequential_single_(
             out=candidate,
         )
 
-        if accept_kind == 0:
-            accepted = candidate_objective < current_objective
-        else:
-            delta = candidate_objective - current_objective
-            if delta < eps:
-                accepted = True
-            else:
-                accepted = np.random.random() < np.exp(-max(delta, 0.0) / temperature)
+        accepted = accept_move(
+            candidate_objective, current_objective, accept_kind, temperature, eps
+        )
 
         if accepted:
             nxt[:] = candidate.next
