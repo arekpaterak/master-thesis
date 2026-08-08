@@ -21,7 +21,6 @@ class CVRPSolution(BaseSolution):
     _instance: CVRPInstance
     sequence: torch.Tensor
     """(..., L) where L is the max sequence length in the batch. Starts and ends with 0 (depot). Padded with 0s if necessary. -1 for deconstructed slots."""
-    # TODO: Don't use leading 0?
 
     @property
     def instance(self) -> CVRPInstance:
