@@ -24,7 +24,7 @@ from core.problems.cvrp.dataset import (
     load_cvrplib_solution_bks,
 )
 from core.results.cvrplib import CVRPLibInstanceRow, CVRPLibSummaryRow
-from core.results.plots import plot_objective_curve, plot_search_progress, save_figure
+from core.results.plots import plot_solutions_from_search, save_figure
 from core.results.synthetic import (
     SyntheticInstanceRow,
     SyntheticStepRow,
@@ -239,14 +239,8 @@ def _save_synthetic_plots(
 ) -> None:
     plots_dir = setting_dir / "plots"
 
-    mean = result.objective_per_step.mean(dim=1).tolist()
-    std = result.objective_per_step.std(dim=1).tolist()
-    fig = plot_objective_curve(result.step_labels, mean, std, title=f"{setting.label}: objective")
-    save_figure(fig, plots_dir / f"{setting.label}_progress.pdf")
-    plt.close(fig)
-
     for idx, snapshots in enumerate(plot_cb.snapshots):
-        fig = plot_search_progress(snapshots, result.step_labels, epoch=0)
+        fig = plot_solutions_from_search(snapshots, result.step_labels, epoch=0)
         save_figure(fig, plots_dir / f"{setting.label}_routes_{idx:02d}.pdf")
         plt.close(fig)
 

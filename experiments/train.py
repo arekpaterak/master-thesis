@@ -34,7 +34,7 @@ from core.models.utils import (
 )
 from core.problems.dataset import DatasetSampler
 from core.problems.sampler import Sampler
-from core.results.plots import plot_search_progress, save_figure
+from core.results.plots import plot_solutions_from_search, save_figure
 from core.results.wandb_artifacts import upload_final_checkpoint
 
 EXPERIMENTS_DIR = Path(__file__).parent
@@ -369,7 +369,7 @@ def _run_training(
     def on_epoch_validation_end(val_summary: EpochValidationSummary) -> None:
         fig = None
         if config.validation.plot_enabled:
-            fig = plot_search_progress(
+            fig = plot_solutions_from_search(
                 val_summary.snapshots, val_summary.step_labels, epoch=val_summary.epoch
             )
             if config.validation.plot_save_to_disk:

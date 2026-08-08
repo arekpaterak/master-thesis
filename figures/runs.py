@@ -49,7 +49,7 @@ TRAIN_RUNS: dict[str, dict] = {
         "runs": variant_train_runs(
             joint_ar="tsp/featured/nds_tsp_100+ar",
             joint_nar="tsp/featured/nds_tsp_100+simple",
-            # split_ar="tsp/featured/...",   # no featured run yet
+            # split_ar="tsp/featured/nds_tsp_100_split+ar",
             split_nar="tsp/featured/nds_tsp_100_split+simple",
         ),
     },
@@ -143,8 +143,8 @@ EVAL_RUNS: dict[str, dict] = {
         "task": "tsp100",
         "runs": variant_eval_runs(
             joint_ar="nds_tsp_100+ar",
-            # joint_nar="nds_tsp_100+simple",     # config exists, not evaluated yet
-            # split_ar="nds_tsp_100_split+ar",    # no config yet
+            joint_nar="nds_tsp_100+simple",
+            # split_ar="nds_tsp_100_split+ar",
             split_nar="nds_tsp_100_split+simple",
             random="random_destroy",
         ),

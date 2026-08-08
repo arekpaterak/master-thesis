@@ -5,9 +5,9 @@ app = marimo.App(width="full")
 
 with app.setup:
     import marimo as mo
-    import matplotlib.pyplot as plt
     import polars as pl
 
+    from core.results.plots import plot_objective
     from figures.runs import EVAL_RUNS, METHOD_COLORS, METHOD_MARKERS
     from figures.utils import (
         figsize,
@@ -141,53 +141,6 @@ def _(unit_ui):
     return marker_every_ui, marker_size_ui, skip_first_ui
 
 
-@app.function
-def plot_obj(
-    curves: dict[str, pl.DataFrame],
-    title: str,
-    x_column: str,
-    x_label: str,
-    markevery: int,
-    skip_first: int,
-    x_divisor: float = 1.0,
-    markersize: float = 6,
-):
-    fig, ax = plt.subplots(figsize=figsize(1.0))
-
-    # Let matplotlib autoscale the y-axis from the post-skip tail only, so the steep
-    # early descent runs off the top instead of flattening the interesting tail.
-    for frame in curves.values():
-        tail = frame[skip_first:]
-        ax.plot(tail[x_column] / x_divisor, tail["obj_mean"])
-    ylim = ax.get_ylim()
-    ax.cla()
-
-    # Redraw the full curves and pin the tail-based y-range back.
-    for label, frame in curves.items():
-        n = len(frame)
-        # Mark every N steps, but always mark the final point too.
-        marks = list(range(0, n, markevery))
-        if n and (n - 1) not in marks:
-            marks.append(n - 1)
-        ax.plot(
-            frame[x_column] / x_divisor,
-            frame["obj_mean"],
-            marker=METHOD_MARKERS.get(label, "o"),
-            markersize=markersize,
-            markevery=marks,
-            label=label,
-            color=METHOD_COLORS.get(label),
-        )
-    ax.set_title(title)
-    ax.set_xlabel(x_label)
-    ax.set_ylabel("Objective")
-    ax.set_xlim(left=0)
-    ax.set_ylim(*ylim)
-    ax.legend()
-    fig.tight_layout()
-    return fig
-
-
 @app.cell
 def _(
     TIME_UNITS,
@@ -209,24 +162,30 @@ def _(
     # file stem. Empty when the selection has no filled-in runs yet.
     figures = (
         {
-            "obj_time": plot_obj(
+            "obj_time": plot_objective(
                 curves,
-                title,
-                X_COLUMN,
-                time_label,
-                marker_every_ui.value,
-                skip_first_ui.value,
+                title=title,
+                x_column=X_COLUMN,
+                x_label=time_label,
+                colors=METHOD_COLORS,
+                markers=METHOD_MARKERS,
+                markevery=marker_every_ui.value,
+                skip_first=skip_first_ui.value,
                 x_divisor=unit_divisor,
                 markersize=marker_size_ui.value,
+                figsize=figsize(1.0),
             ),
-            "obj_step": plot_obj(
+            "obj_step": plot_objective(
                 curves,
-                title,
-                "step",
-                "Improvement step",
-                marker_every_ui.value,
-                skip_first_ui.value,
+                title=title,
+                x_column="step",
+                x_label="Improvement step",
+                colors=METHOD_COLORS,
+                markers=METHOD_MARKERS,
+                markevery=marker_every_ui.value,
+                skip_first=skip_first_ui.value,
                 markersize=marker_size_ui.value,
+                figsize=figsize(1.0),
             ),
         }
         if curves
