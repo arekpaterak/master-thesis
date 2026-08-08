@@ -8,6 +8,7 @@ with app.setup:
     import matplotlib.pyplot as plt
     import polars as pl
 
+    from figures.runs import EVAL_RUNS, METHOD_COLORS
     from figures.utils import (
         figsize,
         project_root,
@@ -29,9 +30,10 @@ def _():
     against wall-clock time, and objective against improvement step. Each run is a line
     whose points are the logged steps.
 
-    Pick the problem and size from the dropdowns. A run is filled in `PROBLEMS` when its
-    `steps.csv` exists; runs that are not evaluated yet are left commented so the intended
-    method name is documented and easy to enable later.
+    Pick the problem and size from the dropdowns. Runs are defined in `figures/runs.py`
+    (`EVAL_RUNS`); a run is filled when its `steps.csv` exists, and runs that are not
+    evaluated yet are left commented so the intended method name is documented and easy to
+    enable later.
 
     Each run resolves to `results/eval/<problem>/<method>/<task>/steps.csv`.
     """)
@@ -40,123 +42,11 @@ def _():
 
 @app.cell
 def _():
-    def variant_runs(*, joint_ar="", joint_nar="", split_ar="", split_nar="", random="") -> list:
-        # Random first so the baseline leads the legend (and colour cycle).
-        return [
-            ("Random", random),
-            ("Joint + AR", joint_ar),
-            ("Joint + NAR", joint_nar),
-            ("Split + AR", split_ar),
-            ("Split + NAR", split_nar),
-        ]
-
-    # Fill a run with its method (eval config) name once its steps.csv exists; keep the
-    # not-yet-evaluated variants commented with the name they will take.
-    PROBLEMS: dict[str, dict] = {
-        "TSP20": {
-            "problem": "tsp",
-            "task": "tsp20",
-            # NDS is only trained at sizes 50/100.
-            "runs": variant_runs(random="random_destroy"),
-        },
-        "TSP50": {
-            "problem": "tsp",
-            "task": "tsp50",
-            "runs": variant_runs(
-                # joint_ar="nds_tsp_50+ar",             # config exists, not evaluated yet
-                # joint_nar="nds_tsp_50+simple",        # config exists, not evaluated yet
-                # split_nar="nds_tsp_50_split+simple",  # config exists, not evaluated yet
-                random="random_destroy",
-            ),
-        },
-        "TSP100": {
-            "problem": "tsp",
-            "task": "tsp100",
-            "runs": variant_runs(
-                joint_ar="nds_tsp_100+ar",
-                # joint_nar="nds_tsp_100+simple",     # config exists, not evaluated yet
-                # split_ar="nds_tsp_100_split+ar",    # no config yet
-                split_nar="nds_tsp_100_split+simple",
-                random="random_destroy",
-            ),
-        },
-        "CVRP20": {
-            "problem": "cvrp",
-            "task": "cvrp20",
-            # NDS is only trained at sizes 50/100.
-            "runs": variant_runs(random="random_destroy"),
-        },
-        "CVRP50": {
-            "problem": "cvrp",
-            "task": "cvrp50",
-            "runs": variant_runs(
-                # joint_ar="nds_cvrp_50+ar",             # config exists, not evaluated yet
-                # joint_nar="nds_cvrp_50+simple",        # config exists, not evaluated yet
-                # split_nar="nds_cvrp_50_split+simple",  # config exists, not evaluated yet
-                random="random_destroy",
-            ),
-        },
-        "CVRP100": {
-            "problem": "cvrp",
-            "task": "cvrp100",
-            # Original-NDS baselines exist too (nds_original_cvrp_100[+nowarmup]); they are
-            # a separate comparison and left out of the variant sweep here.
-            "runs": variant_runs(
-                joint_ar="nds_cvrp_100+ar",
-                joint_nar="nds_cvrp_100+simple",
-                # split_ar="nds_cvrp_100_split+ar",  # config exists, not evaluated yet
-                split_nar="nds_cvrp_100_split+simple",
-                random="random_destroy",
-            ),
-        },
-        "CVRP200": {
-            "problem": "cvrp",
-            "task": "cvrp200",
-            # NDS is trained at size 100 but evaluated here for generalisation to size 200,
-            # so the runs reuse the size-100 methods with the cvrp200 task.
-            "runs": variant_runs(
-                # joint_ar="nds_cvrp_100+ar",             # not evaluated on cvrp200 yet
-                # joint_nar="nds_cvrp_100+simple",        # not evaluated on cvrp200 yet
-                # split_ar="nds_cvrp_100_split+ar",       # config exists, not evaluated
-                # split_nar="nds_cvrp_100_split+simple",  # not evaluated on cvrp200 yet
-                random="random_destroy",
-            ),
-        },
-        "CMSTP20": {
-            "problem": "cmstp",
-            "task": "cmstp20",
-            # NDS is only trained at sizes 50/100.
-            "runs": variant_runs(random="random_destroy"),
-        },
-        "CMSTP50": {
-            "problem": "cmstp",
-            "task": "cmstp50",
-            "runs": variant_runs(
-                # joint_ar="nds_cmstp_50+ar",              # config exists, not evaluated yet
-                # joint_nar="nds_cmstp_50+simple",         # config exists, not evaluated yet
-                # split_ar="nds_cmstp_50_split+ar",        # config exists, not evaluated yet
-                # split_nar="nds_cmstp_50_split+simple",   # config exists, not evaluated yet
-                random="random_destroy",
-            ),
-        },
-        "CMSTP100": {
-            "problem": "cmstp",
-            "task": "cmstp100",
-            "runs": variant_runs(
-                # joint_ar="nds_cmstp_100+ar",             # config exists, not evaluated yet
-                # joint_nar="nds_cmstp_100+simple",        # config exists, not evaluated yet
-                # split_ar="nds_cmstp_100_split+ar",       # config exists, not evaluated yet
-                # split_nar="nds_cmstp_100_split+simple",  # config exists, not evaluated yet
-                random="random_destroy",
-            ),
-        },
-    }
-
     # Per-instance time keeps runs comparable regardless of test-set size.
     X_COLUMN = "time_total_s"
 
     OUT_DIR = project_root() / "figures" / "out"
-    return OUT_DIR, PROBLEMS, X_COLUMN
+    return OUT_DIR, X_COLUMN
 
 
 @app.cell
@@ -179,20 +69,20 @@ def _(X_COLUMN):
 
 
 @app.cell
-def _(PROBLEMS: dict[str, dict]):
-    problem_names = sorted({spec["problem"] for spec in PROBLEMS.values()})
+def _():
+    problem_names = sorted({spec["problem"] for spec in EVAL_RUNS.values()})
     default_problem = "cvrp" if "cvrp" in problem_names else problem_names[0]
     problem_ui = mo.ui.dropdown(options=problem_names, value=default_problem, label="Problem")
     return (problem_ui,)
 
 
 @app.cell
-def _(PROBLEMS: dict[str, dict], problem_ui):
+def _(problem_ui):
     # Sizes available for the chosen problem, parsed off each title (e.g. CVRP200 -> "200").
     problem_sizes = sorted(
         (
             title.removeprefix(spec["problem"].upper())
-            for title, spec in PROBLEMS.items()
+            for title, spec in EVAL_RUNS.items()
             if spec["problem"] == problem_ui.value
         ),
         key=int,
@@ -217,9 +107,9 @@ def _(problem_ui, size_ui):
 
 
 @app.cell
-def _(PROBLEMS: dict[str, dict], load_steps, problem_ui, size_ui):
+def _(load_steps, problem_ui, size_ui):
     title = f"{problem_ui.value.upper()}{size_ui.value}"
-    spec = PROBLEMS[title]
+    spec = EVAL_RUNS[title]
 
     # Skip runs whose method name is an unfilled placeholder; a named-but-missing file
     # still raises in load_steps so typos are caught.
@@ -282,6 +172,7 @@ def plot_obj(
             markersize=3,
             markevery=marks,
             label=label,
+            color=METHOD_COLORS.get(label),
         )
     ax.set_title(title)
     ax.set_xlabel(x_label)
@@ -343,7 +234,7 @@ def _(curves, figures, title):
         view = mo.vstack([mo.md(f"### {title}"), figures["obj_time"], figures["obj_step"]])
     else:
         view = mo.md(
-            f"No filled-in runs for **{title}** yet. Uncomment a run in `PROBLEMS` "
+            f"No filled-in runs for **{title}** yet. Uncomment a run in `EVAL_RUNS` "
             "(or evaluate it) to plot it."
         )
     view

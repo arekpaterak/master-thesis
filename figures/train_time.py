@@ -322,7 +322,7 @@ def _(OUT_DIR, figures, problem, save_button, size_ui):
     problem_dir.mkdir(parents=True, exist_ok=True)
     saved_paths = []
     for _stem, _fig in figures.items():
-        path = problem_dir / f"{_stem}_{problem.lower()}{size_ui.value}.pdf"
+        path = problem_dir / f"train_{_stem}_{problem.lower()}{size_ui.value}.pdf"
         save_figure(_fig, path)
         saved_paths.append(path)
 
