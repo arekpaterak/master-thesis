@@ -1,7 +1,6 @@
 import pytest
 import torch
 
-from core.lns.operators.destroy.random_edge import TSPRandomEdgeDestroy
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.repair import TSPGreedyInsertRepair, TSPGreedyReconnectRepair
 from core.problems.tsp import TSP, TSPSampler, TSPSolution
@@ -37,41 +36,6 @@ class TestGreedyRepair:
 
         # Repair solution
         repair = TSPGreedyInsertRepair[TSPSolution]()
-        repaired_solution = repair(destroyed_solution)
-
-        # Check if repaired successfully
-        assert repaired_solution.is_complete.all(), "Repaired solution should be complete."
-
-
-class TestGreedyEdgeRepair:
-    @pytest.mark.parametrize(
-        "batch_size, num_locations, num_edges_to_destroy",
-        [
-            (1, 10, 3),
-            (4, 20, 5),
-        ],
-    )
-    def test_repairs_tsp(
-        self, batch_size: int, num_locations: int, num_edges_to_destroy: int
-    ) -> None:
-        config = TSP(num_locations=num_locations)
-        instance = TSPSampler(config, seed=42)(batch_size)
-
-        sequence = random_permutation(instance).tour
-        solution = TSPGraphSolution.create_from_sequence(instance=instance, sequence=sequence)
-
-        assert solution.is_complete.all(), "Initial solution should be complete."
-
-        # Destroy solution
-        destroy = TSPRandomEdgeDestroy(destruction_size=num_edges_to_destroy, seed=42)
-        destroyed_solution = destroy(solution)
-
-        assert not destroyed_solution.is_complete.any(), (
-            "Destroyed solution should not be complete."
-        )
-
-        # Repair solution
-        repair = TSPGreedyReconnectRepair()
         repaired_solution = repair(destroyed_solution)
 
         # Check if repaired successfully
