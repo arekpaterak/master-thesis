@@ -9,14 +9,6 @@ from core.problems.cvrp.features import CVRPInstanceFeatures, CVRPSolutionFeatur
 
 
 class CVRPInitialEmbedding(nn.Module):
-    """Separate linear projections for depot and customer nodes.
-
-    When a positional encoding config is given, the in-route (IPE) and cross-route
-    (XPE) sinusoidal encodings are concatenated to the customer content features before
-    the customer projection. The depot is the XPE anchor and keeps its own PE-free
-    projection.
-    """
-
     def __init__(
         self,
         *,

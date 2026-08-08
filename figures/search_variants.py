@@ -67,10 +67,10 @@ def _():
             "problem": "cvrp",
             "task": "cvrp100",
             "runs": search_runs(
-                # unconditional="nds_cvrp_100_split+simple_unconditional",  # not evaluated yet
+                # unconditional="nds_cvrp_100_split+simple_unconditional",
                 greedy="nds_cvrp_100_split+simple_greedy",
                 sa="nds_cvrp_100_split+simple",
-                # asa="nds_cvrp_100_split+simple_asa",                      # not evaluated yet
+                asa="nds_cvrp_100_split+simple_asa",
             ),
         },
         "CMSTP100": {
