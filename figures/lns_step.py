@@ -8,7 +8,8 @@ with app.setup:
     import matplotlib.pyplot as plt
 
     from core.lns import GreedyAcceptance, search
-    from core.lns.improvement_step import SequentialImprovementStep
+    from core.lns.apply_and_repair import TorchApplyAndRepair
+    from core.lns.improvement_step import ImprovementStep
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
     from core.problems.cvrp import CVRPSampler
     from core.problems.cvrp.lns.operators.repair.insert import CVRPGreedyInsertRepair
@@ -79,7 +80,10 @@ def _(destruction_ui, problem_ui, run_ui, seed_ui, steps_ui):
 
     destroy_op = RandomNodeDestroy(destruction_size=destruction_ui.value, seed=SEED, stitch=True)
 
-    step = SequentialImprovementStep(destroy=destroy_op, repair=repair_op, num_rollouts=1)
+    apply_and_repair = TorchApplyAndRepair(repair=repair_op, n_repairs=1)
+    step = ImprovementStep(
+        destroy=destroy_op, apply_and_repair=apply_and_repair, mode="sequential", num_rollouts=1
+    )
     result = search(
         initial,
         improvement_step=step,

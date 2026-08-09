@@ -25,9 +25,11 @@ def _():
     from drawdata import ScatterWidget
 
     from core.lns.acceptance_criterion import GreedyAcceptance
+    from core.lns.apply_and_repair import TorchApplyAndRepair
+    from core.lns.improvement_step import ImprovementStep
     from core.models.nds.config import TrainConfig
+    from core.models.nds.destroy import ModelNodeDestroy
     from core.models.nds.factory import build_model
-    from core.models.nds.improvement_step import ModelSequentialImprovementStep
     from core.problems.cvrp.instance import CVRPInstance
     from core.problems.cvrp.lns.operators.repair.insert import CVRPGreedyInsertRepair
     from core.problems.cvrp.solve import one_customer_per_route
@@ -45,7 +47,9 @@ def _():
         TrainConfig,
         build_model,
         GreedyAcceptance,
-        ModelSequentialImprovementStep,
+        ImprovementStep,
+        ModelNodeDestroy,
+        TorchApplyAndRepair,
         mo,
         np,
         one_customer_per_route,
@@ -195,7 +199,9 @@ def _(mo):
 def _(
     CVRPGreedyInsertRepair,
     GreedyAcceptance,
-    NDSImprovementStep,
+    ImprovementStep,
+    ModelNodeDestroy,
+    TorchApplyAndRepair,
     TSPGreedyReconnectRepair,
     config,
     current_solution,
@@ -219,12 +225,14 @@ def _(
         repair = (
             TSPGreedyReconnectRepair() if config.problem.name == "tsp" else CVRPGreedyInsertRepair()
         )
-        step = NDSImprovementStep(
-            model=model,
-            repair=repair,
+        destroy = ModelNodeDestroy(
+            model=model, deconstruction_size=config.search.deconstruction_size
+        )
+        step = ImprovementStep(
+            destroy=destroy,
+            apply_and_repair=TorchApplyAndRepair(repair=repair, n_repairs=1),
+            mode="sequential",
             num_rollouts=num_rollouts_slider.value,
-            deconstruction_size=config.search.deconstruction_size,
-            n_repairs=1,
         )
         return lambda sol: step(sol, GreedyAcceptance())
 

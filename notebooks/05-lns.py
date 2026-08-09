@@ -266,11 +266,13 @@ def _(
     search,
     torch,
 ):
-    from core.lns.improvement_step import SequentialImprovementStep
+    from core.lns.apply_and_repair import TorchApplyAndRepair
+    from core.lns.improvement_step import ImprovementStep
 
-    _step = SequentialImprovementStep(
+    _step = ImprovementStep(
         destroy=destroy_op,
-        repair=repair_op,
+        apply_and_repair=TorchApplyAndRepair(repair=repair_op, n_repairs=1),
+        mode="sequential",
         num_rollouts=rollout_widget.value,
     )
     _trajectory = [initial.objective().detach().cpu()]
