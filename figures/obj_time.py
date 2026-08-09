@@ -27,8 +27,7 @@ def _():
     # Objective plots
 
     A pair of plots for one problem/size, read from the saved `steps.csv` files: objective
-    against wall-clock time, and objective against improvement step. Each run is a line
-    whose points are the logged steps.
+    against wall-clock time, and objective against improvement step.
 
     Pick the problem and size from the dropdowns. Runs are defined in `figures/runs.py`
     (`EVAL_RUNS`); a run is filled when its `steps.csv` exists, and runs that are not
@@ -93,6 +92,19 @@ def _(problem_ui):
 
 
 @app.cell
+def _(problem_ui, size_ui):
+    # Runs available for the current problem/size (those with a filled method name); the
+    # multiselect defaults to all and lets a subset be picked to plot.
+    run_labels = [
+        label
+        for label, method in EVAL_RUNS[f"{problem_ui.value.upper()}{size_ui.value}"]["runs"]
+        if method
+    ]
+    runs_ui = mo.ui.multiselect(options=run_labels, value=run_labels, label="Runs to plot")
+    return (runs_ui,)
+
+
+@app.cell
 def _():
     # Divisor from seconds; the label is the unit shown on the time axis.
     TIME_UNITS = {"s": 1.0, "min": 60.0, "h": 3600.0}
@@ -101,22 +113,24 @@ def _():
 
 
 @app.cell
-def _(problem_ui, size_ui):
-    mo.hstack([problem_ui, size_ui], justify="start")
+def _(problem_ui, runs_ui, size_ui):
+    mo.hstack([problem_ui, size_ui, runs_ui], justify="start")
     return
 
 
 @app.cell
-def _(load_steps, problem_ui, size_ui):
+def _(load_steps, problem_ui, runs_ui, size_ui):
     title = f"{problem_ui.value.upper()}{size_ui.value}"
     spec = EVAL_RUNS[title]
 
     # Skip runs whose method name is an unfilled placeholder; a named-but-missing file
-    # still raises in load_steps so typos are caught.
+    # still raises in load_steps so typos are caught. Only plot the runs selected in the
+    # multiselect.
+    selected = set(runs_ui.value)
     curves = {
         label: load_steps(spec["problem"], method, spec["task"])
         for label, method in spec["runs"]
-        if method
+        if method and label in selected
     }
     return curves, spec, title
 

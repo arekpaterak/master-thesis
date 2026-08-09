@@ -458,17 +458,13 @@ def _():
 
 
 @app.cell
-def _(METRICS, grid_width_ui, means_by_source, problem):
-    # Source -> {output file stem -> figure}: a bar chart and an encoder x decoder grid per
-    # metric. Each source is drawn as its own section. The figure titles stay the plain
-    # problem name so the saved PDFs are unchanged; the source is shown only in the header.
+def _(METRICS, grid_width_ui, means_by_source, problem, size_ui):
+    title = f"{problem}{size_ui.value}"
     figures_by_source = {
         source: {
+            **{stem: plot_bars(means, stem, title, label) for stem, (_, label) in METRICS.items()},
             **{
-                stem: plot_bars(means, stem, problem, label) for stem, (_, label) in METRICS.items()
-            },
-            **{
-                f"{stem}_grid": plot_grid(means, stem, problem, label, width=grid_width_ui.value)
+                f"{stem}_grid": plot_grid(means, stem, title, label, width=grid_width_ui.value)
                 for stem, (_, label) in METRICS.items()
             },
         }
@@ -477,7 +473,7 @@ def _(METRICS, grid_width_ui, means_by_source, problem):
 
     sections = []
     for source, figs in figures_by_source.items():
-        sections.append(mo.md(f"### {problem} - {source}"))
+        sections.append(mo.md(f"### {title} - {source}"))
         sections.append(mo.hstack([f for s, f in figs.items() if not s.endswith("_grid")]))
         sections.append(mo.hstack([f for s, f in figs.items() if s.endswith("_grid")]))
     mo.vstack(sections)
@@ -498,8 +494,7 @@ def _(OUT_DIR, figures_by_source, problem, save_button, size_ui):
     problem_dir = OUT_DIR / problem.lower()
     problem_dir.mkdir(parents=True, exist_ok=True)
     saved_paths = []
-    # Each source appends its tag (SOURCE_TAGS): wandb keeps the plain name, the benchmark is
-    # tagged "_estimate", so the two sources' files sit side by side.
+
     for _source, _figs in figures_by_source.items():
         _tag = SOURCE_TAGS[_source]
         for _stem, _fig in _figs.items():

@@ -69,7 +69,7 @@ TRAIN_RUNS: dict[str, dict] = {
         "runs": variant_train_runs(
             joint_ar="cvrp/featured/nds_cvrp_100+ar",
             joint_nar="cvrp/featured/nds_cvrp_100+simple",
-            # split_ar="cvrp/featured/...",  # no featured run yet
+            split_ar="cvrp/featured/nds_cvrp_100_split+ar",
             split_nar="cvrp/featured/nds_cvrp_100_split+simple",
         ),
     },
@@ -173,7 +173,7 @@ EVAL_RUNS: dict[str, dict] = {
         "runs": variant_eval_runs(
             joint_ar="nds_cvrp_100+ar",
             joint_nar="nds_cvrp_100+simple",
-            # split_ar="nds_cvrp_100_split+ar",  # config exists, not evaluated yet
+            split_ar="nds_cvrp_100_split+ar",
             split_nar="nds_cvrp_100_split+simple",
             random="random_destroy",
         ),
