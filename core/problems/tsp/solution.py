@@ -34,6 +34,12 @@ class TSPSolution(BaseSolution):
     def create(cls, instance: TSPInstance, tour: torch.Tensor) -> TSPSolution:
         return cls(_instance=instance, _tour=tour, batch_size=instance.batch_size)
 
+    def where(self, mask: torch.Tensor, other: TSPSolution) -> TSPSolution:
+        return TSPSolution.create(
+            instance=self.instance,
+            tour=torch.where(mask.unsqueeze(-1), self.tour, other.tour),
+        )
+
     def __post_init__(self):
         mask = self.tour != self.UNASSIGNED
         if mask.any():

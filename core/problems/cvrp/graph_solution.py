@@ -7,10 +7,10 @@ import torch
 
 from ...constants import EPS
 from ..solution import BaseSolution
+from .arrays import CVRPSolutionArrays
 from .instance import CVRPInstance
 
 if TYPE_CHECKING:
-    import numpy as np
     from matplotlib.axes import Axes
 
 
@@ -135,53 +135,29 @@ class CVRPGraphSolution(BaseSolution):
         route_id[..., 0] = CVRPGraphSolution.UNASSIGNED
         return route_id
 
-    def to_numpy_arrays(
-        self,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Extract contiguous numpy arrays for a numba improvement kernel.
-
-        Batch dims are collapsed to a single leading dim G; floats are float64.
-        Pair with :meth:`from_arrays` to rebuild a solution from the kernel output.
-
-        Returns:
-            ``(next, prev, locations, demand, capacity)`` with shapes
-            ``(G, N+1)`` int64, ``(G, N+1)`` int64, ``(G, N+1, 2)`` float64,
-            ``(G, N+1)`` float64 and ``(G,)`` float64.
-        """
+    def to_numpy(self) -> CVRPSolutionArrays:
         N = self.instance.num_customers
-        instance = self.instance
         next = self._next.reshape(-1, N + 1).detach().cpu().contiguous().numpy()
         prev = self._prev.reshape(-1, N + 1).detach().cpu().contiguous().numpy()
-        locations = (
-            instance.locations.reshape(-1, N + 1, 2).detach().cpu().double().contiguous().numpy()
-        )
-        demand = instance.demand.reshape(-1, N + 1).detach().cpu().double().contiguous().numpy()
-        capacity = instance.capacity.reshape(-1).detach().cpu().double().contiguous().numpy()
-        return next, prev, locations, demand, capacity
+        return CVRPSolutionArrays(next=next, prev=prev)
 
     @classmethod
-    def from_numpy_arrays(
+    def from_numpy(
         cls,
-        *,
         instance: CVRPInstance,
-        next: np.ndarray,
-        prev: np.ndarray,
+        solution: CVRPSolutionArrays,
+        *,
         batch_size: torch.Size,
         device: torch.device,
     ) -> CVRPGraphSolution:
-        """Rebuild a solution from kernel-produced ``next``/``prev`` numpy arrays.
-
-        ``route_id`` is recomputed from ``prev`` so the result satisfies the class
-        invariants without the kernel having to maintain it.
-        """
         num_customers = instance.num_customers
         next_tensor = (
-            torch.from_numpy(next)
+            torch.from_numpy(solution.next)
             .to(device=device, dtype=torch.long)
             .reshape(*batch_size, num_customers + 1)
         )
         prev_tensor = (
-            torch.from_numpy(prev)
+            torch.from_numpy(solution.prev)
             .to(device=device, dtype=torch.long)
             .reshape(*batch_size, num_customers + 1)
         )
@@ -225,6 +201,16 @@ class CVRPGraphSolution(BaseSolution):
     @property
     def route_ids(self) -> torch.Tensor:
         return self._route_id
+
+    def where(self, mask: torch.Tensor, other: CVRPGraphSolution) -> CVRPGraphSolution:
+        m = mask.unsqueeze(-1)
+        return CVRPGraphSolution(
+            _instance=self.instance,
+            _next=torch.where(m, self._next, other._next),
+            _prev=torch.where(m, self._prev, other._prev),
+            _route_id=torch.where(m, self._route_id, other._route_id),
+            batch_size=self.batch_size,
+        )
 
     @property
     def is_complete(self) -> torch.Tensor:

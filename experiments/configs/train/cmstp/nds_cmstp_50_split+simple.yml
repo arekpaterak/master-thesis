@@ -34,7 +34,8 @@ search:
   apply_and_repair_backend: numba
   n_repairs: 5
   start_solution_params:
-    num_improvement_steps: 0
+    num_improvement_steps: 50
+    deconstruction_size: 15
   acceptance:
     type: greedy
 
@@ -57,6 +58,7 @@ validation:
     apply_and_repair_backend: numba
     n_repairs: 5
     start_solution_params:
-      num_improvement_steps: 0
+      num_improvement_steps: 50
+      deconstruction_size: 15
     acceptance:
-      type: greedy
+      type: sa

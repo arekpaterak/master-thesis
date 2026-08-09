@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING
 import torch
 
 from core.constants import EPS
+from core.problems.cmstp.arrays import CMSTPSolutionArrays
 from core.problems.cmstp.instance import CMSTPInstance
 from core.problems.solution import BaseSolution
 
 if TYPE_CHECKING:
-    import numpy as np
     from matplotlib.axes import Axes
 
 
@@ -119,6 +119,15 @@ class CMSTPSolution(BaseSolution):
     def subtree_ids(self) -> torch.Tensor:
         return self._subtree_id
 
+    def where(self, mask: torch.Tensor, other: CMSTPSolution) -> CMSTPSolution:
+        m = mask.unsqueeze(-1)
+        return CMSTPSolution(
+            _instance=self.instance,
+            _parent=torch.where(m, self._parent, other._parent),
+            _subtree_id=torch.where(m, self._subtree_id, other._subtree_id),
+            batch_size=self.batch_size,
+        )
+
     def parent_per_customer(self) -> torch.Tensor:
         return self._parent[..., 1:]
 
@@ -198,45 +207,23 @@ class CMSTPSolution(BaseSolution):
     def objective(self) -> torch.Tensor:
         return self.total_distance()
 
-    # --- numpy bridge (encapsulation boundary for the numba apply-and-repair) ------
-
-    def to_numpy_arrays(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Extract contiguous numpy arrays for the numba apply-and-repair.
-
-        Batch dims are collapsed to a single leading dim G; floats are float64. Pair with
-        :meth:`from_numpy_arrays` to rebuild a solution from the numba output.
-
-        Returns:
-            ``(parent, locations, demand, capacity)`` with shapes ``(G, N+1)`` int64,
-            ``(G, N+1, 2)`` float64, ``(G, N+1)`` float64 and ``(G,)`` float64.
-        """
+    def to_numpy(self) -> CMSTPSolutionArrays:
         N = self._instance.num_customers
-        instance = self._instance
         parent = self._parent.reshape(-1, N + 1).detach().cpu().contiguous().numpy()
-        locations = (
-            instance.locations.reshape(-1, N + 1, 2).detach().cpu().double().contiguous().numpy()
-        )
-        demand = instance.demand.reshape(-1, N + 1).detach().cpu().double().contiguous().numpy()
-        capacity = instance.capacity.reshape(-1).detach().cpu().double().contiguous().numpy()
-        return parent, locations, demand, capacity
+        return CMSTPSolutionArrays(parent=parent)
 
     @classmethod
-    def from_numpy_arrays(
+    def from_numpy(
         cls,
-        *,
         instance: CMSTPInstance,
-        parent: np.ndarray,
+        solution: CMSTPSolutionArrays,
+        *,
         batch_size: torch.Size,
         device: torch.device,
     ) -> CMSTPSolution:
-        """Rebuild a solution from numba-produced ``parent`` numpy arrays.
-
-        ``subtree_id`` is recomputed from ``parent`` so the result satisfies the class
-        invariants without the numba pass having to maintain it.
-        """
         num_customers = instance.num_customers
         parent_tensor = (
-            torch.from_numpy(parent)
+            torch.from_numpy(solution.parent)
             .to(device=device, dtype=torch.long)
             .reshape(*batch_size, num_customers + 1)
         )
@@ -246,83 +233,6 @@ class CMSTPSolution(BaseSolution):
             _parent=parent_tensor,
             _subtree_id=subtree_id,
             batch_size=batch_size,
-        )
-
-    def apply_and_repair(
-        self,
-        nodes: np.ndarray,
-        *,
-        n_repairs: int,
-        base_seed: int,
-        first_repair_uses_order: bool = False,
-    ) -> CMSTPSolution:
-        """Deconstruct by each rollout's node set and greedily repair, returning candidates.
-
-        Wraps the fused numba parallel pass: every rollout is applied independently from
-        this solution, with no acceptance. ``nodes`` is ``(G, K, M)`` int64 (customers to
-        remove per rollout). Returns a ``(*batch, K)`` solution.
-        """
-        from core.problems.cmstp._numba import apply_and_repair_parallel
-
-        parent_np, locations, demand, capacity = self.to_numpy_arrays()
-        parent_out, _ = apply_and_repair_parallel(
-            parent=parent_np,
-            nodes=nodes,
-            locations=locations,
-            demand=demand,
-            capacity=capacity,
-            n_repairs=n_repairs,
-            base_seed=base_seed,
-            first_repair_uses_order=first_repair_uses_order,
-        )
-        num_rollouts = parent_out.shape[1]
-        instance = self._instance.reshape(*self.batch_size, 1).expand(
-            *self.batch_size, num_rollouts
-        )
-        return type(self).from_numpy_arrays(
-            instance=instance,
-            parent=parent_out,
-            batch_size=torch.Size([*self.batch_size, num_rollouts]),
-            device=self.device,
-        )
-
-    def apply_and_repair_sequential(
-        self,
-        nodes_to_remove: np.ndarray,
-        *,
-        n_repairs: int,
-        accept_kind: int,
-        temperature: float,
-        eps: float,
-        base_seed: int,
-        first_repair_uses_order: bool = False,
-    ) -> CMSTPSolution:
-        """Apply each element's rollouts sequentially with acceptance, threading the result.
-
-        Wraps the fused numba sequential pass. ``nodes_to_remove`` is ``(G, R, M)`` int64.
-        Returns a solution with this solution's batch shape.
-        """
-        from core.problems.cmstp._numba import apply_and_repair_sequential
-
-        parent_np, locations, demand, capacity = self.to_numpy_arrays()
-        parent_out = apply_and_repair_sequential(
-            parent=parent_np,
-            nodes_to_remove=nodes_to_remove,
-            locations=locations,
-            demand=demand,
-            capacity=capacity,
-            n_repairs=n_repairs,
-            accept_kind=accept_kind,
-            temperature=temperature,
-            eps=eps,
-            base_seed=base_seed,
-            first_repair_uses_order=first_repair_uses_order,
-        )
-        return type(self).from_numpy_arrays(
-            instance=self._instance,
-            parent=parent_out,
-            batch_size=self.batch_size,
-            device=self.device,
         )
 
     def visualize(

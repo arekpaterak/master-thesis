@@ -1,86 +1,72 @@
 """Numba CPU kernels for TSP apply-and-repair.
 
-Mirrors :mod:`core.lns.numba.cvrp_apply_and_repair`, minus the
-depot/capacity/route bookkeeping CVRP needs: TSP has no depot and forms a single
-cycle over all nodes, so destroy always stitches directly (no route fragments to
-special-case) and repair has no new-route fallback, no capacity check and no
-``insert_in_affected_routes_only`` concept (there are no routes to restrict insertion to).
+Mirrors :mod:`core.problems.cvrp._numba`, minus the depot/capacity/route
+bookkeeping CVRP needs: TSP has no depot and forms a single cycle over all nodes,
+so destroy always stitches directly (no route fragments to special-case) and repair
+has no new-route fallback, no capacity check and no ``insert_in_affected_routes_only``
+concept (there are no routes to restrict insertion to).
 
 Both entry points take externally supplied node sets and, per element, deconstruct
 the tour (stitch-remove those nodes) and greedily reconstruct it via best-of-n
 cheapest-insertion. They differ only in how the node sets are applied:
 
 - ``apply_and_repair_sequential`` applies a tour's rollouts one after another,
-  threading acceptance through a running solution (mirrors ``SequentialImprovementStep``).
+  threading acceptance through a running solution.
 - ``apply_and_repair_parallel`` applies every rollout independently from the same
   tour and returns all candidates with their objectives, no acceptance
-  (mirrors ``ParallelImprovementStep``; used by training to score rollouts).
+  (used by training to score rollouts).
 
 Both share :func:`_apply_and_repair_one`, the per-element deconstruct + best-of-n
-repair core. The kernels operate on raw numpy ``next``/``prev`` arrays (the linked-list
-representation of :class:`TSPGraphSolution`) plus the instance locations, folding the
-work into ``njit(parallel=True)`` passes and replacing the hundreds of thousands of
-tiny GPU kernel launches the torch path issues for the same work. Inside the kernels
-the per-element arrays travel bundled as :class:`Solution` (``next``/``prev``) and
-:class:`Instance` (``locations``); the batch drivers construct these views per element.
+repair core. The kernels operate on the raw numpy ``next``/``prev`` arrays (the
+linked-list representation of :class:`TSPGraphSolution`) plus the instance locations,
+folding the work into ``njit(parallel=True)`` passes. Inside the kernels the
+per-element arrays travel bundled as :class:`TSPSolutionArrays` (``next``/``prev``)
+and :class:`TSPInstanceArrays` (``locations``); the batch drivers construct these
+views per element.
 
 Randomness uses numba's per-thread ``np.random``. To stay reproducible under
 ``prange`` (where draws would otherwise depend on the thread count), each parallel
 iteration reseeds ``np.random`` from a seed derived only from ``base_seed`` and the
-iteration index -- see :func:`core.lns.numba.common.seed_for`.
+iteration index -- see :func:`core.problems._numba_common.seed_for`.
 """
 
 from __future__ import annotations
 
-from typing import NamedTuple
-
 import numpy as np
 from numba import njit, prange
 
-from .common import accept_move, dist, seed_for
+from core.problems._numba_common import accept_move, dist, seed_for
+from core.problems.tsp.arrays import TSPInstanceArrays, TSPSolutionArrays
 
 UNASSIGNED = -1
 
 
-class Instance(NamedTuple):
-    locations: np.ndarray
-
-
-class Solution(NamedTuple):
-    next: np.ndarray
-    prev: np.ndarray
-
-
 def apply_and_repair_sequential(
-    *,
-    next: np.ndarray,
-    prev: np.ndarray,
+    solution: TSPSolutionArrays,
+    instance: TSPInstanceArrays,
     nodes_to_remove: np.ndarray,
-    locations: np.ndarray,
+    *,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
     eps: float,
     base_seed: int,
     first_repair_uses_order: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> TSPSolutionArrays:
     """Apply each tour's rollouts sequentially with acceptance.
 
-    For every element, the rollouts in ``nodes_to_remove`` are applied one after
-    another: each deconstructs the running tour, is repaired best-of-n, and replaces
-    the running tour when acceptance succeeds.
+    For every element, the rollouts in ``nodes_to_remove`` (``(G, R, M)`` int64) are
+    applied one after another: each deconstructs the running tour, is repaired
+    best-of-n, and replaces the running tour when acceptance succeeds.
 
     When ``first_repair_uses_order`` is set, the first of the ``n_repairs`` greedy
     insertions follows the provided removal order instead of a random order.
-
-    Returns:
-        (next_out, prev_out) both (G, N) int64.
     """
-    return _sequential_batch(
-        next=np.ascontiguousarray(next, dtype=np.int64),
-        prev=np.ascontiguousarray(prev, dtype=np.int64),
-        nodes_to_remove=np.ascontiguousarray(nodes_to_remove, dtype=np.int64),
-        locations=np.ascontiguousarray(locations, dtype=np.float64),
+    next_out, prev_out = _sequential_batch(
+        next=solution.next,
+        prev=solution.prev,
+        nodes_to_remove=nodes_to_remove,
+        locations=instance.locations,
         n_repairs=int(n_repairs),
         accept_kind=int(accept_kind),
         temperature=float(temperature),
@@ -88,42 +74,43 @@ def apply_and_repair_sequential(
         base_seed=int(base_seed),
         first_repair_uses_order=bool(first_repair_uses_order),
     )
+    return TSPSolutionArrays(next=next_out, prev=prev_out)
 
 
 def apply_and_repair_parallel(
-    *,
-    next: np.ndarray,
-    prev: np.ndarray,
+    solution: TSPSolutionArrays,
+    instance: TSPInstanceArrays,
     nodes: np.ndarray,
-    locations: np.ndarray,
+    *,
     n_repairs: int,
     base_seed: int,
     first_repair_uses_order: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[TSPSolutionArrays, np.ndarray]:
     """Apply every rollout independently.
 
-    Each of the ``B`` tours is deconstructed and repaired once per rollout ``k``, all
+    Each of the ``G`` tours is deconstructed and repaired once per rollout ``k``, all
     from the same starting tour. No acceptance -- every repaired candidate and its
     objective is returned so the caller (e.g. training) can score all rollouts.
 
     Args:
-        next, prev: (B, N) the tour to deconstruct, one per instance.
-        nodes: (B, K, M) the K rollouts (node sets to remove) per instance.
-        locations: (B, N, 2) instance locations; shared across the K rollouts of an
-            instance (not replicated).
+        solution: the ``(G, N)`` tour to deconstruct, one per instance.
+        instance: instance locations ``(G, N, 2)``; shared across the K rollouts.
+        nodes: ``(G, K, M)`` the K rollouts (node sets to remove) per instance.
 
     Returns:
-        (next_out, prev_out, objective) shaped (B, K, N), (B, K, N), (B, K).
+        ``(TSPSolutionArrays, objective)`` with candidate arrays shaped ``(G, K, N)``
+        and objectives ``(G, K)``.
     """
-    return _parallel_batch(
-        next=np.ascontiguousarray(next, dtype=np.int64),
-        prev=np.ascontiguousarray(prev, dtype=np.int64),
-        nodes=np.ascontiguousarray(nodes, dtype=np.int64),
-        locations=np.ascontiguousarray(locations, dtype=np.float64),
+    next_out, prev_out, objective = _parallel_batch(
+        next=solution.next,
+        prev=solution.prev,
+        nodes=nodes,
+        locations=instance.locations,
         n_repairs=int(n_repairs),
         base_seed=int(base_seed),
         first_repair_uses_order=bool(first_repair_uses_order),
     )
+    return TSPSolutionArrays(next=next_out, prev=prev_out), objective
 
 
 @njit(parallel=True, cache=True)
@@ -146,9 +133,9 @@ def _sequential_batch(
     for global_idx in prange(global_size):
         np.random.seed(seed_for(base_seed, global_idx, global_size))
         _sequential_single_(
-            solution=Solution(next_out[global_idx], prev_out[global_idx]),
+            solution=TSPSolutionArrays(next_out[global_idx], prev_out[global_idx]),
             nodes_to_remove=nodes_to_remove[global_idx],
-            instance=Instance(locations[global_idx]),
+            instance=TSPInstanceArrays(locations[global_idx]),
             n_repairs=n_repairs,
             accept_kind=accept_kind,
             temperature=temperature,
@@ -179,8 +166,8 @@ def _parallel_batch(
     objective = np.empty((num_instances, num_rollouts), np.float64)
 
     for b in prange(num_instances):
-        instance = Instance(locations[b])
-        current = Solution(next[b], prev[b])
+        instance = TSPInstanceArrays(locations[b])
+        current = TSPSolutionArrays(next[b], prev[b])
         for k in range(num_rollouts):
             np.random.seed(seed_for(base_seed, b * num_rollouts + k, total))
             objective[b, k] = _apply_and_repair_one(
@@ -189,16 +176,16 @@ def _parallel_batch(
                 instance=instance,
                 n_repairs=n_repairs,
                 first_repair_uses_order=first_repair_uses_order,
-                out=Solution(next_out[b, k], prev_out[b, k]),
+                out=TSPSolutionArrays(next_out[b, k], prev_out[b, k]),
             )
     return next_out, prev_out, objective
 
 
 @njit
 def _sequential_single_(
-    solution: Solution,
+    solution: TSPSolutionArrays,
     nodes_to_remove: np.ndarray,
-    instance: Instance,
+    instance: TSPInstanceArrays,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
@@ -215,7 +202,7 @@ def _sequential_single_(
     num_nodes = nxt.shape[0]
     num_rollouts = nodes_to_remove.shape[0]
 
-    candidate = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
+    candidate = TSPSolutionArrays(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
 
     current_objective = _objective(solution, instance)
 
@@ -241,12 +228,12 @@ def _sequential_single_(
 
 @njit
 def _apply_and_repair_one(
-    current: Solution,
+    current: TSPSolutionArrays,
     nodes: np.ndarray,
-    instance: Instance,
+    instance: TSPInstanceArrays,
     n_repairs: int,
     first_repair_uses_order: bool,
-    out: Solution,
+    out: TSPSolutionArrays,
 ) -> float:
     """Deconstruct one node set and greedily repair it, best of ``n_repairs``.
 
@@ -259,8 +246,8 @@ def _apply_and_repair_one(
     num_nodes = current_next.shape[0]
     deconstruction_size = nodes.shape[0]
 
-    deconstructed = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
-    repaired = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
+    deconstructed = TSPSolutionArrays(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
+    repaired = TSPSolutionArrays(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
 
     deconstructed.next[:] = current_next
     deconstructed.prev[:] = current_prev
@@ -292,7 +279,7 @@ def _apply_and_repair_one(
 
 
 @njit(inline="always")
-def _remove_node_and_stitch_(solution: Solution, node: int) -> None:
+def _remove_node_and_stitch_(solution: TSPSolutionArrays, node: int) -> None:
     """Detach node and stitch its neighbours. Assumes node is currently placed."""
     nxt, prv = solution
     u = prv[node]
@@ -304,13 +291,13 @@ def _remove_node_and_stitch_(solution: Solution, node: int) -> None:
 
 
 @njit(inline="always")
-def _is_free(solution: Solution, node: int) -> bool:
+def _is_free(solution: TSPSolutionArrays, node: int) -> bool:
     """Whether ``node`` is unassigned (not placed in the tour)."""
     return solution.prev[node] == UNASSIGNED and solution.next[node] == UNASSIGNED
 
 
 @njit
-def _objective(solution: Solution, instance: Instance) -> float:
+def _objective(solution: TSPSolutionArrays, instance: TSPInstanceArrays) -> float:
     """Total tour length. Requires a complete tour (no UNASSIGNED entries)."""
     nxt = solution.next
     locations = instance.locations
@@ -321,7 +308,7 @@ def _objective(solution: Solution, instance: Instance) -> float:
 
 
 @njit
-def _pick_random_free_node(solution: Solution) -> int:
+def _pick_random_free_node(solution: TSPSolutionArrays) -> int:
     """Pick a random free node, or -1 if none are free."""
     chosen = -1
     best_score = -1.0
@@ -334,7 +321,9 @@ def _pick_random_free_node(solution: Solution) -> int:
 
 
 @njit
-def _insert_node_at_cheapest_(node: int, solution: Solution, instance: Instance) -> None:
+def _insert_node_at_cheapest_(
+    node: int, solution: TSPSolutionArrays, instance: TSPInstanceArrays
+) -> None:
     """Insert free ``node`` at its cheapest valid position. In-place.
 
     Candidate positions are every existing edge ``(prev[v], v)`` for placed nodes
@@ -365,8 +354,8 @@ def _insert_node_at_cheapest_(node: int, solution: Solution, instance: Instance)
 
 @njit
 def _greedy_insert_repair_(
-    solution: Solution,
-    instance: Instance,
+    solution: TSPSolutionArrays,
+    instance: TSPInstanceArrays,
     order: np.ndarray | None = None,
 ) -> None:
     """Insert every free node at its cheapest valid position. In-place.

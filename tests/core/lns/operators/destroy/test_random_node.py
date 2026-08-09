@@ -88,7 +88,7 @@ def test_random_node_select_nodes_cmstp(cmstp_solution: CMSTPSolution, destructi
     num_customers = cmstp_solution.instance.num_customers
     destroy = RandomNodeDestroy(destruction_size=destruction_size, seed=42)
 
-    nodes = destroy.select_nodes(cmstp_solution, num_rollouts)
+    nodes = destroy.select(cmstp_solution, num_rollouts).nodes
 
     assert nodes.shape == (*cmstp_solution.batch_size, num_rollouts, destruction_size)
     # The depot (index 0) is never removed and every rollout picks distinct customers.
@@ -103,4 +103,4 @@ def test_random_node_select_nodes_cmstp_fail_on_too_large_destruction_size(
 ):
     destroy = RandomNodeDestroy(destruction_size=destruction_size, seed=42)
     with pytest.raises(ValueError):
-        destroy.select_nodes(cmstp_solution, num_rollouts=4)
+        destroy.select(cmstp_solution, num_rollouts=4)

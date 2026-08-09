@@ -1,67 +1,46 @@
 """Numba CPU kernels for CVRP apply-and-repair.
 
-Both entry points take externally supplied node sets and, per element, deconstruct
-the solution (stitch-remove those customers) and greedily reconstruct it via
-best-of-n cheapest-insertion. They differ only in how the node sets are applied:
+Both entry points take externally supplied customer sets and, per element,
+deconstruct the routes (stitch-remove those customers) and greedily reconstruct
+them via best-of-n cheapest-insertion. They differ only in how the sets are applied:
 
-- ``apply_and_repair_sequential`` applies a solution's rollouts one after another,
-  threading acceptance through a running solution (mirrors ``SequentialImprovementStep``).
+- ``apply_and_repair_sequential`` applies an element's rollouts one after another,
+  threading acceptance through a running solution.
 - ``apply_and_repair_parallel`` applies every rollout independently from the same
   solution and returns all candidates with their objectives, no acceptance
-  (mirrors ``ParallelImprovementStep``; used by training to score rollouts).
+  (used by training to score rollouts).
 
 Both share :func:`_apply_and_repair_one`, the per-element deconstruct + best-of-n
-repair core. The kernels operate on raw numpy ``next``/``prev`` arrays (the linked-list
-representation of :class:`CVRPGraphSolution`) plus the instance arrays, folding the
-work into ``njit(parallel=True)`` passes and replacing the hundreds of thousands of
-tiny GPU kernel launches the torch path issues for the same work. Inside the kernels
-the per-element arrays travel bundled as :class:`Solution` (``next``/``prev``) and
-:class:`Instance` (``locations``/``demand``/``capacity``); the batch drivers construct
-these views per element before dispatching.
-
-``route_id`` is intentionally NOT maintained here; the caller recomputes it once
-via :meth:`CVRPGraphSolution._compute_route_ids`. The greedy-insert policy mirrors
-:class:`core.lns.operators.repair.insert.cvrp.CVRPGreedyInsertRepair` (random free
-customer, then cheapest valid position, with an always-valid new-route fallback).
+repair core. The kernels operate on the raw numpy ``next``/``prev`` arrays (the
+linked-list representation of :class:`CVRPGraphSolution`) plus the instance
+locations/demand/capacity, folding the work into ``njit(parallel=True)`` passes.
+Inside the kernels the per-element arrays travel bundled as :class:`CVRPSolutionArrays`
+(``next``/``prev``) and :class:`CVRPInstanceArrays` (``locations``/``demand``/``capacity``);
+the batch drivers construct these views per element (``capacity`` sliced to a scalar).
 
 Randomness uses numba's per-thread ``np.random``. To stay reproducible under
 ``prange`` (where draws would otherwise depend on the thread count), each parallel
 iteration reseeds ``np.random`` from a seed derived only from ``base_seed`` and the
-iteration index -- see :func:`seed_for`.
+iteration index -- see :func:`core.problems._numba_common.seed_for`.
 """
 
 from __future__ import annotations
 
-from typing import NamedTuple
-
 import numpy as np
 from numba import njit, prange
 
-from .common import accept_move, dist, seed_for
+from core.problems._numba_common import accept_move, dist, seed_for
+from core.problems.cvrp.arrays import CVRPInstanceArrays, CVRPSolutionArrays
 
 DEPOT = 0
 UNASSIGNED = -1
 
 
-class Instance(NamedTuple):
-    locations: np.ndarray
-    demand: np.ndarray
-    capacity: float
-
-
-class Solution(NamedTuple):
-    next: np.ndarray
-    prev: np.ndarray
-
-
 def apply_and_repair_sequential(
-    *,
-    next: np.ndarray,
-    prev: np.ndarray,
+    solution: CVRPSolutionArrays,
+    instance: CVRPInstanceArrays,
     nodes_to_remove: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: np.ndarray,
+    *,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
@@ -69,30 +48,27 @@ def apply_and_repair_sequential(
     base_seed: int,
     first_repair_uses_order: bool = False,
     insert_in_affected_routes_only: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> CVRPSolutionArrays:
     """Apply each solution's rollouts sequentially with acceptance.
 
-    For every element, the rollouts in ``nodes_to_remove`` are applied one after
-    another: each deconstructs the running solution, is repaired best-of-n, and
-    replaces the running solution when acceptance succeeds.
+    For every element, the rollouts in ``nodes_to_remove`` (``(G, R, M)`` int64) are
+    applied one after another: each deconstructs the running solution, is repaired
+    best-of-n, and replaces the running solution when acceptance succeeds.
 
     When ``first_repair_uses_order`` is set, the first of the ``n_repairs`` greedy
     insertions follows the provided removal order instead of a random order.
 
-    When ``insert_in_affected_routes_only`` is set, removed customers may only be reinserted
-    into routes the destroy touched (their remnants) or routes created during this repair,
-    never an untouched route.
-
-    Returns:
-        (next_out, prev_out) both (G, N+1) int64.
+    When ``insert_in_affected_routes_only`` is set, removed customers may only be
+    reinserted into routes the destroy touched (their remnants) or routes created
+    during this repair, never an untouched route.
     """
-    return _sequential_batch(
-        next=np.ascontiguousarray(next, dtype=np.int64),
-        prev=np.ascontiguousarray(prev, dtype=np.int64),
-        nodes_to_remove=np.ascontiguousarray(nodes_to_remove, dtype=np.int64),
-        locations=np.ascontiguousarray(locations, dtype=np.float64),
-        demand=np.ascontiguousarray(demand, dtype=np.float64),
-        capacity=np.ascontiguousarray(capacity, dtype=np.float64),
+    next_out, prev_out = _sequential_batch(
+        next=solution.next,
+        prev=solution.prev,
+        nodes_to_remove=nodes_to_remove,
+        locations=instance.locations,
+        demand=instance.demand,
+        capacity=instance.capacity,
         n_repairs=int(n_repairs),
         accept_kind=int(accept_kind),
         temperature=float(temperature),
@@ -101,48 +77,48 @@ def apply_and_repair_sequential(
         first_repair_uses_order=bool(first_repair_uses_order),
         insert_in_affected_routes_only=bool(insert_in_affected_routes_only),
     )
+    return CVRPSolutionArrays(next=next_out, prev=prev_out)
 
 
 def apply_and_repair_parallel(
-    *,
-    next: np.ndarray,
-    prev: np.ndarray,
+    solution: CVRPSolutionArrays,
+    instance: CVRPInstanceArrays,
     nodes: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: np.ndarray,
+    *,
     n_repairs: int,
     base_seed: int,
     first_repair_uses_order: bool = False,
     insert_in_affected_routes_only: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[CVRPSolutionArrays, np.ndarray]:
     """Apply every rollout independently.
 
-    Each of the ``B`` solutions is deconstructed and repaired once per rollout ``k``,
+    Each of the ``G`` solutions is deconstructed and repaired once per rollout ``k``,
     all from the same starting solution. No acceptance -- every repaired candidate and
     its objective is returned so the caller (e.g. training) can score all rollouts.
 
     Args:
-        next, prev: (B, N+1) the solution to deconstruct, one per instance.
-        nodes: (B, K, M) the K rollouts (customer sets to remove) per instance.
-        locations, demand, capacity: instance arrays, (B, N+1, 2)/(B, N+1)/(B,);
-            shared across the K rollouts of an instance (not replicated).
+        solution: the ``(G, N+1)`` solution to deconstruct, one per instance.
+        instance: instance arrays ``(G, N+1, 2)``/``(G, N+1)``/``(G,)``; shared across
+            the K rollouts of an instance (not replicated).
+        nodes: ``(G, K, M)`` the K rollouts (customer sets to remove) per instance.
 
     Returns:
-        (next_out, prev_out, objective) shaped (B, K, N+1), (B, K, N+1), (B, K).
+        ``(CVRPSolutionArrays, objective)`` with candidate arrays shaped ``(G, K, N+1)``
+        and objectives ``(G, K)``.
     """
-    return _parallel_batch(
-        next=np.ascontiguousarray(next, dtype=np.int64),
-        prev=np.ascontiguousarray(prev, dtype=np.int64),
-        nodes=np.ascontiguousarray(nodes, dtype=np.int64),
-        locations=np.ascontiguousarray(locations, dtype=np.float64),
-        demand=np.ascontiguousarray(demand, dtype=np.float64),
-        capacity=np.ascontiguousarray(capacity, dtype=np.float64),
+    next_out, prev_out, objective = _parallel_batch(
+        next=solution.next,
+        prev=solution.prev,
+        nodes=nodes,
+        locations=instance.locations,
+        demand=instance.demand,
+        capacity=instance.capacity,
         n_repairs=int(n_repairs),
         base_seed=int(base_seed),
         first_repair_uses_order=bool(first_repair_uses_order),
         insert_in_affected_routes_only=bool(insert_in_affected_routes_only),
     )
+    return CVRPSolutionArrays(next=next_out, prev=prev_out), objective
 
 
 @njit(parallel=True, cache=True)
@@ -168,9 +144,11 @@ def _sequential_batch(
     for global_idx in prange(global_size):
         np.random.seed(seed_for(base_seed, global_idx, global_size))
         _sequential_single_(
-            solution=Solution(next_out[global_idx], prev_out[global_idx]),
+            solution=CVRPSolutionArrays(next_out[global_idx], prev_out[global_idx]),
             nodes_to_remove=nodes_to_remove[global_idx],
-            instance=Instance(locations[global_idx], demand[global_idx], capacity[global_idx]),
+            instance=CVRPInstanceArrays(
+                locations[global_idx], demand[global_idx], capacity[global_idx]
+            ),
             n_repairs=n_repairs,
             accept_kind=accept_kind,
             temperature=temperature,
@@ -205,8 +183,8 @@ def _parallel_batch(
     objective = np.empty((num_instances, num_rollouts), np.float64)
 
     for b in prange(num_instances):
-        instance = Instance(locations[b], demand[b], capacity[b])
-        current = Solution(next[b], prev[b])
+        instance = CVRPInstanceArrays(locations[b], demand[b], capacity[b])
+        current = CVRPSolutionArrays(next[b], prev[b])
         for k in range(num_rollouts):
             np.random.seed(seed_for(base_seed, b * num_rollouts + k, total))
             objective[b, k] = _apply_and_repair_one(
@@ -216,16 +194,16 @@ def _parallel_batch(
                 n_repairs=n_repairs,
                 first_repair_uses_order=first_repair_uses_order,
                 insert_in_affected_routes_only=insert_in_affected_routes_only,
-                out=Solution(next_out[b, k], prev_out[b, k]),
+                out=CVRPSolutionArrays(next_out[b, k], prev_out[b, k]),
             )
     return next_out, prev_out, objective
 
 
 @njit
 def _sequential_single_(
-    solution: Solution,
+    solution: CVRPSolutionArrays,
     nodes_to_remove: np.ndarray,
-    instance: Instance,
+    instance: CVRPInstanceArrays,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
@@ -244,7 +222,7 @@ def _sequential_single_(
     num_customers = num_nodes - 1
     num_rollouts = nodes_to_remove.shape[0]
 
-    candidate = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
+    candidate = CVRPSolutionArrays(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
 
     current_objective = _objective(solution, instance, num_customers)
 
@@ -271,13 +249,13 @@ def _sequential_single_(
 
 @njit
 def _apply_and_repair_one(
-    current: Solution,
+    current: CVRPSolutionArrays,
     nodes: np.ndarray,
-    instance: Instance,
+    instance: CVRPInstanceArrays,
     n_repairs: int,
     first_repair_uses_order: bool,
     insert_in_affected_routes_only: bool,
-    out: Solution,
+    out: CVRPSolutionArrays,
 ) -> float:
     """Deconstruct one customer set and greedily repair it as the best of ``n_repairs`` attempts.
 
@@ -289,8 +267,8 @@ def _apply_and_repair_one(
     num_nodes = current_next.shape[0]
     num_customers = num_nodes - 1
 
-    deconstructed = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
-    repaired = Solution(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
+    deconstructed = CVRPSolutionArrays(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
+    repaired = CVRPSolutionArrays(np.empty(num_nodes, np.int64), np.empty(num_nodes, np.int64))
     route_demand = np.empty(num_nodes, np.float64)
     # base_insertable is the destroy-determined mask (same across the n_repairs tries);
     # insertable is the per-repair working copy that _insert_customer_at_cheapest_ mutates.
@@ -336,7 +314,7 @@ def _apply_and_repair_one(
 
 
 @njit(inline="always")
-def _remove_customer_and_stitch_(solution: Solution, customer: int) -> None:
+def _remove_customer_and_stitch_(solution: CVRPSolutionArrays, customer: int) -> None:
     """Detach customer and stitch its neighbours."""
     nxt, prv = solution
     u = prv[customer]
@@ -352,13 +330,13 @@ def _remove_customer_and_stitch_(solution: Solution, customer: int) -> None:
 
 
 @njit(inline="always")
-def _is_free(solution: Solution, node: int) -> bool:
+def _is_free(solution: CVRPSolutionArrays, node: int) -> bool:
     """Whether ``node`` is unassigned (not placed in any route)."""
     return solution.prev[node] == UNASSIGNED and solution.next[node] == UNASSIGNED
 
 
 @njit(inline="always")
-def _get_route_head(solution: Solution, node: int) -> int:
+def _get_route_head(solution: CVRPSolutionArrays, node: int) -> int:
     """Traverse backwards to find the first node in ``node``'s route."""
     prv = solution.prev
     head = node
@@ -368,7 +346,7 @@ def _get_route_head(solution: Solution, node: int) -> int:
 
 
 @njit
-def _mark_route_(solution: Solution, member: int, insertable: np.ndarray) -> None:
+def _mark_route_(solution: CVRPSolutionArrays, member: int, insertable: np.ndarray) -> None:
     """Mark every customer in member's route as insertable. Route must be intact."""
     nxt = solution.next
     node = _get_route_head(solution, member)
@@ -380,7 +358,9 @@ def _mark_route_(solution: Solution, member: int, insertable: np.ndarray) -> Non
 
 
 @njit
-def _objective(solution: Solution, instance: Instance, num_customers: int) -> float:
+def _objective(
+    solution: CVRPSolutionArrays, instance: CVRPInstanceArrays, num_customers: int
+) -> float:
     nxt, prv = solution
     locations = instance.locations
     total_distance = 0.0
@@ -400,8 +380,8 @@ def _objective(solution: Solution, instance: Instance, num_customers: int) -> fl
 
 @njit
 def _compute_route_demand_(
-    solution: Solution,
-    instance: Instance,
+    solution: CVRPSolutionArrays,
+    instance: CVRPInstanceArrays,
     num_customers: int,
     route_demand: np.ndarray,
 ) -> None:
@@ -430,7 +410,7 @@ def _compute_route_demand_(
 
 
 @njit
-def _pick_random_free_customer(solution: Solution, num_customers: int) -> int:
+def _pick_random_free_customer(solution: CVRPSolutionArrays, num_customers: int) -> int:
     """Pick a random free customer (1..N), or -1 if none are free."""
     chosen = -1
     best_score = -1.0
@@ -445,8 +425,8 @@ def _pick_random_free_customer(solution: Solution, num_customers: int) -> int:
 @njit
 def _insert_customer_at_cheapest_(
     customer: int,
-    solution: Solution,
-    instance: Instance,
+    solution: CVRPSolutionArrays,
+    instance: CVRPInstanceArrays,
     num_customers: int,
     route_demand: np.ndarray,
     insertable: np.ndarray,
@@ -523,8 +503,8 @@ def _insert_customer_at_cheapest_(
 
 @njit
 def _greedy_insert_repair_(
-    solution: Solution,
-    instance: Instance,
+    solution: CVRPSolutionArrays,
+    instance: CVRPInstanceArrays,
     num_customers: int,
     route_demand: np.ndarray,
     insertable: np.ndarray,

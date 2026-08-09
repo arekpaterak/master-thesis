@@ -2,7 +2,10 @@ import numpy as np
 import pytest
 import torch
 
+from core.lns.acceptance_criterion import GreedyAcceptance, UnconditionalAcceptance
+from core.lns.operators.destroy.selection import NodeSelection
 from core.problems.cmstp import CMSTPInstance, CMSTPSolution
+from core.problems.cmstp.apply_repair import CMSTPGreedyInsertApplyRepair
 from core.problems.cmstp.config import CMSTP
 from core.problems.cmstp.sampler import CMSTPSampler
 from core.states.destroy import initial_action_mask
@@ -56,14 +59,18 @@ def test_node_degree_counts_variable_fan_out():
 
 def test_numpy_roundtrip_reproduces_subtree_ids(instance):
     solution = CMSTPSolution.star(instance)
-    parent, *_ = solution.to_numpy_arrays()
-    rebuilt = CMSTPSolution.from_numpy_arrays(
-        instance=instance,
-        parent=parent,
+    arrays = solution.to_numpy()
+    rebuilt = CMSTPSolution.from_numpy(
+        instance,
+        arrays,
         batch_size=instance.batch_size,
         device=instance.locations.device,
     )
     assert bool((rebuilt.subtree_ids == solution.subtree_ids).all())
+
+
+def _selection(nodes: np.ndarray) -> NodeSelection:
+    return NodeSelection(torch.from_numpy(nodes))
 
 
 def test_apply_and_repair_parallel_is_feasible_and_improves(instance):
@@ -72,7 +79,8 @@ def test_apply_and_repair_parallel_is_feasible_and_improves(instance):
     nodes = _random_nodes(
         instance.batch_size[0], num_rollouts, deconstruction_size, instance.num_customers
     )
-    candidates = solution.apply_and_repair(nodes, n_repairs=3, base_seed=0)
+    op = CMSTPGreedyInsertApplyRepair(n_repairs=3, seed=0)
+    candidates = op.parallel(solution, _selection(nodes))
 
     assert tuple(candidates.batch_size) == (instance.batch_size[0], num_rollouts)
     assert bool(candidates.is_complete.all())
@@ -84,27 +92,18 @@ def test_apply_and_repair_parallel_is_feasible_and_improves(instance):
 def test_apply_and_repair_sequential_greedy_never_worsens(instance):
     solution = CMSTPSolution.star(instance)
     nodes = _random_nodes(instance.batch_size[0], 8, 5, instance.num_customers, seed=1)
-    result = solution.apply_and_repair_sequential(
-        nodes, n_repairs=3, accept_kind=0, temperature=1.0, eps=1e-9, base_seed=7
-    )
+    op = CMSTPGreedyInsertApplyRepair(n_repairs=3, seed=7)
+    result = op.sequential(solution, _selection(nodes), GreedyAcceptance())
     assert bool(result.is_complete.all())
     assert bool(result.is_feasible.all())
     assert bool((result.objective() <= solution.objective() + 1e-6).all())
 
 
 def test_apply_and_repair_sequential_unconditional_is_feasible(instance):
-    from core.lns.numba.common import ACCEPT_UNCONDITIONAL
-
     solution = CMSTPSolution.star(instance)
     nodes = _random_nodes(instance.batch_size[0], 8, 5, instance.num_customers, seed=1)
-    result = solution.apply_and_repair_sequential(
-        nodes,
-        n_repairs=3,
-        accept_kind=ACCEPT_UNCONDITIONAL,
-        temperature=1.0,
-        eps=1e-9,
-        base_seed=7,
-    )
+    op = CMSTPGreedyInsertApplyRepair(n_repairs=3, seed=7)
+    result = op.sequential(solution, _selection(nodes), UnconditionalAcceptance())
     assert bool(result.is_complete.all())
     assert bool(result.is_feasible.all())
 

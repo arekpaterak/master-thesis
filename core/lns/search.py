@@ -14,7 +14,6 @@ from .acceptance_criterion import (
     SimulatedAnnealingAcceptanceConfig,
 )
 from .improvement_step import ImprovementStep
-from .utils import select_solution
 
 
 class SearchResult(NamedTuple):
@@ -41,7 +40,7 @@ def search[S: BaseSolution](
             solution = improvement_step(solution, criterion)
             if exchange is not None:
                 solution = exchange(solution)
-            best = select_solution(solution.objective() < best.objective(), solution, best)
+            best = solution.where(solution.objective() < best.objective(), best)
             history.append(solution.objective().mean().item())
             criterion.step()
             if on_step is not None:
@@ -88,4 +87,4 @@ class AugmentationExchange:
 
         candidate = solution.gather(-1, random_good_idx).expand(*solution.batch_size)
         do_replace = is_bad & has_any_good
-        return select_solution(do_replace, candidate, solution)
+        return candidate.where(do_replace, solution)

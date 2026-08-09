@@ -4,7 +4,8 @@ import pytest
 import torch
 
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
-from core.lns.improvement_step import SequentialImprovementStep
+from core.lns.apply_and_repair import TorchApplyAndRepair
+from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.repair import RepairOperator
 from core.lns.search import AugmentationExchange, search
 from core.models.nds.destroy import ModelNodeDestroy
@@ -66,11 +67,11 @@ def test_augmented_sa_search_with_model_reduces_to_batch_augmentation(model: Joi
         "cvrp", "greedy_reconnect", deconstruction_size=DECONSTRUCTION_SIZE
     )
     destroy = ModelNodeDestroy(model=model, deconstruction_size=DECONSTRUCTION_SIZE)
-    improvement_step = SequentialImprovementStep(
+    improvement_step = ImprovementStep(
         destroy=destroy,
-        repair=repair,
+        apply_and_repair=TorchApplyAndRepair(repair=repair, n_repairs=1),
+        mode="sequential",
         num_rollouts=R,
-        n_repairs=1,
     )
     criterion = SimulatedAnnealingAcceptance.from_range(
         temperature_start=0.1, temperature_min=0.001, n_steps=3

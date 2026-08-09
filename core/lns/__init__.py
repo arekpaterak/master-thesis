@@ -1,19 +1,12 @@
 from .acceptance_criterion import GreedyAcceptance, SimulatedAnnealingAcceptance
-from .improvement_step import (
-    ImprovementStep,
-    NumbaSequentialImprovementStep,
-    SequentialImprovementStep,
-)
+from .improvement_step import ImprovementStep, NoopImprovementStep
 from .search import SearchResult, search
-from .utils import select_solution
 
 __all__ = [
-    "SequentialImprovementStep",
-    "NumbaSequentialImprovementStep",
     "GreedyAcceptance",
     "ImprovementStep",
+    "NoopImprovementStep",
     "SimulatedAnnealingAcceptance",
     "SearchResult",
     "search",
-    "select_solution",
 ]

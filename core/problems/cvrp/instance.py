@@ -4,6 +4,7 @@ import torch
 from matplotlib.axes import Axes
 
 from core.problems.augmentations import apply_d4_transforms
+from core.problems.cvrp.arrays import CVRPInstanceArrays
 from core.problems.instance import BaseProblemInstance
 
 
@@ -104,6 +105,15 @@ class CVRPInstance(BaseProblemInstance):
     def distances(self) -> torch.Tensor:
         """(..., N+1, N+1) pairwise Euclidean distances between all nodes (depot + customers)."""
         return torch.cdist(self.locations, self.locations)
+
+    def to_numpy(self) -> CVRPInstanceArrays:
+        N = self.num_customers
+        locations = (
+            self.locations.reshape(-1, N + 1, 2).detach().cpu().double().contiguous().numpy()
+        )
+        demand = self.demand.reshape(-1, N + 1).detach().cpu().double().contiguous().numpy()
+        capacity = self.capacity.reshape(-1).detach().cpu().double().contiguous().numpy()
+        return CVRPInstanceArrays(locations=locations, demand=demand, capacity=capacity)
 
     def normalize_(self) -> None:
         """Normalize coordinates in-place by the maximum coordinate value.

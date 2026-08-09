@@ -2,90 +2,73 @@
 
 from __future__ import annotations
 
-from typing import NamedTuple
-
 import numpy as np
 from numba import njit, prange
 
-from core.lns.numba.common import accept_move, dist, seed_for
+from core.problems._numba_common import accept_move, dist, seed_for
+from core.problems.cmstp.arrays import CMSTPInstanceArrays, CMSTPSolutionArrays
 
 DEPOT = 0
 UNASSIGNED = -1
 
 
-class Instance(NamedTuple):
-    locations: np.ndarray
-    demand: np.ndarray
-    capacity: float
-
-
-class Solution(NamedTuple):
-    parent: np.ndarray
-
-
 def apply_and_repair_parallel(
-    *,
-    parent: np.ndarray,
+    solution: CMSTPSolutionArrays,
+    instance: CMSTPInstanceArrays,
     nodes: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: np.ndarray,
+    *,
     n_repairs: int,
     base_seed: int,
     first_repair_uses_order: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[CMSTPSolutionArrays, np.ndarray]:
     """Apply every rollout independently from the same solution, without acceptance.
 
     Args:
-        parent: (B, N+1) the tree to deconstruct, one per instance.
-        nodes: (B, K, M) the K rollouts (customer sets to remove) per instance.
-        locations, demand, capacity: instance arrays, (B, N+1, 2)/(B, N+1)/(B,);
-            shared across the K rollouts of an instance (not replicated).
+        solution: (G, N+1) the tree to deconstruct, one per instance.
+        instance: instance arrays (G, N+1, 2)/(G, N+1)/(G,); shared across the K
+            rollouts of an instance (not replicated).
+        nodes: (G, K, M) the K rollouts (customer sets to remove) per instance.
 
     Returns:
-        (parent_out, objective) shaped (B, K, N+1) and (B, K).
+        (CMSTPSolutionArrays, objective) shaped (G, K, N+1) and (G, K).
     """
-    return _parallel_batch(
-        parent=np.ascontiguousarray(parent, dtype=np.int64),
-        nodes=np.ascontiguousarray(nodes, dtype=np.int64),
-        locations=np.ascontiguousarray(locations, dtype=np.float64),
-        demand=np.ascontiguousarray(demand, dtype=np.float64),
-        capacity=np.ascontiguousarray(capacity, dtype=np.float64),
+    parent_out, objective = _parallel_batch(
+        parent=solution.parent,
+        nodes=nodes,
+        locations=instance.locations,
+        demand=instance.demand,
+        capacity=instance.capacity,
         n_repairs=int(n_repairs),
         base_seed=int(base_seed),
         first_repair_uses_order=bool(first_repair_uses_order),
     )
+    return CMSTPSolutionArrays(parent=parent_out), objective
 
 
 def apply_and_repair_sequential(
-    *,
-    parent: np.ndarray,
+    solution: CMSTPSolutionArrays,
+    instance: CMSTPInstanceArrays,
     nodes_to_remove: np.ndarray,
-    locations: np.ndarray,
-    demand: np.ndarray,
-    capacity: np.ndarray,
+    *,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
     eps: float,
     base_seed: int,
     first_repair_uses_order: bool = False,
-) -> np.ndarray:
+) -> CMSTPSolutionArrays:
     """Apply each solution's rollouts sequentially with acceptance.
 
-    For every element, the rollouts in ``nodes_to_remove`` are applied one after another:
-    each deconstructs the running solution, is repaired best-of-n, and replaces the
-    running solution when acceptance succeeds.
-
-    Returns:
-        parent_out (G, N+1) int64.
+    For every element, the rollouts in ``nodes_to_remove`` (``(G, R, M)`` int64) are
+    applied one after another: each deconstructs the running solution, is repaired
+    best-of-n, and replaces the running solution when acceptance succeeds.
     """
-    return _sequential_batch(
-        parent=np.ascontiguousarray(parent, dtype=np.int64),
-        nodes_to_remove=np.ascontiguousarray(nodes_to_remove, dtype=np.int64),
-        locations=np.ascontiguousarray(locations, dtype=np.float64),
-        demand=np.ascontiguousarray(demand, dtype=np.float64),
-        capacity=np.ascontiguousarray(capacity, dtype=np.float64),
+    parent_out = _sequential_batch(
+        parent=solution.parent,
+        nodes_to_remove=nodes_to_remove,
+        locations=instance.locations,
+        demand=instance.demand,
+        capacity=instance.capacity,
         n_repairs=int(n_repairs),
         accept_kind=int(accept_kind),
         temperature=float(temperature),
@@ -93,6 +76,7 @@ def apply_and_repair_sequential(
         base_seed=int(base_seed),
         first_repair_uses_order=bool(first_repair_uses_order),
     )
+    return CMSTPSolutionArrays(parent=parent_out)
 
 
 @njit(parallel=True, cache=True)
@@ -116,8 +100,8 @@ def _parallel_batch(
     objective = np.empty((num_instances, num_rollouts), np.float64)
 
     for b in prange(num_instances):
-        instance = Instance(locations[b], demand[b], capacity[b])
-        current = Solution(parent[b])
+        instance = CMSTPInstanceArrays(locations[b], demand[b], capacity[b])
+        current = CMSTPSolutionArrays(parent[b])
         for k in range(num_rollouts):
             np.random.seed(seed_for(base_seed, b * num_rollouts + k, total))
             objective[b, k] = _apply_and_repair_one(
@@ -126,7 +110,7 @@ def _parallel_batch(
                 instance=instance,
                 n_repairs=n_repairs,
                 first_repair_uses_order=first_repair_uses_order,
-                out=Solution(parent_out[b, k]),
+                out=CMSTPSolutionArrays(parent_out[b, k]),
             )
     return parent_out, objective
 
@@ -151,9 +135,11 @@ def _sequential_batch(
     for global_idx in prange(global_size):
         np.random.seed(seed_for(base_seed, global_idx, global_size))
         _sequential_single_(
-            solution=Solution(parent_out[global_idx]),
+            solution=CMSTPSolutionArrays(parent_out[global_idx]),
             nodes_to_remove=nodes_to_remove[global_idx],
-            instance=Instance(locations[global_idx], demand[global_idx], capacity[global_idx]),
+            instance=CMSTPInstanceArrays(
+                locations[global_idx], demand[global_idx], capacity[global_idx]
+            ),
             n_repairs=n_repairs,
             accept_kind=accept_kind,
             temperature=temperature,
@@ -165,9 +151,9 @@ def _sequential_batch(
 
 @njit
 def _sequential_single_(
-    solution: Solution,
+    solution: CMSTPSolutionArrays,
     nodes_to_remove: np.ndarray,
-    instance: Instance,
+    instance: CMSTPInstanceArrays,
     n_repairs: int,
     accept_kind: int,
     temperature: float,
@@ -180,7 +166,7 @@ def _sequential_single_(
     """
     parent = solution.parent
     num_nodes = parent.shape[0]
-    candidate = Solution(np.empty(num_nodes, np.int64))
+    candidate = CMSTPSolutionArrays(np.empty(num_nodes, np.int64))
 
     current_objective = _objective(solution, instance)
 
@@ -206,12 +192,12 @@ def _sequential_single_(
 
 @njit
 def _apply_and_repair_one(
-    current: Solution,
+    current: CMSTPSolutionArrays,
     nodes: np.ndarray,
-    instance: Instance,
+    instance: CMSTPInstanceArrays,
     n_repairs: int,
     first_repair_uses_order: bool,
-    out: Solution,
+    out: CMSTPSolutionArrays,
 ) -> float:
     """Deconstruct one customer set and greedily repair it, best of ``n_repairs``.
 
@@ -229,7 +215,7 @@ def _apply_and_repair_one(
 
     deconstructed_parent = _deconstruct(current_parent, is_removed)
 
-    repaired = Solution(np.empty(num_nodes, np.int64))
+    repaired = CMSTPSolutionArrays(np.empty(num_nodes, np.int64))
     subtree_root_of = np.empty(num_nodes, np.int64)
     subtree_demand = np.empty(num_nodes, np.float64)
 
@@ -255,7 +241,7 @@ def _apply_and_repair_one(
 
 
 @njit(inline="always")
-def _is_free(solution: Solution, node: int) -> bool:
+def _is_free(solution: CMSTPSolutionArrays, node: int) -> bool:
     """Whether ``node`` is a free customer (not attached to any parent)."""
     return solution.parent[node] == UNASSIGNED
 
@@ -287,8 +273,8 @@ def _deconstruct(parent: np.ndarray, is_removed: np.ndarray) -> np.ndarray:
 
 @njit
 def _init_subtrees_(
-    solution: Solution,
-    instance: Instance,
+    solution: CMSTPSolutionArrays,
+    instance: CMSTPInstanceArrays,
     subtree_root_of: np.ndarray,
     subtree_demand: np.ndarray,
 ) -> None:
@@ -316,7 +302,7 @@ def _init_subtrees_(
 
 
 @njit
-def _pick_random_free_customer(solution: Solution) -> int:
+def _pick_random_free_customer(solution: CMSTPSolutionArrays) -> int:
     """Pick a random free customer (parent == UNASSIGNED), or -1 if none are free."""
     num_nodes = solution.parent.shape[0]
     chosen = -1
@@ -333,8 +319,8 @@ def _pick_random_free_customer(solution: Solution) -> int:
 @njit
 def _attach_customer_at_cheapest_(
     customer: int,
-    solution: Solution,
-    instance: Instance,
+    solution: CMSTPSolutionArrays,
+    instance: CMSTPInstanceArrays,
     subtree_root_of: np.ndarray,
     subtree_demand: np.ndarray,
 ) -> None:
@@ -375,8 +361,8 @@ def _attach_customer_at_cheapest_(
 
 @njit
 def _greedy_attach_repair_(
-    solution: Solution,
-    instance: Instance,
+    solution: CMSTPSolutionArrays,
+    instance: CMSTPInstanceArrays,
     subtree_root_of: np.ndarray,
     subtree_demand: np.ndarray,
     order: np.ndarray | None = None,
@@ -403,7 +389,7 @@ def _greedy_attach_repair_(
 
 
 @njit
-def _objective(solution: Solution, instance: Instance) -> float:
+def _objective(solution: CMSTPSolutionArrays, instance: CMSTPInstanceArrays) -> float:
     """Total length of all tree edges (each customer to its parent)."""
     parent = solution.parent
     locations = instance.locations

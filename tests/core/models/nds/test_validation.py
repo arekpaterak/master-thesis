@@ -7,8 +7,9 @@ from core.lns.acceptance_criterion import (
     AugmentedExchangeConfig,
     SimulatedAnnealingAcceptanceConfig,
 )
+from core.lns.apply_and_repair import TorchApplyAndRepair
 from core.lns.config import SearchParams, StartSolutionParams
-from core.lns.improvement_step import SequentialImprovementStep
+from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.repair import RepairOperator
 from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.models.joint import JointNDSModel
@@ -46,11 +47,11 @@ def _make_validation_step(model: JointNDSModel, n_augmentations: int) -> NDSVali
     repair = RepairOperator.create(
         "cvrp", "greedy_reconnect", deconstruction_size=DECONSTRUCTION_SIZE
     )
-    improvement_step = SequentialImprovementStep(
+    improvement_step = ImprovementStep(
         destroy=ModelNodeDestroy(model=model, deconstruction_size=DECONSTRUCTION_SIZE),
-        repair=repair,
+        apply_and_repair=TorchApplyAndRepair(repair=repair, n_repairs=1),
+        mode="sequential",
         num_rollouts=R,
-        n_repairs=1,
     )
     return NDSValidationStep(
         generate_start_solution=CVRPGraphSolution.one_customer_per_route,

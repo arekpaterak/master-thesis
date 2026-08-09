@@ -7,11 +7,12 @@ from core.lns.acceptance_criterion import (
     SimulatedAnnealingAcceptance,
     UnconditionalAcceptance,
 )
-from core.lns.improvement_step import NumbaSequentialImprovementStep
-from core.lns.numba.cvrp_apply_and_repair import apply_and_repair_sequential
+from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
 from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp._numba import apply_and_repair_sequential
+from core.problems.cvrp.apply_repair import CVRPGreedyInsertApplyRepair
+from core.problems.cvrp.arrays import CVRPInstanceArrays, CVRPSolutionArrays
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.solve import one_customer_per_route_graph
 
@@ -28,15 +29,19 @@ def solution(batch_size: int) -> CVRPGraphSolution:
 
 
 def _make_improvement_step(
-    num_rollouts: int = 4, n_repairs: int = 3
-) -> NumbaSequentialImprovementStep:
-    destroy = RandomNodeDestroy[CVRPGraphSolution](destruction_size=10, seed=42, stitch=True)
-    return NumbaSequentialImprovementStep(
-        destroy=destroy,
-        repair=CVRPGreedyInsertRepair(),
-        num_rollouts=num_rollouts,
+    num_rollouts: int = 4, n_repairs: int = 3, insert_in_affected_routes_only: bool = False
+) -> ImprovementStep:
+    destroy = RandomNodeDestroy[CVRPGraphSolution](destruction_size=10, seed=42)
+    apply_and_repair = CVRPGreedyInsertApplyRepair(
         n_repairs=n_repairs,
         seed=7,
+        insert_in_affected_routes_only=insert_in_affected_routes_only,
+    )
+    return ImprovementStep(
+        destroy=destroy,
+        apply_and_repair=apply_and_repair,
+        mode="sequential",
+        num_rollouts=num_rollouts,
     )
 
 
@@ -103,47 +108,43 @@ class TestNumbaSequentialImprovementStep:
         assert torch.equal(first.next_nodes, second.next_nodes)
 
 
-def _two_route_problem() -> dict:
+def _two_route_problem() -> tuple[CVRPSolutionArrays, CVRPInstanceArrays, np.ndarray, dict]:
     """Single element, two routes A=[1,2], B=[3,4]. Customer 1 sits right next to
     customer 3 of the *other* route, so unrestricted repair pulls it into route B.
     """
-    next = np.array([[-1, 2, 0, 4, 0]], dtype=np.int64)
-    prev = np.array([[-1, 0, 1, 0, 3]], dtype=np.int64)
-    locations = np.array(
-        [[[0.0, 0.0], [5.0, 0.0], [5.0, 5.0], [5.0, 0.1], [5.0, 5.1]]], dtype=np.float64
+    solution = CVRPSolutionArrays(
+        next=np.array([[-1, 2, 0, 4, 0]], dtype=np.int64),
+        prev=np.array([[-1, 0, 1, 0, 3]], dtype=np.int64),
     )
-    demand = np.array([[0.0, 1.0, 1.0, 1.0, 1.0]], dtype=np.float64)
-    capacity = np.array([100.0], dtype=np.float64)  # never binds
+    instance = CVRPInstanceArrays(
+        locations=np.array(
+            [[[0.0, 0.0], [5.0, 0.0], [5.0, 5.0], [5.0, 0.1], [5.0, 5.1]]], dtype=np.float64
+        ),
+        demand=np.array([[0.0, 1.0, 1.0, 1.0, 1.0]], dtype=np.float64),
+        capacity=np.array([100.0], dtype=np.float64),  # never binds
+    )
     nodes_to_remove = np.array([[[1]]], dtype=np.int64)  # remove customer 1 from route A
-    return dict(
-        next=next,
-        prev=prev,
-        nodes_to_remove=nodes_to_remove,
-        locations=locations,
-        demand=demand,
-        capacity=capacity,
-        n_repairs=1,
-        accept_kind=0,  # greedy
-        temperature=0.0,
-        eps=1e-6,
-        base_seed=0,
-    )
+    params = dict(n_repairs=1, accept_kind=0, temperature=0.0, eps=1e-6, base_seed=0)
+    return solution, instance, nodes_to_remove, params
 
 
 class TestInsertInNewRoutesOnly:
     def test_unrestricted_pulls_customer_into_untouched_route(self) -> None:
-        next_out, _ = apply_and_repair_sequential(
-            **_two_route_problem(), insert_in_affected_routes_only=False
+        solution, instance, nodes, params = _two_route_problem()
+        out = apply_and_repair_sequential(
+            solution, instance, nodes, insert_in_affected_routes_only=False, **params
         )
 
         # Geometry check: without the restriction, customer 1 lands next to customer 3,
         # i.e. inside the route it did not come from.
-        assert next_out[0, 1] == 3
+        assert out.next[0, 1] == 3
 
     def test_restricted_keeps_customer_out_of_untouched_route(self) -> None:
-        next_out, prev_out = apply_and_repair_sequential(
-            **_two_route_problem(), insert_in_affected_routes_only=True
+        solution, instance, nodes, params = _two_route_problem()
+        out = apply_and_repair_sequential(
+            solution, instance, nodes, insert_in_affected_routes_only=True, **params
         )
+        next_out, prev_out = out.next, out.prev
 
         # Untouched route B stays exactly intact.
         assert next_out[0, 3] == 4 and prev_out[0, 3] == 0
@@ -155,15 +156,7 @@ class TestInsertInNewRoutesOnly:
     def test_restricted_repair_is_complete_and_feasible(self) -> None:
         instance = CVRPSampler(CVRP.for_n(20), seed=11)(4)
         solution = one_customer_per_route_graph(instance)
-        destroy = RandomNodeDestroy[CVRPGraphSolution](destruction_size=10, seed=3, stitch=True)
-        step = NumbaSequentialImprovementStep(
-            destroy=destroy,
-            repair=CVRPGreedyInsertRepair(),
-            num_rollouts=4,
-            n_repairs=3,
-            seed=7,
-            insert_in_affected_routes_only=True,
-        )
+        step = _make_improvement_step(insert_in_affected_routes_only=True)
 
         repaired = step(solution, GreedyAcceptance())
 

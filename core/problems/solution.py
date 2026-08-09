@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Self
 
 import torch
 from tensordict.tensorclass import TensorClass
@@ -16,6 +17,11 @@ class BaseSolution(TensorClass, ABC):
     @property
     @abstractmethod
     def instance(self) -> BaseProblemInstance: ...
+
+    @abstractmethod
+    def where(self, mask: torch.Tensor, other: Self) -> Self:
+        """Return ``self`` where ``mask`` is True, else ``other`` (elementwise over the batch)."""
+        ...
 
     @property
     @abstractmethod

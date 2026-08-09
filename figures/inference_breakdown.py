@@ -13,8 +13,7 @@ with app.setup:
     import yaml
 
     from core.lns.acceptance_criterion import build_criterion
-    from core.lns.improvement_step import build_random_destroy_step
-    from core.lns.operators.repair import RepairOperator
+    from core.lns.improvement_step import build_random_node_destroy_step
     from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
     from core.models.nds.improvement_step import build_nds_improvement_step
@@ -268,12 +267,11 @@ def _(
 
     def build_step(config, rollout_size, model=None):
         search = config.search.model_copy(update={"num_rollouts": rollout_size})
-        repair = RepairOperator.create(
-            config.problem.name, search.repair_type, deconstruction_size=search.deconstruction_size
-        )
         if model is None:
-            return build_random_destroy_step(search, problem_name=config.problem.name, seed=SEED)
-        return build_nds_improvement_step(search, model=model, repair=repair, seed=SEED)
+            return build_random_node_destroy_step(
+                search, problem_name=config.problem.name, seed=SEED
+            )
+        return build_nds_improvement_step(search, model=model, seed=SEED)
 
     def timed_search(step, instance, num_steps, acceptance, model=None):
         """Run one search and return its total wall time plus (if a model) the component split."""

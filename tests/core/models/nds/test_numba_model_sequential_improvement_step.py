@@ -2,11 +2,11 @@ import pytest
 import torch
 
 from core.lns.acceptance_criterion import GreedyAcceptance, SimulatedAnnealingAcceptance
-from core.lns.improvement_step import NumbaSequentialImprovementStep
-from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
+from core.lns.improvement_step import ImprovementStep
 from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp.apply_repair import CVRPGreedyInsertApplyRepair
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.solve import one_customer_per_route_graph
 
@@ -23,14 +23,18 @@ def solution(request) -> CVRPGraphSolution:
     return one_customer_per_route_graph(instance)
 
 
-def _make_improvement_step(model: JointNDSModel) -> NumbaSequentialImprovementStep:
-    destroy = ModelNodeDestroy(model=model, deconstruction_size=10, stitch=True)
-    return NumbaSequentialImprovementStep(
+def _make_improvement_step(
+    model: JointNDSModel, insert_in_affected_routes_only: bool = False
+) -> ImprovementStep:
+    destroy = ModelNodeDestroy(model=model, deconstruction_size=10)
+    apply_and_repair = CVRPGreedyInsertApplyRepair(
+        n_repairs=2, seed=7, insert_in_affected_routes_only=insert_in_affected_routes_only
+    )
+    return ImprovementStep(
         destroy=destroy,
-        repair=CVRPGreedyInsertRepair(),
+        apply_and_repair=apply_and_repair,
+        mode="sequential",
         num_rollouts=4,
-        n_repairs=2,
-        seed=7,
     )
 
 
@@ -72,15 +76,7 @@ class TestNumbaModelSequentialImprovementStep:
     def test_insert_in_affected_routes_only_stays_complete_and_feasible(
         self, model: JointNDSModel, solution: CVRPGraphSolution
     ) -> None:
-        destroy = ModelNodeDestroy(model=model, deconstruction_size=10, stitch=True)
-        step = NumbaSequentialImprovementStep(
-            destroy=destroy,
-            repair=CVRPGreedyInsertRepair(),
-            num_rollouts=4,
-            n_repairs=2,
-            seed=7,
-            insert_in_affected_routes_only=True,
-        )
+        step = _make_improvement_step(model, insert_in_affected_routes_only=True)
 
         improved = step(solution, GreedyAcceptance())
 

@@ -1,5 +1,5 @@
 from core.lns.config import SearchParams, StartSolutionParams
-from core.lns.improvement_step import NumbaSequentialImprovementStep, build_random_destroy_step
+from core.lns.improvement_step import ImprovementStep, build_random_node_destroy_step
 from core.lns.start_solution import with_warmup
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
@@ -17,8 +17,9 @@ def _search(steps: int) -> SearchParams:
 
 
 def test_build_random_destroy_step_returns_requested_variant() -> None:
-    step = build_random_destroy_step(_search(50), problem_name="cvrp", seed=0)
-    assert isinstance(step, NumbaSequentialImprovementStep)
+    step = build_random_node_destroy_step(_search(50), problem_name="cvrp", seed=0)
+    assert isinstance(step, ImprovementStep)
+    assert step._mode == "sequential"
 
 
 def test_warmup_improves_and_stays_feasible() -> None:

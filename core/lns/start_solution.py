@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from core.lns.acceptance_criterion import GreedyAcceptance
 from core.lns.config import SearchParams
-from core.lns.improvement_step import build_random_destroy_step
+from core.lns.improvement_step import build_random_node_destroy_step
 from core.lns.search import search as lns_search
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
@@ -31,7 +31,7 @@ def with_warmup(
             "n_repairs": 1,
         }
     )
-    warmup_step = build_random_destroy_step(warmup_search, problem_name=problem_name, seed=0)
+    warmup_step = build_random_node_destroy_step(warmup_search, problem_name=problem_name, seed=0)
 
     def wrapped(instance: BaseProblemInstance) -> BaseSolution:
         solution = generate_start_solution(instance)

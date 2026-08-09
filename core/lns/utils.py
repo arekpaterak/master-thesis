@@ -3,12 +3,10 @@ from __future__ import annotations
 import torch
 
 from core.lns.operators.repair import RepairOperator
-from core.problems.cmstp.solution import CMSTPSolution
 from core.problems.cvrp import CVRPSolution
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.solution import BaseSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
-from core.problems.tsp.solution import TSPSolution
 
 
 def remove_nodes(
@@ -35,52 +33,5 @@ def best_repair(repair: RepairOperator, deconstructed: BaseSolution, n: int) -> 
     best = repair(deconstructed)
     for _ in range(n - 1):
         candidate = repair(deconstructed)
-        best = select_solution(candidate.objective() < best.objective(), candidate, best)
+        best = candidate.where(candidate.objective() < best.objective(), best)
     return best
-
-
-def select_solution(mask: torch.Tensor, a: BaseSolution, b: BaseSolution) -> BaseSolution:
-    """Select a[i] where mask[i] is True, else b[i]."""
-    match a:
-        case TSPSolution() as a_tsp_seq:
-            assert isinstance(b, TSPSolution)
-            return TSPSolution.create(
-                instance=a_tsp_seq.instance,
-                tour=torch.where(mask.unsqueeze(-1), a_tsp_seq.tour, b.tour),
-            )
-        case CVRPSolution() as a_cvrp:
-            assert isinstance(b, CVRPSolution)
-            return CVRPSolution.create(
-                instance=a_cvrp.instance,
-                sequence=torch.where(mask.unsqueeze(-1), a_cvrp.sequence, b.sequence),
-            )
-        case CVRPGraphSolution() as a_cvrp_graph:
-            assert isinstance(b, CVRPGraphSolution)
-            m = mask.unsqueeze(-1)
-            return CVRPGraphSolution(
-                _instance=a_cvrp_graph.instance,
-                _next=torch.where(m, a_cvrp_graph.next_nodes, b.next_nodes),
-                _prev=torch.where(m, a_cvrp_graph.prev_nodes, b.prev_nodes),
-                _route_id=torch.where(m, a_cvrp_graph.route_ids, b.route_ids),
-                batch_size=a_cvrp_graph.batch_size,
-            )
-        case TSPGraphSolution() as a_tsp:
-            assert isinstance(b, TSPGraphSolution)
-            m = mask.unsqueeze(-1)
-            return TSPGraphSolution(
-                _instance=a_tsp.instance,
-                _next=torch.where(m, a_tsp.next_nodes, b.next_nodes),
-                _prev=torch.where(m, a_tsp.prev_nodes, b.prev_nodes),
-                batch_size=a_tsp.batch_size,
-            )
-        case CMSTPSolution() as a_cmstp:
-            assert isinstance(b, CMSTPSolution)
-            m = mask.unsqueeze(-1)
-            return CMSTPSolution(
-                _instance=a_cmstp.instance,
-                _parent=torch.where(m, a_cmstp.parent_nodes, b.parent_nodes),
-                _subtree_id=torch.where(m, a_cmstp.subtree_ids, b.subtree_ids),
-                batch_size=a_cmstp.batch_size,
-            )
-        case _:
-            raise NotImplementedError(f"select_solution not implemented for {type(a)}")

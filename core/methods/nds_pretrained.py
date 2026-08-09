@@ -7,7 +7,6 @@ import torch
 from pydantic import BaseModel, Field, model_validator
 
 from core.lns.config import SearchParams
-from core.lns.operators.repair import RepairOperator
 from core.methods.base import Method
 from core.models.nds.config import JointModelConfig, ModelConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
@@ -83,12 +82,7 @@ class NDSPretrainedMethod:
 
         model.eval()
 
-        repair = RepairOperator.create(
-            problem.name,
-            config.search.repair_type,
-            deconstruction_size=config.search.deconstruction_size,
-        )
-        improvement_step = build_nds_improvement_step(config.search, model=model, repair=repair)
+        improvement_step = build_nds_improvement_step(config.search, model=model)
 
         return Method(
             search=config.search,

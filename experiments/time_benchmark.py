@@ -39,8 +39,7 @@ from core.lns.acceptance_criterion import (
     build_criterion,
 )
 from core.lns.config import SearchParams
-from core.lns.improvement_step import ImprovementStep, build_random_destroy_step
-from core.lns.operators.repair import RepairOperator
+from core.lns.improvement_step import ImprovementStep, build_random_node_destroy_step
 from core.models.nds.config import JointModelConfig, ModelConfig, SplitModelConfig
 from core.models.nds.decoders.config import (
     AutoregressiveDecoderConfig,
@@ -153,14 +152,11 @@ def _build_step(
     """Build a fresh improvement step. NDS models start with an empty instance cache,
     so the first timed step pays the (real) one-time encoding cost."""
     if spec.model_params is None:
-        return build_random_destroy_step(search, problem_name=problem_name, seed=seed)
+        return build_random_node_destroy_step(search, problem_name=problem_name, seed=seed)
 
     model = build_model(spec.model_params).to(device)
     model.eval()
-    repair = RepairOperator.create(
-        problem_name, search.repair_type, deconstruction_size=search.deconstruction_size
-    )
-    return build_nds_improvement_step(search, model=model, repair=repair, seed=seed)
+    return build_nds_improvement_step(search, model=model, seed=seed)
 
 
 def _count_parameters(spec: MethodSpec) -> int:
@@ -250,7 +246,7 @@ def _warmup(
             n_repairs=n_repairs,
             acceptance=acceptance,
         )
-        step = build_random_destroy_step(search, problem_name=problem_name, seed=seed)
+        step = build_random_node_destroy_step(search, problem_name=problem_name, seed=seed)
         criterion = build_criterion(search.acceptance, n_steps=max(warmup, 1))
         solution = generate_initial_solution(instance)
         criterion.reset()

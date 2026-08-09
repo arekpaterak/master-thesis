@@ -162,8 +162,8 @@ def test_model_node_destroy_session_encodes_once() -> None:
 
     with destroy.search_session(solution):
         assert destroy._rollout is not None
-        destroy.select_nodes(solution, num_rollouts=2)
-        destroy.select_nodes(solution, num_rollouts=2)
+        destroy.select(solution, num_rollouts=2)
+        destroy.select(solution, num_rollouts=2)
 
     assert encode_count() == 1
     assert destroy._rollout is None

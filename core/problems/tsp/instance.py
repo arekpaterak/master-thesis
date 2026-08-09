@@ -5,6 +5,7 @@ from matplotlib.axes import Axes
 
 from core.problems.augmentations import apply_d4_transforms
 from core.problems.instance import BaseProblemInstance
+from core.problems.tsp.arrays import TSPInstanceArrays
 
 
 class TSPInstance(BaseProblemInstance):
@@ -40,6 +41,11 @@ class TSPInstance(BaseProblemInstance):
 
     def distances(self) -> torch.Tensor:
         return torch.cdist(self.locations, self.locations)
+
+    def to_numpy(self) -> TSPInstanceArrays:
+        N = self.num_nodes
+        locations = self.locations.reshape(-1, N, 2).detach().cpu().double().contiguous().numpy()
+        return TSPInstanceArrays(locations=locations)
 
     def augment(self, n_augmentations: int) -> TSPInstance:
         augmented_locations = apply_d4_transforms(self.locations, n_augmentations)

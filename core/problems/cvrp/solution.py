@@ -31,6 +31,12 @@ class CVRPSolution(BaseSolution):
         batch_size = instance.batch_size
         return cls(_instance=instance, sequence=sequence, batch_size=batch_size)
 
+    def where(self, mask: torch.Tensor, other: CVRPSolution) -> CVRPSolution:
+        return CVRPSolution.create(
+            instance=self.instance,
+            sequence=torch.where(mask.unsqueeze(-1), self.sequence, other.sequence),
+        )
+
     def __post_init__(self):
         if self.sequence is not None and self.sequence.numel() > 0:
             inferred_batch_size = self.sequence.shape[:-1]

@@ -621,7 +621,7 @@ def _(
                     greedy=False,
                 )
                 # actions: (B, R, k); broadcasts the (B,) solution to (B, R).
-                return start.remove_nodes(rollout.actions)
+                return start.remove_nodes(rollout.nodes)
 
             return destroy
 

@@ -8,9 +8,9 @@ import torch
 from core.constants import EPS
 from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPInstance
+from core.problems.tsp.arrays import TSPSolutionArrays
 
 if TYPE_CHECKING:
-    import numpy as np
     from matplotlib.axes import Axes
 
 
@@ -57,43 +57,29 @@ class TSPGraphSolution(BaseSolution):
 
         return cls(_instance=instance, _next=next_nodes, _prev=prev_nodes, batch_size=b_size)
 
-    def to_numpy_arrays(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Extract contiguous numpy arrays for a numba improvement kernel.
-
-        Batch dims are collapsed to a single leading dim G; floats are float64.
-        Pair with :meth:`from_numpy_arrays` to rebuild a solution from the kernel output.
-
-        Returns:
-            ``(next, prev, locations)`` with shapes ``(G, N)`` int64, ``(G, N)`` int64
-            and ``(G, N, 2)`` float64.
-        """
+    def to_numpy(self) -> TSPSolutionArrays:
         N = self.instance.num_nodes
         next = self._next.reshape(-1, N).detach().cpu().contiguous().numpy()
         prev = self._prev.reshape(-1, N).detach().cpu().contiguous().numpy()
-        locations = (
-            self.instance.locations.reshape(-1, N, 2).detach().cpu().double().contiguous().numpy()
-        )
-        return next, prev, locations
+        return TSPSolutionArrays(next=next, prev=prev)
 
     @classmethod
-    def from_numpy_arrays(
+    def from_numpy(
         cls,
-        *,
         instance: TSPInstance,
-        next: np.ndarray,
-        prev: np.ndarray,
+        solution: TSPSolutionArrays,
+        *,
         batch_size: torch.Size,
         device: torch.device,
     ) -> TSPGraphSolution:
-        """Rebuild a solution from kernel-produced ``next``/``prev`` numpy arrays."""
         num_nodes = instance.num_nodes
         next_tensor = (
-            torch.from_numpy(next)
+            torch.from_numpy(solution.next)
             .to(device=device, dtype=torch.long)
             .reshape(*batch_size, num_nodes)
         )
         prev_tensor = (
-            torch.from_numpy(prev)
+            torch.from_numpy(solution.prev)
             .to(device=device, dtype=torch.long)
             .reshape(*batch_size, num_nodes)
         )
@@ -113,6 +99,15 @@ class TSPGraphSolution(BaseSolution):
     @property
     def prev_nodes(self) -> torch.Tensor:
         return self._prev
+
+    def where(self, mask: torch.Tensor, other: TSPGraphSolution) -> TSPGraphSolution:
+        m = mask.unsqueeze(-1)
+        return TSPGraphSolution(
+            _instance=self.instance,
+            _next=torch.where(m, self._next, other._next),
+            _prev=torch.where(m, self._prev, other._prev),
+            batch_size=self.batch_size,
+        )
 
     @property
     def is_feasible(self) -> torch.Tensor:

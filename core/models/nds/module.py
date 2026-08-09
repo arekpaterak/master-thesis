@@ -7,10 +7,9 @@ import torch.nn as nn
 import torch.optim as optim
 
 from core.lns.acceptance_criterion import build_criterion
-from core.lns.operators.repair import RepairOperator
+from core.lns.apply_and_repair import build_apply_and_repair
 from core.lns.start_solution import with_warmup
 from core.models.module import Module
-from core.models.nds.apply_and_repair import build_apply_and_repair
 from core.models.nds.baseline import build_baseline
 from core.models.nds.config import TrainConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
@@ -84,17 +83,7 @@ class NDSModule(Module):
             problem_name=config.problem.name,
             search=config.validation.search,
         )
-        repair = RepairOperator.create(
-            config.problem.name,
-            config.search.repair_type,
-            deconstruction_size=max(
-                config.search.deconstruction_size,
-                config.validation.search.deconstruction_size,
-            ),
-        )
-        training_improvement_step = build_nds_improvement_step(
-            config.search, model=model, repair=repair
-        )
+        training_improvement_step = build_nds_improvement_step(config.search, model=model)
 
         self._training_step = NDSTrainingStep(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
@@ -103,7 +92,11 @@ class NDSModule(Module):
             deconstruction_size=config.search.deconstruction_size,
             generate_start_solution=generate_training_start_solution,
             improvement_step=training_improvement_step,
-            apply_and_repair=build_apply_and_repair(config.search, repair=repair),
+            apply_and_repair=build_apply_and_repair(
+                config.search,
+                problem_name=config.problem.name,
+                backend=config.search.apply_and_repair_backend,
+            ),
             compute_reward=build_reward(config.reward),
             policy_loss=build_policy_loss(config.loss),
             baseline=build_baseline(config.baseline),
@@ -123,7 +116,6 @@ class NDSModule(Module):
         validation_improvement_step = build_nds_improvement_step(
             config.validation.search,
             model=model,
-            repair=repair,
             recorder=validation_rollout_recorder,
         )
 

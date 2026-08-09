@@ -68,10 +68,12 @@ class SearchParams(BaseModel):
             "numba_sequential improvement step."
         ),
     )
-    improvement_step_type: Literal["sequential", "parallel", "numba_sequential"] = Field(
+    improvement_step_type: Literal[
+        "sequential", "parallel", "numba_sequential", "numba_parallel"
+    ] = Field(
         default="parallel",
         title="Improvement step type",
-        description="Improvement step variant.",
+        description="Improvement step variant. torch (sequential/parallel) or numba backend.",
     )
     apply_and_repair_backend: Literal["torch", "numba"] = Field(
         default="numba",

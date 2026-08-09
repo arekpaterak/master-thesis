@@ -5,16 +5,6 @@ from core.problems.cmstp.solution import CMSTPSolution
 
 
 class CMSTPGreedyInsertRepair(RepairOperator[CMSTPSolution]):
-    """Registry entry for CMSTP greedy attach-repair.
-
-    The actual deconstruct + greedy attach lives in the fused numba pass
-    (:mod:`core.problems.cmstp._numba`), used by both the training main loop
-    (``NumbaApplyAndRepair``) and validation (``NumbaSequentialImprovementStep``). This
-    operator exists so ``RepairOperator.create("cmstp", "greedy_insert")`` resolves and
-    ``ModelNodeDestroy`` can read ``requires_stitch``; the torch ``__call__`` is never
-    invoked on the numba paths and is intentionally not implemented.
-    """
-
     repair_type = "greedy_insert"
     problem_name = "cmstp"
     requires_stitch = True

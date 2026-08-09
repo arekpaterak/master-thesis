@@ -12,9 +12,9 @@ from core.lns.acceptance_criterion import (
     GreedyAcceptance,
     UnconditionalAcceptance,
 )
+from core.lns.apply_and_repair import ApplyAndRepair
 from core.lns.improvement_step import ImprovementStep
-from core.lns.utils import select_solution
-from core.models.nds.apply_and_repair import ApplyAndRepair
+from core.lns.operators.destroy.selection import NodeSelection
 from core.models.nds.baseline import Baseline
 from core.models.nds.factory import NDSModel
 from core.models.nds.metrics import EncoderMetricsRecorder, diversity_overlap, unique_rollouts
@@ -133,7 +133,9 @@ class NDSTrainingStep:
                         greedy=False,
                     )
 
-                    solution_prime = self._apply_and_repair(solution, rollout)
+                    solution_prime = self._apply_and_repair.parallel(
+                        solution, NodeSelection(rollout.actions)
+                    )
                     assert solution_prime.batch_dims == 2
 
                     step_objective_before = solution.objective()
@@ -165,7 +167,7 @@ class NDSTrainingStep:
 
                 best_solution_prime = solution_prime.gather(1, best_rollout_idx).squeeze(1)
                 mask = self._acceptance(solution, best_solution_prime)
-                solution = select_solution(mask, best_solution_prime, solution)
+                solution = best_solution_prime.where(mask, solution)
 
                 sorted_actions = rollout.actions.sort(dim=-1).values
                 is_unique = torch.cat(

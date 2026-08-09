@@ -6,10 +6,10 @@ from core.lns.acceptance_criterion import (
     SimulatedAnnealingAcceptance,
     UnconditionalAcceptance,
 )
-from core.lns.improvement_step import NumbaSequentialImprovementStep
+from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair.insert.tsp import TSPGreedyInsertRepair
 from core.problems.tsp import TSP, TSPSampler
+from core.problems.tsp.apply_repair import TSPGreedyInsertApplyRepair
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solve import random_permutation_graph
 
@@ -25,16 +25,14 @@ def solution(batch_size: int) -> TSPGraphSolution:
     return random_permutation_graph(instance)
 
 
-def _make_improvement_step(
-    num_rollouts: int = 4, n_repairs: int = 3
-) -> NumbaSequentialImprovementStep:
+def _make_improvement_step(num_rollouts: int = 4, n_repairs: int = 3) -> ImprovementStep:
     destroy = RandomNodeDestroy[TSPGraphSolution](destruction_size=10, seed=42)
-    return NumbaSequentialImprovementStep(
+    apply_and_repair = TSPGreedyInsertApplyRepair(n_repairs=n_repairs, seed=7)
+    return ImprovementStep(
         destroy=destroy,
-        repair=TSPGreedyInsertRepair(),
+        apply_and_repair=apply_and_repair,
+        mode="sequential",
         num_rollouts=num_rollouts,
-        n_repairs=n_repairs,
-        seed=7,
     )
 
 
@@ -95,18 +93,6 @@ class TestTSPNumbaSequentialImprovementStep:
 
         assert torch.equal(first.next_nodes, second.next_nodes)
 
-    def test_insert_in_affected_routes_only_is_unsupported(
-        self, solution: TSPGraphSolution
-    ) -> None:
-        destroy = RandomNodeDestroy[TSPGraphSolution](destruction_size=10, seed=42)
-        step = NumbaSequentialImprovementStep(
-            destroy=destroy,
-            repair=TSPGreedyInsertRepair(),
-            num_rollouts=4,
-            n_repairs=3,
-            seed=7,
-            insert_in_affected_routes_only=True,
-        )
-
+    def test_insert_in_affected_routes_only_is_unsupported(self) -> None:
         with pytest.raises(NotImplementedError):
-            step(solution, GreedyAcceptance())
+            TSPGreedyInsertApplyRepair(n_repairs=3, seed=7, insert_in_affected_routes_only=True)
