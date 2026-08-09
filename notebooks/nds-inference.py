@@ -25,14 +25,14 @@ def _():
     from drawdata import ScatterWidget
 
     from core.lns.acceptance_criterion import GreedyAcceptance
-    from core.lns.operators.repair import TSPGreedyReconnectRepair
-    from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
     from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
     from core.models.nds.improvement_step import ModelSequentialImprovementStep
     from core.problems.cvrp.instance import CVRPInstance
+    from core.problems.cvrp.lns.operators.repair.insert import CVRPGreedyInsertRepair
     from core.problems.cvrp.solve import one_customer_per_route
     from core.problems.tsp.instance import TSPInstance
+    from core.problems.tsp.lns.operators.repair.reconnect import TSPGreedyReconnectRepair
     from core.problems.tsp.solve import random_permutation_graph
 
     return (

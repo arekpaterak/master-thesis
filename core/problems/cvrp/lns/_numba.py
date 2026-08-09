@@ -30,7 +30,7 @@ import numpy as np
 from numba import njit, prange
 
 from core.problems._numba_common import accept_move, dist, seed_for
-from core.problems.cvrp.arrays import CVRPInstanceArrays, CVRPSolutionArrays
+from core.problems.cvrp.lns.arrays import CVRPInstanceArrays, CVRPSolutionArrays
 
 DEPOT = 0
 UNASSIGNED = -1

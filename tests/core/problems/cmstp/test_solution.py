@@ -5,8 +5,8 @@ import torch
 from core.lns.acceptance_criterion import GreedyAcceptance, UnconditionalAcceptance
 from core.lns.operators.destroy.selection import NodeSelection
 from core.problems.cmstp import CMSTPInstance, CMSTPSolution
-from core.problems.cmstp.apply_repair import CMSTPGreedyInsertApplyRepair
 from core.problems.cmstp.config import CMSTP
+from core.problems.cmstp.lns.apply_repair import CMSTPGreedyInsertApplyRepair
 from core.problems.cmstp.sampler import CMSTPSampler
 from core.states.destroy import initial_action_mask
 

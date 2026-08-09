@@ -7,8 +7,8 @@ import torch
 
 from ...constants import EPS
 from ..solution import BaseSolution
-from .arrays import CVRPSolutionArrays
 from .instance import CVRPInstance
+from .lns.arrays import CVRPSolutionArrays
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes

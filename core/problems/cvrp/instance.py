@@ -4,7 +4,7 @@ import torch
 from matplotlib.axes import Axes
 
 from core.problems.augmentations import apply_d4_transforms
-from core.problems.cvrp.arrays import CVRPInstanceArrays
+from core.problems.cvrp.lns.arrays import CVRPInstanceArrays
 from core.problems.instance import BaseProblemInstance
 
 

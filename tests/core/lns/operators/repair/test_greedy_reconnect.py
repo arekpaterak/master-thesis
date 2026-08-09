@@ -2,15 +2,15 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair import TSPGreedyReconnectRepair
-from core.lns.operators.repair.reconnect.cvrp import (
-    CVRPGreedyReconnectRepair,
-)
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.cvrp.lns.operators.repair.reconnect import (
+    CVRPGreedyReconnectRepair,
+)
 from core.problems.cvrp.solve import one_customer_per_route_graph
 from core.problems.tsp import TSP, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.problems.tsp.lns.operators.repair.reconnect import TSPGreedyReconnectRepair
 from core.problems.tsp.solve import random_permutation
 
 

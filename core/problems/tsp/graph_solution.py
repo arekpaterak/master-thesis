@@ -8,7 +8,7 @@ import torch
 from core.constants import EPS
 from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPInstance
-from core.problems.tsp.arrays import TSPSolutionArrays
+from core.problems.tsp.lns.arrays import TSPSolutionArrays
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes

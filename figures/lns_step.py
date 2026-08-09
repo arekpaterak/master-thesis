@@ -10,11 +10,11 @@ with app.setup:
     from core.lns import GreedyAcceptance, search
     from core.lns.improvement_step import SequentialImprovementStep
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
-    from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
-    from core.lns.operators.repair.insert.tsp import TSPGreedyInsertRepair
     from core.problems.cvrp import CVRPSampler
+    from core.problems.cvrp.lns.operators.repair.insert import CVRPGreedyInsertRepair
     from core.problems.cvrp.solve import one_customer_per_route_graph
     from core.problems.tsp import TSPSampler
+    from core.problems.tsp.lns.operators.repair.insert import TSPGreedyInsertRepair
     from core.problems.tsp.solve import random_permutation_graph
     from figures.utils import (
         figsize,

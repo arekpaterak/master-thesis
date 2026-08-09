@@ -4,19 +4,19 @@ import numpy as np
 
 from core.constants import EPS
 from core.lns.apply_and_repair import NumbaApplyAndRepair
-from core.problems.tsp import _numba
-from core.problems.tsp.arrays import TSPInstanceArrays, TSPSolutionArrays
+from core.problems.cmstp.lns import _numba
+from core.problems.cmstp.lns.arrays import CMSTPInstanceArrays, CMSTPSolutionArrays
 
 
-class TSPGreedyInsertApplyRepair(NumbaApplyAndRepair):
-    """Fused numba greedy cheapest-insertion apply-and-repair for TSP."""
+class CMSTPGreedyInsertApplyRepair(NumbaApplyAndRepair):
+    """Fused numba greedy attach apply-and-repair for CMSTP."""
 
-    problem_name = "tsp"
+    problem_name = "cmstp"
     repair_name = "greedy_insert"
 
     def _apply_parallel(
-        self, solution: TSPSolutionArrays, instance: TSPInstanceArrays, nodes: np.ndarray
-    ) -> TSPSolutionArrays:
+        self, solution: CMSTPSolutionArrays, instance: CMSTPInstanceArrays, nodes: np.ndarray
+    ) -> CMSTPSolutionArrays:
         out, _objective = _numba.apply_and_repair_parallel(
             solution,
             instance,
@@ -29,12 +29,12 @@ class TSPGreedyInsertApplyRepair(NumbaApplyAndRepair):
 
     def _apply_sequential(
         self,
-        solution: TSPSolutionArrays,
-        instance: TSPInstanceArrays,
+        solution: CMSTPSolutionArrays,
+        instance: CMSTPInstanceArrays,
         nodes: np.ndarray,
         accept_kind: int,
         temperature: float,
-    ) -> TSPSolutionArrays:
+    ) -> CMSTPSolutionArrays:
         return _numba.apply_and_repair_sequential(
             solution,
             instance,

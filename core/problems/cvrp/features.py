@@ -11,8 +11,6 @@ from core.problems.features import InstanceFeatureExtractor, SolutionFeatureExtr
 
 
 class CVRPInstanceFeatures(TensorClass):
-    """Instance-derived inputs for a CVRP encoder. Fields are raw signals."""
-
     depot_location: torch.Tensor
     """(..., 1, 2)"""
     customer_locations: torch.Tensor
@@ -39,8 +37,6 @@ class CVRPInstanceFeatures(TensorClass):
 
 
 class CVRPSolutionFeatures(TensorClass):
-    """Solution-derived inputs for a CVRP encoder. Fields are raw signals."""
-
     neighbours_index: torch.Tensor
     """(..., N, 2) [prev, next] node index per customer."""
     route_index: torch.Tensor

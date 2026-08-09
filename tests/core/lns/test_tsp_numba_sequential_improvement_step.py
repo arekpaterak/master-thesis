@@ -9,8 +9,8 @@ from core.lns.acceptance_criterion import (
 from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.problems.tsp import TSP, TSPSampler
-from core.problems.tsp.apply_repair import TSPGreedyInsertApplyRepair
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.problems.tsp.lns.apply_repair import TSPGreedyInsertApplyRepair
 from core.problems.tsp.solve import random_permutation_graph
 
 

@@ -1,6 +1,6 @@
 """Numba CPU kernels for TSP apply-and-repair.
 
-Mirrors :mod:`core.problems.cvrp._numba`, minus the depot/capacity/route
+Mirrors :mod:`core.problems.cvrp.lns._numba`, minus the depot/capacity/route
 bookkeeping CVRP needs: TSP has no depot and forms a single cycle over all nodes,
 so destroy always stitches directly (no route fragments to special-case) and repair
 has no new-route fallback, no capacity check and no ``insert_in_affected_routes_only``
@@ -36,7 +36,7 @@ import numpy as np
 from numba import njit, prange
 
 from core.problems._numba_common import accept_move, dist, seed_for
-from core.problems.tsp.arrays import TSPInstanceArrays, TSPSolutionArrays
+from core.problems.tsp.lns.arrays import TSPInstanceArrays, TSPSolutionArrays
 
 UNASSIGNED = -1
 

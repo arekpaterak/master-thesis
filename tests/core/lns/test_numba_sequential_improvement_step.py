@@ -10,10 +10,10 @@ from core.lns.acceptance_criterion import (
 from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.problems.cvrp import CVRP, CVRPSampler
-from core.problems.cvrp._numba import apply_and_repair_sequential
-from core.problems.cvrp.apply_repair import CVRPGreedyInsertApplyRepair
-from core.problems.cvrp.arrays import CVRPInstanceArrays, CVRPSolutionArrays
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.cvrp.lns._numba import apply_and_repair_sequential
+from core.problems.cvrp.lns.apply_repair import CVRPGreedyInsertApplyRepair
+from core.problems.cvrp.lns.arrays import CVRPInstanceArrays, CVRPSolutionArrays
 from core.problems.cvrp.solve import one_customer_per_route_graph
 
 

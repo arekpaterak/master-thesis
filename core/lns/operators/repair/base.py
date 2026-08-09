@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import importlib
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
@@ -39,6 +41,12 @@ class RepairOperator[S: BaseSolution](ABC):
     def create(
         cls, problem_name: str, repair_type: str, *, deconstruction_size: int | None = None
     ) -> RepairOperator:
+        # Importing the problem's repair modules registers its RepairOperators.
+        for module in ("insert", "reconnect"):
+            with contextlib.suppress(ModuleNotFoundError):
+                importlib.import_module(
+                    f"core.problems.{problem_name}.lns.operators.repair.{module}"
+                )
         registry = RepairOperator._registry
         # Prefer a problem-specific operator, falling back to a problem-agnostic one.
         subclass = registry.get((repair_type, problem_name)) or registry.get((repair_type, None))

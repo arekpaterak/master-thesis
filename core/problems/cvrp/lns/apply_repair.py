@@ -4,19 +4,20 @@ import numpy as np
 
 from core.constants import EPS
 from core.lns.apply_and_repair import NumbaApplyAndRepair
-from core.problems.cmstp import _numba
-from core.problems.cmstp.arrays import CMSTPInstanceArrays, CMSTPSolutionArrays
+from core.problems.cvrp.lns import _numba
+from core.problems.cvrp.lns.arrays import CVRPInstanceArrays, CVRPSolutionArrays
 
 
-class CMSTPGreedyInsertApplyRepair(NumbaApplyAndRepair):
-    """Fused numba greedy attach apply-and-repair for CMSTP."""
+class CVRPGreedyInsertApplyRepair(NumbaApplyAndRepair):
+    """Fused numba greedy cheapest-insertion apply-and-repair for CVRP."""
 
-    problem_name = "cmstp"
+    problem_name = "cvrp"
     repair_name = "greedy_insert"
+    supports_affected_routes_only = True
 
     def _apply_parallel(
-        self, solution: CMSTPSolutionArrays, instance: CMSTPInstanceArrays, nodes: np.ndarray
-    ) -> CMSTPSolutionArrays:
+        self, solution: CVRPSolutionArrays, instance: CVRPInstanceArrays, nodes: np.ndarray
+    ) -> CVRPSolutionArrays:
         out, _objective = _numba.apply_and_repair_parallel(
             solution,
             instance,
@@ -24,17 +25,18 @@ class CMSTPGreedyInsertApplyRepair(NumbaApplyAndRepair):
             n_repairs=self._n_repairs,
             base_seed=self._seed,
             first_repair_uses_order=self._first_repair_uses_order,
+            insert_in_affected_routes_only=self._insert_in_affected_routes_only,
         )
         return out
 
     def _apply_sequential(
         self,
-        solution: CMSTPSolutionArrays,
-        instance: CMSTPInstanceArrays,
+        solution: CVRPSolutionArrays,
+        instance: CVRPInstanceArrays,
         nodes: np.ndarray,
         accept_kind: int,
         temperature: float,
-    ) -> CMSTPSolutionArrays:
+    ) -> CVRPSolutionArrays:
         return _numba.apply_and_repair_sequential(
             solution,
             instance,
@@ -45,4 +47,5 @@ class CMSTPGreedyInsertApplyRepair(NumbaApplyAndRepair):
             eps=EPS,
             base_seed=self._seed,
             first_repair_uses_order=self._first_repair_uses_order,
+            insert_in_affected_routes_only=self._insert_in_affected_routes_only,
         )

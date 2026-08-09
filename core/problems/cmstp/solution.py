@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 import torch
 
 from core.constants import EPS
-from core.problems.cmstp.arrays import CMSTPSolutionArrays
 from core.problems.cmstp.instance import CMSTPInstance
+from core.problems.cmstp.lns.arrays import CMSTPSolutionArrays
 from core.problems.solution import BaseSolution
 
 if TYPE_CHECKING:

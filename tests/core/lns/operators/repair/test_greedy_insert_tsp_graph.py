@@ -2,9 +2,9 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair.insert.tsp import TSPGreedyInsertRepair
 from core.problems.tsp import TSP, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.problems.tsp.lns.operators.repair.insert import TSPGreedyInsertRepair
 from core.problems.tsp.solve import random_permutation
 
 

@@ -5,7 +5,7 @@ from matplotlib.axes import Axes
 
 from core.problems.augmentations import apply_d4_transforms
 from core.problems.instance import BaseProblemInstance
-from core.problems.tsp.arrays import TSPInstanceArrays
+from core.problems.tsp.lns.arrays import TSPInstanceArrays
 
 
 class TSPInstance(BaseProblemInstance):

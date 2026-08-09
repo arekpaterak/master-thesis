@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import torch
 
 from core.problems.augmentations import apply_d4_transforms
-from core.problems.cmstp.arrays import CMSTPInstanceArrays
+from core.problems.cmstp.lns.arrays import CMSTPInstanceArrays
 from core.problems.instance import BaseProblemInstance
 
 if TYPE_CHECKING:

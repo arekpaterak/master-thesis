@@ -6,7 +6,7 @@ import numpy as np
 from numba import njit, prange
 
 from core.problems._numba_common import accept_move, dist, seed_for
-from core.problems.cmstp.arrays import CMSTPInstanceArrays, CMSTPSolutionArrays
+from core.problems.cmstp.lns.arrays import CMSTPInstanceArrays, CMSTPSolutionArrays
 
 DEPOT = 0
 UNASSIGNED = -1

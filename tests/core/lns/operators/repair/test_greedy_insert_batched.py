@@ -2,9 +2,9 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
 from core.problems.cvrp import CVRP, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.cvrp.lns.operators.repair.insert import CVRPGreedyInsertRepair
 from core.problems.cvrp.solve import one_customer_per_route_graph
 
 

@@ -75,7 +75,7 @@ class ApplyAndRepair[S: BaseSolution, C: DestroySelection](ABC):
     def create(cls, problem_name: str, repair_name: str, **kwargs: object) -> ApplyAndRepair:
         # Importing the problem's apply_repair module registers its ApplyAndRepair(s).
         with contextlib.suppress(ModuleNotFoundError):
-            importlib.import_module(f"core.problems.{problem_name}.apply_repair")
+            importlib.import_module(f"core.problems.{problem_name}.lns.apply_repair")
         subclass = ApplyAndRepair._registry.get((problem_name, repair_name))
         if subclass is None:
             raise ValueError(

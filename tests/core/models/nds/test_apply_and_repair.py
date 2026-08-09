@@ -5,16 +5,16 @@ import torch
 from core.lns.apply_and_repair import TorchApplyAndRepair
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.destroy.selection import NodeSelection
-from core.lns.operators.repair.insert.cvrp import CVRPGreedyInsertRepair
 from core.models.rollout import Rollout
 from core.problems.cvrp import CVRP, CVRPSampler
-from core.problems.cvrp._numba import apply_and_repair_parallel
-from core.problems.cvrp.apply_repair import CVRPGreedyInsertApplyRepair
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.cvrp.lns._numba import apply_and_repair_parallel
+from core.problems.cvrp.lns.apply_repair import CVRPGreedyInsertApplyRepair
+from core.problems.cvrp.lns.operators.repair.insert import CVRPGreedyInsertRepair
 from core.problems.cvrp.solve import one_customer_per_route_graph
 from core.problems.tsp import TSP, TSPSampler
-from core.problems.tsp.apply_repair import TSPGreedyInsertApplyRepair
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.problems.tsp.lns.apply_repair import TSPGreedyInsertApplyRepair
 from core.problems.tsp.solve import random_permutation_graph
 
 NUM_ROLLOUTS = 8
