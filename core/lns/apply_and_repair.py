@@ -136,6 +136,7 @@ class NumbaApplyAndRepair[S: BaseSolution](ApplyAndRepair[S, NodeSelection], ABC
             solution.to_numpy(), solution.instance.to_numpy(), selection.to_numpy()
         )
         num_rollouts = selection.nodes.shape[-2]
+        # TODO: Is this expand necessary?
         # Expand a view (not the N^2 distance matrix) so the (B, K) candidate can score itself.
         instance = solution.instance.reshape(*solution.batch_size, 1).expand(
             *solution.batch_size, num_rollouts
@@ -148,7 +149,7 @@ class NumbaApplyAndRepair[S: BaseSolution](ApplyAndRepair[S, NodeSelection], ABC
         )
 
     def sequential(self, solution: S, selection: NodeSelection, accept: AcceptanceCriterion) -> S:
-        accept_kind, temperature = acceptance_to_kernel(accept)
+        accept_kind, temperature = acceptance_to_numba(accept)
         out = self._apply_sequential(
             solution.to_numpy(),
             solution.instance.to_numpy(),
@@ -162,18 +163,18 @@ class NumbaApplyAndRepair[S: BaseSolution](ApplyAndRepair[S, NodeSelection], ABC
 
     @abstractmethod
     def _apply_parallel(self, solution_arrays, instance_arrays, nodes):  # noqa: ANN001, ANN201
-        """Call the problem's parallel kernel; return the ``(G, K, ...)`` output SolutionArrays."""
+        """Call the problem's parallel numba function; return the ``(G, K, ...)`` output SolutionArrays."""
         ...
 
     @abstractmethod
     def _apply_sequential(  # noqa: ANN001, ANN201
         self, solution_arrays, instance_arrays, nodes, accept_kind, temperature
     ):
-        """Call the problem's sequential kernel; return the ``(G, ...)`` output SolutionArrays."""
+        """Call the problem's sequential numba function; return the ``(G, ...)`` output SolutionArrays."""
         ...
 
 
-def acceptance_to_kernel(accept: AcceptanceCriterion) -> tuple[int, float]:
+def acceptance_to_numba(accept: AcceptanceCriterion) -> tuple[int, float]:
     """Map an acceptance criterion to the ``(kind, temperature)`` the numba kernel expects."""
     if isinstance(accept, GreedyAcceptance):
         return ACCEPT_GREEDY, 0.0

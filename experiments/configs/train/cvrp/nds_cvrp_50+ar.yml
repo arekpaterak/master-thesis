@@ -21,7 +21,7 @@ optimizer:
   weight_decay: 1.0e-6
 
 trainer:
-  epochs: 100
+  epochs: 25
   instances_per_epoch: 1500
   batch_size: 64
   num_main_improvement_steps: 100
@@ -59,7 +59,7 @@ validation:
   plot_save_to_disk: true
   search:
     repair_type: greedy_insert
-    num_improvement_steps: 100
+    num_improvement_steps: 50
     num_rollouts: 100
     deconstruction_size: 15
     improvement_step_type: numba_sequential

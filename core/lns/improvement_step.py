@@ -96,7 +96,6 @@ def build_improvement_step(
     )
 
 
-# TODO: Is it the best place for that? Maybe it should be cls method
 def build_random_node_destroy_step(
     search: SearchParams, *, problem_name: str, seed: int | None
 ) -> ImprovementStep:

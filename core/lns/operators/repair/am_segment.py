@@ -5,6 +5,7 @@ from core.models.attention_model import AttentionModel
 from core.problems.tsp.solution import TSPSolution
 
 
+# Legacy
 class AttentionModelRepair(RepairOperator[TSPSolution]):
     def __init__(self, model: AttentionModel, greedy: bool = True):
         self.model = model

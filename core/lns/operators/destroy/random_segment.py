@@ -3,6 +3,7 @@ import torch
 from core.problems.tsp.solution import TSPSolution
 
 
+# Legacy
 class TSPRandomSegmentDestroy:
     def __init__(self, segment_size: int, *, seed: int | None = None) -> None:
         if not segment_size >= 0:
