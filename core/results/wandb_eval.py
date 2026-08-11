@@ -81,17 +81,18 @@ class EvalRunLogger:
             problem = {"name": setting.problem.name, "size": setting.problem.size}
         else:
             problem = {"name": run.problem_name, "set_name": setting.set_name}
+        tags = [run.method.type]
+        # Construction-only methods run no destroy/repair search, so have no M.
+        search = getattr(run.method, "search", None)
+        if search is not None:
+            tags.append(f"M={search.deconstruction_size}")
+        tags += [run.group, setting.label]
         wandb.init(
             project=run.logging.wandb_project,
             name=f"eval-{run.name}-{setting.label}",
             job_type="eval",
             group=source_run_name if trained else run.name,
-            tags=[
-                run.method.type,
-                f"M={run.method.search.deconstruction_size}",
-                run.group,
-                setting.label,
-            ],
+            tags=tags,
             config={
                 "problem": problem,
                 "group": run.group,

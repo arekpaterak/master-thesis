@@ -1,3 +1,4 @@
+from core.methods.construction import ConstructionMethod, ConstructionMethodConfig
 from core.methods.factory import MethodConfig, build_method
 from core.methods.nds_pretrained import NDSPretrainedConfig, NDSPretrainedMethod
 from core.methods.nds_trained import NDSTrainedConfig, NDSTrainedMethod
@@ -9,6 +10,8 @@ from core.methods.random_destroy import (
 
 __all__ = [
     "RANDOM_DESTROY_PRESETS",
+    "ConstructionMethod",
+    "ConstructionMethodConfig",
     "MethodConfig",
     "NDSPretrainedConfig",
     "NDSPretrainedMethod",

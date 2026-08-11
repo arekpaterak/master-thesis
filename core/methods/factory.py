@@ -7,6 +7,7 @@ from pydantic import Field
 
 from core.lns.start_solution import with_warmup
 from core.methods.base import Method
+from core.methods.construction import ConstructionMethod, ConstructionMethodConfig
 from core.methods.nds_pretrained import NDSPretrainedConfig, NDSPretrainedMethod
 from core.methods.nds_trained import NDSTrainedConfig, NDSTrainedMethod
 from core.methods.random_destroy import RandomDestroyMethod, RandomDestroyMethodConfig
@@ -14,18 +15,25 @@ from core.problems import ProblemConfig
 from core.problems.solve import generate_initial_solution
 
 MethodConfig = Annotated[
-    NDSTrainedConfig | NDSPretrainedConfig | RandomDestroyMethodConfig,
+    NDSTrainedConfig | NDSPretrainedConfig | RandomDestroyMethodConfig | ConstructionMethodConfig,
     Field(discriminator="type"),
 ]
 
 
 def build_method(
-    config: NDSTrainedConfig | NDSPretrainedConfig | RandomDestroyMethodConfig,
+    config: NDSTrainedConfig
+    | NDSPretrainedConfig
+    | RandomDestroyMethodConfig
+    | ConstructionMethodConfig,
     *,
     problem: ProblemConfig,
     device: torch.device,
 ) -> Method:
     """Build a Method from any method config, dispatching on its concrete type."""
+    # Construction methods build their own start solution and run no improvement search.
+    if isinstance(config, ConstructionMethodConfig):
+        return ConstructionMethod.build(config, problem=problem)
+
     start_solution = with_warmup(
         generate_initial_solution, problem_name=problem.name, search=config.search
     )

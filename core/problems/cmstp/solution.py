@@ -44,33 +44,6 @@ class CMSTPSolution(BaseSolution):
     subtree_id equals its own index.
     """
 
-    @classmethod
-    def star(cls, instance: CMSTPInstance) -> CMSTPSolution:
-        """Trivial feasible-shaped start: every customer is a direct child of the depot.
-
-        Each customer is its own subtree, so this is feasible iff each single demand
-        is within capacity (always true for standard samplers). The CMSTP analog of
-        CVRP's ``one_customer_per_route``.
-        """
-        N = instance.num_customers
-        batch_size = instance.batch_size
-        device = instance.locations.device
-
-        _parent = torch.full((*batch_size, N + 1), cls.DEPOT, dtype=torch.long, device=device)
-        _parent[..., 0] = cls.UNASSIGNED
-
-        _subtree_id = (
-            torch.arange(N + 1, dtype=torch.long, device=device).expand(*batch_size, N + 1).clone()
-        )
-        _subtree_id[..., 0] = cls.UNASSIGNED
-
-        return cls(
-            _instance=instance,
-            _parent=_parent,
-            _subtree_id=_subtree_id,
-            batch_size=batch_size,
-        )
-
     @staticmethod
     def _compute_subtree_ids(parent: torch.Tensor, num_customers: int) -> torch.Tensor:
         """Recompute subtree IDs from scratch (torch, GPU-safe).

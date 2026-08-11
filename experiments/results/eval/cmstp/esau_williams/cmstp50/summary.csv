@@ -1,0 +1,2 @@
+config,method_type,setting,group,problem_kind,checkpoint_epoch,n_instances,total_time_s,problem,size,source,destruction_size,n_steps,time_per_instance_s,obj_initial_mean,obj_initial_std,obj_final_mean,obj_final_std,obj_final_median,obj_final_min,obj_final_max,improvement_mean,improvement_std,improvement_pct_mean
+esau_williams,construction,cmstp50,main,synthetic,,10000,3.8588,cmstp,50,vrp50_test_seed1234,15,0,0.000386,6.642074108123779,0.6377260088920593,6.642074108123779,0.6377260088920593,6.590667724609375,4.831092357635498,9.466301918029785,0.0,0.0,0.0

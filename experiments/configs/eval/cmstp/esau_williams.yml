@@ -1,0 +1,12 @@
+method:
+  type: construction
+  construction_name: esau_williams
+
+settings:
+  main:
+    - problems/cmstp_20_data.yml
+    - problems/cmstp_50_data.yml
+    - problems/cmstp_100_data.yml
+
+logging:
+  wandb_project: nds

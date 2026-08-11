@@ -3,6 +3,7 @@ import pytest
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.problems.cmstp import CMSTPSolution
 from core.problems.cmstp.config import CMSTP
+from core.problems.cmstp.construction import star
 from core.problems.cmstp.sampler import CMSTPSampler
 from core.problems.cvrp import CVRP, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import one_customer_per_route
@@ -34,7 +35,7 @@ def cmstp_solution() -> CMSTPSolution:
     batch_size = 3
     n = 10
     instance = CMSTPSampler(CMSTP(num_customers=n, capacity_raw=30), seed=0)(batch_size)
-    return CMSTPSolution.star(instance)
+    return star(instance)
 
 
 @pytest.mark.parametrize("destruction_size", [-1])

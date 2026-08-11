@@ -1,0 +1,48 @@
+name: esau_williams
+method:
+  type: construction
+  construction_name: esau_williams
+settings:
+  main:
+  - kind: synthetic
+    problem:
+      name: cmstp
+      size: 20
+      capacity_raw: null
+      min_demand_raw: 1
+      max_demand_raw: 9
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/cvrp/vrp20_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
+  - kind: synthetic
+    problem:
+      name: cmstp
+      size: 50
+      capacity_raw: null
+      min_demand_raw: 1
+      max_demand_raw: 9
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/cvrp/vrp50_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
+  - kind: synthetic
+    problem:
+      name: cmstp
+      size: 100
+      capacity_raw: null
+      min_demand_raw: 1
+      max_demand_raw: 9
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/cvrp/vrp100_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
+num_plot_instances: 0
+logging:
+  wandb_project: nds
