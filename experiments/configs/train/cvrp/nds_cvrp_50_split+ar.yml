@@ -26,7 +26,7 @@ trainer:
   epochs: 25
   instances_per_epoch: 1500
   batch_size: 64
-  num_main_improvement_steps: 50
+  num_main_improvement_steps: 100
 
 search:
   repair_type: greedy_insert
