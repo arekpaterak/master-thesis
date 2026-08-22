@@ -5,6 +5,10 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")  # non-interactive backend: plots are saved/logged, never shown
+
 import matplotlib.pyplot as plt
 import torch
 import typer
