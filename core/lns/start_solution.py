@@ -22,13 +22,14 @@ def with_warmup(
     if params.num_improvement_steps <= 0:
         return generate_start_solution
 
-    # The warmup is a single-rollout, single-repair loop;
-    # everything else (repair_type, improvement_step_type) is inherited from the parent search.
+    # The warmup is a single-rollout, single-repair loop.
     warmup_search = search.model_copy(
         update={
             "deconstruction_size": params.deconstruction_size,
             "num_rollouts": 1,
             "n_repairs": 1,
+            "insert_in_affected_routes_only": params.insert_in_affected_routes_only,
+            "first_repair_uses_rollout_order": params.first_repair_uses_rollout_order,
         }
     )
     warmup_step = build_random_node_destroy_step(warmup_search, problem_name=problem_name, seed=0)

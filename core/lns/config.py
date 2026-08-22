@@ -35,6 +35,24 @@ class StartSolutionParams(BaseModel):
         title="Warmup destroy",
         description="Destroy operator used for the warmup.",
     )
+    insert_in_affected_routes_only: bool = Field(
+        default=False,
+        title="Warmup insert in affected routes only",
+        description=(
+            "Warmup override for the parent search's flag of the same name. Defaults to "
+            "False (unrestricted insertion), so the warmup builds the start solution with "
+            "the full greedy cheapest-insertion regardless of how the main search is "
+            "restricted."
+        ),
+    )
+    first_repair_uses_rollout_order: bool = Field(
+        default=False,
+        title="Warmup first repair uses rollout order",
+        description=(
+            "Warmup override for the parent search's flag of the same name. Defaults to "
+            "False; the warmup runs a single repair, so this only sets its insertion order."
+        ),
+    )
 
 
 class SearchParams(BaseModel):

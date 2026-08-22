@@ -7,6 +7,7 @@ improvement_step_type: numba_sequential
 first_repair_uses_rollout_order: true
 insert_in_new_routes_only: true
 start_solution_params:
+    insert_in_affected_routes_only: false
     num_improvement_steps: 50
     deconstruction_size: 15
 n_augmentations: 8
