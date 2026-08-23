@@ -1,0 +1,47 @@
+name: nds_cvrp_50+ar
+method:
+  type: nds-trained
+  run_dir: experiments\runs\cvrp\featured\nds_cvrp_50+ar
+  checkpoint_epoch: null
+  search:
+    repair_type: greedy_insert
+    num_improvement_steps: 100
+    num_rollouts: 100
+    deconstruction_size: 15
+    n_repairs: 5
+    first_repair_uses_rollout_order: true
+    improvement_step_type: numba_sequential
+    apply_and_repair_backend: numba
+    insert_in_affected_routes_only: true
+    acceptance:
+      type: sa
+      temperature_start: 0.1
+      temperature_min: 0.001
+      augmented_exchange:
+        enabled: true
+        threshold_factor: 15.0
+    start_solution_params:
+      num_improvement_steps: 50
+      deconstruction_size: 15
+      destroy_type: random_node
+      insert_in_affected_routes_only: false
+      first_repair_uses_rollout_order: false
+    n_augmentations: 1
+settings:
+  main:
+  - kind: synthetic
+    problem:
+      name: cvrp
+      size: 50
+      vehicle_capacity_raw: null
+      min_demand_raw: 1
+      max_demand_raw: 9
+      min_coordinate: 0.0
+      max_coordinate: 1.0
+    dataset_path: data/synthetic/cvrp/vrp50_test_seed1234.pkl
+    num_test_instances: 10000
+    batch_size: 100
+    test_seed: 2026
+num_plot_instances: 0
+logging:
+  wandb_project: nds

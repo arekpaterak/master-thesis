@@ -10,7 +10,7 @@ def log_prob_of_sequence_without_replacement(
     """Compute the joint log-probability of a sequence sampled without replacement.
 
     For each step t, computes log P(selected[t] | selected[:t]) and accumulates the sum,
-    giving the joint log-probability of the full sequence under Plackett-Luce.
+    giving the joint log-probability of the full sequence.
 
     Args:
         logits: Logits for all nodes from the decoder. Shape: (..., N).
