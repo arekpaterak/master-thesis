@@ -19,6 +19,9 @@ keyed by method and setting: a run writes to `results/eval/<problem>/<method>/<s
 (e.g. `results/eval/cvrp/random_destroy/cvrp100/`), holding `summary.csv`, `steps.csv`,
 `instances.csv`, and `plots/`. Re-running a config only recomputes settings that have no
 `summary.csv` yet (use `--force` to redo them), so partial runs accumulate in place.
+Pass `--tmp` to rerun a config into a `tmp/` subdir of the method dir instead
+(e.g. `results/eval/cvrp/random_destroy/tmp/cvrp100/`), leaving the real per-setting
+results untouched -- useful for a throwaway rerun without overwriting results.
 
 An eval config binds one method to settings grouped by role:
 

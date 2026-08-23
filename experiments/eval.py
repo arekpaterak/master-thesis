@@ -72,6 +72,11 @@ def main(
     force: bool = typer.Option(
         False, "--force", help="Reevaluate on config settings even if already done for this config."
     ),
+    tmp: bool = typer.Option(
+        False,
+        "--tmp",
+        help="Write results to a temporary subdir and rerun, leaving main results untouched.",
+    ),
     warmup: int = typer.Option(
         3,
         "--cvrplib-warmup",
@@ -93,8 +98,12 @@ def main(
 
     runs = _select_runs(eval_config.runs(), setting, group)
     method_dir = RESULTS_DIR / eval_config.problem_name / eval_config.name
-    if not force:
-        runs = _drop_evaluated(method_dir, runs)
+    if tmp:
+        # Rerun into a `tmp/` subdir, leaving the real per-setting results untouched.
+        method_dir = method_dir / "tmp"
+    # --tmp always reruns: the point is to recompute without touching the real results.
+    if not force and not tmp:
+        runs = _ignore_evaluated(method_dir, runs)
     if not runs:
         console.print(
             "All selected problem settings already evaluated; nothing to do (use --force to reevaluate)."
@@ -164,8 +173,10 @@ def _select_runs(
     return runs
 
 
-def _drop_evaluated(method_dir: Path, runs: list[EvaluationRunConfig]) -> list[EvaluationRunConfig]:
-    """Drop runs whose setting dir (``<method_dir>/<label>/summary.csv``) already exists."""
+def _ignore_evaluated(
+    method_dir: Path, runs: list[EvaluationRunConfig]
+) -> list[EvaluationRunConfig]:
+    """Ignore requests for runs whose setting dir (``<method_dir>/<label>/summary.csv``) already exists."""
     remaining: list[EvaluationRunConfig] = []
     for run in runs:
         if (method_dir / run.setting.label / "summary.csv").exists():
