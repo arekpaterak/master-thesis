@@ -44,3 +44,5 @@ data/*/*
 !data/cvrplib/.gitkeep
 
 notebooks/playground.ipynb
+
+experiments/results/**/tmp/
