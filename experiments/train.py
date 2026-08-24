@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -61,7 +62,17 @@ def main(
         None, metavar="[CONFIG]", help="Path to YAML config file (or name under configs/train)."
     ),
     config: Path | None = typer.Option(None, help="Path to YAML config file."),
-    resume: Path | None = typer.Option(None, help="Resume training from a run directory."),
+    resume: bool = typer.Option(
+        False, "--resume", help="Continue an existing run from its latest checkpoint."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite the run directory if it already exists."
+    ),
+    tmp: bool = typer.Option(
+        False,
+        "--tmp",
+        help="Write to a temporary subdir, always overwriting it but leaving the main dir untouched.",
+    ),
     device: str | None = typer.Option(None, help="Torch device (default: cuda if available)."),
     help_config: bool = typer.Option(
         False, "--help-config", help="Show config fields with their defaults and exit."
@@ -73,21 +84,31 @@ def main(
         raise typer.Exit()
 
     config_path = config or config_arg
-    if config_path is None and resume is None:
+    if config_path is None:
         _print_usage()
         raise typer.Exit()
 
-    # Resolve user-supplied paths against the invocation cwd, then run from the project root
+    selected = [
+        name
+        for name, enabled in (("--resume", resume), ("--force", force), ("--tmp", tmp))
+        if enabled
+    ]
+    if len(selected) > 1:
+        raise typer.BadParameter(f"{' and '.join(selected)} cannot be combined.")
+
+    # Resolve the config path against the invocation cwd, then run from the project root
     # so config-relative paths (dataset_path, .env) resolve regardless of where invoked.
-    if config_path is not None:
-        config_path = config_path.resolve()
-    if resume is not None:
-        resume = resume.resolve()
+    config_path = config_path.resolve()
     os.chdir(PROJECT_ROOT)
     load_dotenv(".env")
 
     overrides = _parse_overrides(ctx.args)
-    train_config: TrainConfig = _load_config(config_path, resume, overrides)
+    train_config: TrainConfig = _load_config(config_path, overrides)
+    run_dir = _resolve_run_dir(train_config, config_path, resume=resume, force=force, tmp=tmp)
+    if resume:
+        # Prefer the config saved with the run so its original settings persist, then
+        # re-apply any CLI overrides on top of it.
+        train_config = _load_config(run_dir / "config.yml", overrides)
 
     torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     console.print(
@@ -99,7 +120,7 @@ def main(
 
     sampler, val_sampler = _build_samplers(train_config)
     model = _build_model(train_config)
-    run_dir, initial_epoch = _prepare_run_dir(train_config, model, resume)
+    initial_epoch = _prepare_run_dir(train_config, model, run_dir, resume=resume)
     _run_training(
         config=train_config,
         model=model,
@@ -107,7 +128,7 @@ def main(
         val_sampler=val_sampler,
         run_dir=run_dir,
         initial_epoch=initial_epoch,
-        resume_run_dir=resume,
+        resume=resume,
         device=torch_device,
     )
     console.print("[bold green]Training completed.[/bold green]")
@@ -120,7 +141,12 @@ def _print_usage() -> None:
     usage.add_column("Description")
     usage.add_row("<path>", "Path to YAML config file (positional)")
     usage.add_row("--config <path>", "Path to YAML config file")
-    usage.add_row("--resume <run_dir>", "Resume training from a run directory")
+    usage.add_row("--resume", "Continue an existing run from its latest checkpoint.")
+    usage.add_row("--force", "Overwrite the run directory if it already exists.")
+    usage.add_row(
+        "--tmp",
+        "Write to a temporary subdir, always overwriting it but leaving the main dir untouched.",
+    )
     usage.add_row(
         "--<section>.<field> <value>",
         "Override a nested config field, e.g. --trainer.epochs 5",
@@ -162,40 +188,27 @@ def _parse_overrides(args: list[str]) -> dict[str, object]:
     return overrides
 
 
-def _load_config(
-    config_path: Path | None,
-    resume_run_dir: Path | None,
-    overrides: dict[str, object],
-) -> TrainConfig:
-    """Build the training config from a YAML file (if any) plus CLI overrides."""
+def _load_config(config_path: Path, overrides: dict[str, object]) -> TrainConfig:
+    """Build the training config from a YAML file plus CLI overrides."""
     resolved = config_path
-    if resolved is None and resume_run_dir is not None:
-        resolved = resume_run_dir / "config.yml"
-
-    yaml_data: dict = {}
-    if resolved is not None:
-        if not resolved.exists():
-            resolved = TRAIN_CONFIGS_DIR / resolved.name
-        with open(resolved) as f:
-            yaml_data = yaml.safe_load(f) or {}
+    if not resolved.exists():
+        resolved = TRAIN_CONFIGS_DIR / resolved.name
+    with open(resolved) as f:
+        yaml_data: dict = yaml.safe_load(f) or {}
 
     _merge_overrides(yaml_data, overrides)
-    _backfill_run_name(yaml_data, config_path, resume_run_dir)
+    _backfill_run_name(yaml_data, config_path)
     return TrainConfig.model_validate(yaml_data)
 
 
-def _backfill_run_name(
-    yaml_data: dict,
-    config_path: Path | None,
-    resume_run_dir: Path | None,
-) -> None:
+def _backfill_run_name(yaml_data: dict, config_path: Path) -> None:
     """Default ``run_name`` to the config filename stem plus a timestamp.
 
-    Only assigned for a fresh run started from a config file, and only when the
-    config did not already set ``run_name``.
+    Used only as the wandb display label; the run directory is keyed on the config
+    stem alone (see ``_resolve_run_dir``). Skipped when the config already sets
+    ``run_name`` -- notably the config saved with a run, so a resumed run keeps its
+    original name.
     """
-    if resume_run_dir is not None or config_path is None:
-        return
     if yaml_data.get("run_name"):
         return
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -251,18 +264,55 @@ def _build_model(config: TrainConfig) -> torch.nn.Module:
     return model
 
 
+def _resolve_run_dir(
+    config: TrainConfig,
+    config_path: Path,
+    *,
+    resume: bool,
+    force: bool,
+    tmp: bool,
+) -> Path:
+    """Resolve the run directory from the config file name and apply the exist policy.
+
+    The directory identity is stable -- ``runs/<problem>/<config-stem>`` -- mirroring how
+    eval keys its results on the config name. The flags decide what happens when that
+    directory already exists: ``--resume`` requires it, ``--force`` and ``--tmp`` overwrite
+    it, and a plain run refuses to touch an existing one.
+    """
+    run_dir = RUNS_DIR / config.problem.name / config_path.stem
+    if tmp:
+        run_dir = run_dir / "tmp"
+
+    if resume:
+        if not run_dir.exists():
+            raise typer.BadParameter(
+                f"Cannot resume: no run at {run_dir}. Start it without --resume first."
+            )
+        return run_dir
+
+    if run_dir.exists():
+        if force or tmp:
+            shutil.rmtree(run_dir)
+        else:
+            raise typer.BadParameter(
+                f"Run already exists at {run_dir}. Use --resume to continue it, "
+                "--force to overwrite it, or --tmp to write to a scratch subdir."
+            )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
 def _prepare_run_dir(
     config: TrainConfig,
     model: torch.nn.Module,
-    resume_run_dir: Path | None,
-) -> tuple[Path, int]:
-    """Create/resolve the run directory, restore model weights on resume, init wandb."""
-    run_dir = resume_run_dir or (RUNS_DIR / config.problem.name / config.run_name)
-    run_dir.mkdir(parents=True, exist_ok=True)
-
+    run_dir: Path,
+    *,
+    resume: bool,
+) -> int:
+    """Restore model weights on resume, persist the config on a fresh run, init wandb."""
     initial_epoch = 0
-    if resume_run_dir:
-        checkpoint_path, last_epoch = _find_latest_checkpoint(resume_run_dir)
+    if resume:
+        checkpoint_path, last_epoch = _find_latest_checkpoint(run_dir)
         if checkpoint_path:
             ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
             model.load_state_dict(ckpt["model"])
@@ -273,7 +323,7 @@ def _prepare_run_dir(
 
     if config.logging.wandb_project:
         wandb_id_path = run_dir / "wandb_run_id"
-        if resume_run_dir and wandb_id_path.exists():
+        if resume and wandb_id_path.exists():
             wandb.init(
                 project=config.logging.wandb_project,
                 resume="must",
@@ -300,7 +350,7 @@ def _prepare_run_dir(
         wandb.define_metric("val/*", step_metric="epoch")
         wandb.define_metric("train/epoch_time_sec", step_metric="epoch")
 
-    return run_dir, initial_epoch
+    return initial_epoch
 
 
 def _run_tags(config: TrainConfig) -> list[str]:
@@ -329,7 +379,7 @@ def _run_training(
     val_sampler: Sampler,
     run_dir: Path,
     initial_epoch: int,
-    resume_run_dir: Path | None,
+    resume: bool,
     device: torch.device,
 ) -> None:
     """Run the training loop with checkpointing, wandb logging and plotting."""
@@ -344,8 +394,8 @@ def _run_training(
     )
     optimizer = build_optimizer(config.optimizer, nds_module.parameters())
 
-    if resume_run_dir:
-        checkpoint_path, _ = _find_latest_checkpoint(resume_run_dir)
+    if resume:
+        checkpoint_path, _ = _find_latest_checkpoint(run_dir)
         if checkpoint_path:
             ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
             optimizer.load_state_dict(ckpt["optimizer"])

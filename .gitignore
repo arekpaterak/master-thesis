@@ -45,4 +45,5 @@ data/*/*
 
 notebooks/playground.ipynb
 
+experiments/runs/**/tmp/
 experiments/results/**/tmp/

@@ -75,7 +75,7 @@ def main(
     tmp: bool = typer.Option(
         False,
         "--tmp",
-        help="Write results to a temporary subdir and rerun, leaving main results untouched.",
+        help="Write results to a temporary subdir, leaving main results untouched.",
     ),
     warmup: int = typer.Option(
         3,
