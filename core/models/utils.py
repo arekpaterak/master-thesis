@@ -1,5 +1,3 @@
-import os
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -25,45 +23,21 @@ def checkpoint_epoch(path: Path) -> int:
 def find_checkpoint(run_dir: Path, epoch: int | None = None) -> Path:
     """Resolve a checkpoint: the pinned ``epoch`` if given, else the latest.
 
-    Without a pinned epoch, the stable ``last.pt`` pointer is preferred when present --
-    this is the only checkpoint committed for a featured run, so a fresh clone (which has
-    no ``epoch_*.pt`` files) still resolves. Raises ``ValueError`` if nothing is found, or
-    if the pinned epoch is missing.
+    Raises ``ValueError`` if no checkpoints exist, or if the pinned epoch is missing.
     """
-    checkpoints_dir = run_dir / "checkpoints"
-    if epoch is not None:
-        path = checkpoints_dir / f"epoch_{epoch:04d}.pt"
-        if not path.exists():
-            available = ", ".join(str(checkpoint_epoch(p)) for p in list_checkpoints(run_dir))
-            raise ValueError(
-                f"Checkpoint for epoch {epoch} not found under "
-                f"{checkpoints_dir.resolve()}. Available epochs: {available}."
-            )
-        return path
-
-    last = checkpoints_dir / "last.pt"
-    if last.exists():
-        return last
     checkpoints = list_checkpoints(run_dir)
     if not checkpoints:
-        raise ValueError(f"No checkpoint found under {checkpoints_dir.resolve()}.")
-    return checkpoints[-1]
-
-
-def update_last_checkpoint(checkpoint_path: Path) -> None:
-    """Point ``checkpoints/last.pt`` at the just-saved checkpoint via a hard link.
-
-    A hard link shares storage with the ``epoch_*.pt`` file (no duplication on disk) while
-    giving a stable, epoch-agnostic name to commit and to load from. ``list_checkpoints``
-    globs ``epoch_*.pt`` only, so ``last.pt`` never interferes with epoch enumeration.
-    Falls back to a copy on filesystems that reject hard links.
-    """
-    last = checkpoint_path.parent / "last.pt"
-    last.unlink(missing_ok=True)
-    try:
-        os.link(checkpoint_path, last)
-    except OSError:
-        shutil.copyfile(checkpoint_path, last)
+        raise ValueError(f"No checkpoint found under {(run_dir / 'checkpoints').resolve()}.")
+    if epoch is None:
+        return checkpoints[-1]
+    path = run_dir / "checkpoints" / f"epoch_{epoch:04d}.pt"
+    if not path.exists():
+        available = ", ".join(str(checkpoint_epoch(p)) for p in checkpoints)
+        raise ValueError(
+            f"Checkpoint for epoch {epoch} not found under "
+            f"{(run_dir / 'checkpoints').resolve()}. Available epochs: {available}."
+        )
+    return path
 
 
 def save_checkpoint(

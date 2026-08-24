@@ -36,7 +36,6 @@ from core.models.utils import (
     list_checkpoints,
     load_checkpoint,
     save_checkpoint,
-    update_last_checkpoint,
 )
 from core.problems.dataset import DatasetSampler
 from core.problems.sampler import Sampler
@@ -413,15 +412,13 @@ def _run_training(
         if is_last or is_checkpoint:
             checkpoints_path = run_dir / "checkpoints"
             checkpoints_path.mkdir(exist_ok=True)
-            checkpoint_file = checkpoints_path / f"epoch_{summary.epoch:04d}.pt"
             save_checkpoint(
-                path=checkpoint_file,
+                path=checkpoints_path / f"epoch_{summary.epoch:04d}.pt",
                 model=nds_module.model,
                 optimizer=optimizer,
                 epoch=summary.epoch,
                 config=config,
             )
-            update_last_checkpoint(checkpoint_file)
 
     def on_epoch_validation_end(val_summary: EpochValidationSummary) -> None:
         fig = None

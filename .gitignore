@@ -24,17 +24,14 @@ experiments/results/eval/**
 !experiments/results/eval/**/steps.csv
 !experiments/results/eval/**/config.yml
 !experiments/results/eval/**/cvrplib-*/instances.csv
-# Training runs: track only curated 'featured' runs -- their config.yml, wandb_run_id,
-# and the last checkpoint. Extra checkpoints are hand-picked per run in that run's own
-# .gitignore. Non-featured runs, plots, and tmp stay local.
+# Training runs: track only curated 'featured' runs -- their config.yml and wandb_run_id.
+# Checkpoints are hand-picked per run in that run's own .gitignore. Non-featured runs,
+# plots, and tmp stay local.
 experiments/runs/**
 !experiments/runs/NOTES.md
 !experiments/runs/**/
 !experiments/runs/*/featured/*/config.yml
 !experiments/runs/*/featured/*/wandb_run_id
-# Always track the last checkpoint (a hard link to the newest epoch; no disk duplication).
-!experiments/runs/*/featured/*/checkpoints/last.pt
-# Each featured run's own .gitignore hand-picks which epoch_*.pt to keep.
 !experiments/runs/*/featured/*/.gitignore
 experiments/pretrained/*
 !experiments/pretrained/nds/.gitkeep
