@@ -12,7 +12,7 @@ from core.methods.base import Method
 from core.models.nds.config import TrainConfig
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
-from core.models.utils import checkpoint_epoch, find_checkpoint, list_checkpoints
+from core.models.utils import find_checkpoint
 
 
 class NDSTrainedConfig(BaseModel):
@@ -25,13 +25,19 @@ class NDSTrainedConfig(BaseModel):
     search: SearchParams = Field(default_factory=SearchParams)
 
     def resolved_checkpoint_epoch(self) -> int | None:
-        """Epoch of the checkpoint this config loads, or ``None`` if none exist yet."""
+        """Epoch of the checkpoint this config loads, or ``None`` if none exist yet.
+
+        For the unpinned (latest) case the epoch is read from the checkpoint payload
+        (``ckpt["epoch"]``) rather than the filename, so it stays correct even when the
+        checkpoint resolves to the epoch-agnostic ``last.pt`` pointer on a fresh clone.
+        """
         if self.checkpoint_epoch is not None:
             return self.checkpoint_epoch
-        checkpoints = list_checkpoints(self.run_dir)
-        if not checkpoints:
+        try:
+            path = find_checkpoint(self.run_dir)
+        except ValueError:
             return None
-        return checkpoint_epoch(checkpoints[-1])
+        return torch.load(path, map_location="cpu", weights_only=True).get("epoch")
 
 
 def _load_train_config(run_dir: Path, checkpoint: dict) -> TrainConfig:

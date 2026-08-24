@@ -1,0 +1,115 @@
+problem:
+  name: tsp
+  size: 50
+  min_coordinate: 0.0
+  max_coordinate: 1.0
+model:
+  problem_name: tsp
+  hidden_dim: 128
+  num_heads: 8
+  ff_dim: 512
+  positional_encoding:
+    dim: 16
+    direction_aware: false
+    frequency_schedule: integer
+  decoder:
+    poly_dim: 256
+    seed_dim: 10
+    with_poly: true
+    type: ar
+    use_hidden_decoding_state: true
+  init_weights: null
+  encoder_mode: joint
+  encoder:
+    norm_type: instance
+    pre_norm: false
+    with_final_norm: false
+    ff_activation: relu
+    encoding_order: route_neighbours
+    route_aggregation: sum
+    with_neighbours_encoding: true
+    with_route_encoding: false
+    num_pre_attention_layers: 2
+    num_post_attention_layers: 2
+  original_pretrained_weights: null
+  freeze_encoder: false
+optimizer:
+  name: adamw
+  learning_rate: 0.0001
+  weight_decay: 1.0e-06
+loss:
+  type: best
+baseline:
+  type: mean
+reward:
+  type: absolute
+trainer:
+  epochs: 25
+  instances_per_epoch: 1500
+  batch_size: 128
+  num_main_improvement_steps: 100
+  checkpoint_every_n_epochs: 1
+  strict_number_of_instances: false
+  training_rollout_selection: objective
+  training_acceptance:
+    type: unconditional
+  batches_per_epoch: 12
+search:
+  repair_type: greedy_insert
+  num_improvement_steps: 10
+  num_rollouts: 128
+  deconstruction_size: 15
+  n_repairs: 5
+  first_repair_uses_rollout_order: true
+  improvement_step_type: numba_sequential
+  apply_and_repair_backend: numba
+  insert_in_affected_routes_only: false
+  acceptance:
+    type: greedy
+  start_solution_params:
+    num_improvement_steps: 50
+    deconstruction_size: 15
+    destroy_type: random_node
+  n_augmentations: 1
+amp:
+  enabled: true
+  dtype: float16
+compile:
+  enabled: false
+  mode: default
+  fullgraph: false
+logging:
+  wandb_project: nds
+validation:
+  num_instances: 1000
+  batch_size: 100
+  every_n_epochs: 1
+  seed: 42
+  dataset_path: data/synthetic/tsp/tsp50_valid_seed1233.pkl
+  plot_enabled: true
+  plot_every_n_improvement_steps: 5
+  plot_save_to_disk: true
+  validate_before_training: true
+  search:
+    repair_type: greedy_insert
+    num_improvement_steps: 50
+    num_rollouts: 100
+    deconstruction_size: 15
+    n_repairs: 5
+    first_repair_uses_rollout_order: true
+    improvement_step_type: numba_sequential
+    apply_and_repair_backend: numba
+    insert_in_affected_routes_only: false
+    acceptance:
+      type: sa
+      temperature_start: 0.1
+      temperature_min: 0.001
+      augmented_exchange:
+        enabled: true
+        threshold_factor: 15.0
+    start_solution_params:
+      num_improvement_steps: 50
+      deconstruction_size: 15
+      destroy_type: random_node
+    n_augmentations: 1
+run_name: nds_tsp_50+ar-20260821-082621
