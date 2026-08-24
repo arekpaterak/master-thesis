@@ -33,9 +33,9 @@ The code is organised with the following structure:
 │   ├── methods/                   # Solving methods compared in experiments
 │   ├── eval/                      # Evaluation settings and configuration
 │   └── results/                   # Result collection and aggregation
-├── experiments/                   # Experiment scripts (Marimo notebooks)
-│   ├── configs/                   # Experiment configurations (YAML)
-│   ├── runs/                      # Training and evaluation run outputs
+├── experiments/                   # Experiment scripts, configs, and results
+│   ├── configs/
+│   ├── runs/
 │   ├── results/
 │   ├── train.py
 │   ├── eval.py
@@ -45,12 +45,12 @@ The code is organised with the following structure:
 ├── tests/
 │   ├── core/                      # Tests for core modules
 │   ├── experiments/               # Tests for experiments
-│   └── conftest.py                # Pytest configuration
+│   └── conftest.py
 ├── data/
-│   ├── cvrplib/                   # CVRPLib benchmark instances
 │   ├── synthetic/                 # Generated instance sets
+│   ├── cvrplib/                   # CVRPLib benchmark instances
 │   └── tools/                     # Data generation scripts
-├── pyproject.toml                 # Python project configuration (uv)
+├── pyproject.toml                 # Python project configuration
 ├── uv.lock                        # Dependency lock file
 └── README.md
 ```
