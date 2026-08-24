@@ -23,7 +23,7 @@ with app.setup:
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    # TSP vs. CVRP vs. CMSTP
+    # Example problem solutions
     """)
     return
 
@@ -37,8 +37,9 @@ def _():
     deconstruction_ui = mo.ui.slider(
         start=1, stop=20, step=1, value=15, label="Deconstruction size", show_value=True
     )
-    mo.vstack([seed_ui, steps_ui, deconstruction_ui])
-    return deconstruction_ui, seed_ui, steps_ui
+    include_cmstp_ui = mo.ui.checkbox(value=True, label="Include CMSTP")
+    mo.vstack([seed_ui, steps_ui, deconstruction_ui, include_cmstp_ui])
+    return deconstruction_ui, include_cmstp_ui, seed_ui, steps_ui
 
 
 @app.cell
@@ -54,12 +55,16 @@ def _(deconstruction_ui, seed_ui, steps_ui):
     N_REPAIRS = 5
     WARMUP_STEPS = 50
 
-    FIGURE_PATH = project_root() / "figures" / "out" / "cvrp_vs_cmstp.pdf"
+    CVRP_FIGURE_PATH = project_root() / "figures" / "out" / "cvrp.pdf"
+    CMSTP_FIGURE_PATH = project_root() / "figures" / "out" / "cmstp.pdf"
+    COMBINED_FIGURE_PATH = project_root() / "figures" / "out" / "cvrp_vs_cmstp.pdf"
     TSP_FIGURE_PATH = project_root() / "figures" / "out" / "tsp.pdf"
     return (
+        CMSTP_FIGURE_PATH,
+        COMBINED_FIGURE_PATH,
+        CVRP_FIGURE_PATH,
         DECONSTRUCTION_SIZE,
         DEVICE,
-        FIGURE_PATH,
         N,
         NUM_IMPROVEMENT_STEPS,
         NUM_ROLLOUTS,
@@ -143,42 +148,116 @@ def _(DEVICE, N, SEED, build_random_method):
 
 
 @app.cell
-def _(DEVICE, N, SEED, build_random_method):
-    _instance = CMSTPSampler.for_size(N, seed=SEED)(1).to(DEVICE)
-    with torch.no_grad():
-        cmstp_solution = solve(build_random_method("cmstp", N), _instance)
+def _(DEVICE, N, SEED, build_random_method, include_cmstp_ui):
+    cmstp_solution = None
+    if include_cmstp_ui.value:
+        _instance = CMSTPSampler.for_size(N, seed=SEED)(1).to(DEVICE)
+        with torch.no_grad():
+            cmstp_solution = solve(build_random_method("cmstp", N), _instance)
     return (cmstp_solution,)
 
 
 @app.cell
-def _(cmstp_solution, cvrp_solution):
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+def _(cvrp_solution):
+    cvrp_fig, cvrp_ax = plt.subplots(figsize=(7, 6))
 
-    cvrp_solution[0].visualize(ax=axes[0], show_depot_edges=True, palette="tab10")
-    cmstp_solution[0].visualize(ax=axes[1], palette="tab10")
+    cvrp_solution[0].visualize(ax=cvrp_ax, show_depot_edges=True, palette="tab10")
+    cvrp_ax.set_title("CVRP")
 
-    axes[0].set_title("CVRP")
-    axes[1].set_title("CMSTP")
-
-    fig.tight_layout()
-    fig
-    return (fig,)
+    cvrp_fig.tight_layout()
+    cvrp_fig
+    return (cvrp_fig,)
 
 
 @app.cell
 def _():
-    save_button = mo.ui.run_button(label="Save figure")
-    save_button
-    return (save_button,)
+    cvrp_save_button = mo.ui.run_button(label="Save CVRP figure")
+    cvrp_save_button
+    return (cvrp_save_button,)
 
 
 @app.cell
-def _(FIGURE_PATH, fig, save_button):
-    mo.stop(not save_button.value, mo.md("Click **Save figure** to write the PDF."))
+def _(CVRP_FIGURE_PATH, cvrp_fig, cvrp_save_button):
+    mo.stop(not cvrp_save_button.value, mo.md("Click **Save CVRP figure** to write the PDF."))
 
-    FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    save_figure(fig, FIGURE_PATH)
-    mo.md(f"Saved to `{FIGURE_PATH}`")
+    CVRP_FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    save_figure(cvrp_fig, CVRP_FIGURE_PATH)
+    mo.md(f"Saved to `{CVRP_FIGURE_PATH}`")
+    return
+
+
+@app.cell
+def _(cmstp_solution, include_cmstp_ui):
+    mo.stop(
+        not include_cmstp_ui.value,
+        mo.md("Enable **Include CMSTP** to compute and plot the CMSTP solution."),
+    )
+
+    cmstp_fig, cmstp_ax = plt.subplots(figsize=(7, 6))
+
+    cmstp_solution[0].visualize(ax=cmstp_ax, palette="tab10")
+    cmstp_ax.set_title("CMSTP")
+
+    cmstp_fig.tight_layout()
+    cmstp_fig
+    return (cmstp_fig,)
+
+
+@app.cell
+def _(include_cmstp_ui):
+    cmstp_save_button = mo.ui.run_button(label="Save CMSTP figure")
+    mo.stop(not include_cmstp_ui.value)
+    cmstp_save_button
+    return (cmstp_save_button,)
+
+
+@app.cell
+def _(CMSTP_FIGURE_PATH, cmstp_fig, cmstp_save_button):
+    mo.stop(not cmstp_save_button.value, mo.md("Click **Save CMSTP figure** to write the PDF."))
+
+    CMSTP_FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    save_figure(cmstp_fig, CMSTP_FIGURE_PATH)
+    mo.md(f"Saved to `{CMSTP_FIGURE_PATH}`")
+    return
+
+
+@app.cell
+def _(cmstp_solution, cvrp_solution, include_cmstp_ui):
+    mo.stop(
+        not include_cmstp_ui.value,
+        mo.md("Enable **Include CMSTP** to produce the combined CVRP vs CMSTP figure."),
+    )
+
+    combined_fig, combined_axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    cvrp_solution[0].visualize(ax=combined_axes[0], show_depot_edges=True, palette="tab10")
+    cmstp_solution[0].visualize(ax=combined_axes[1], palette="tab10")
+
+    combined_axes[0].set_title("CVRP")
+    combined_axes[1].set_title("CMSTP")
+
+    combined_fig.tight_layout()
+    combined_fig
+    return (combined_fig,)
+
+
+@app.cell
+def _(include_cmstp_ui):
+    combined_save_button = mo.ui.run_button(label="Save combined figure")
+    mo.stop(not include_cmstp_ui.value)
+    combined_save_button
+    return (combined_save_button,)
+
+
+@app.cell
+def _(COMBINED_FIGURE_PATH, combined_fig, combined_save_button):
+    mo.stop(
+        not combined_save_button.value, mo.md("Click **Save combined figure** to write the PDF.")
+    )
+
+    COMBINED_FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    save_figure(combined_fig, COMBINED_FIGURE_PATH)
+    mo.md(f"Saved to `{COMBINED_FIGURE_PATH}`")
     return
 
 

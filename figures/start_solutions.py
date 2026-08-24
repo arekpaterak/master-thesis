@@ -107,7 +107,8 @@ def _(cvrp_start):
     cvrp_start[0].visualize(ax=axes[0], show_depot_edges=True, with_direction=False)
     # cmstp_start[0].visualize(ax=axes[1])
 
-    axes[0].set_title("CVRP / CMSTP")
+    axes[0].set_title("CVRP")
+    # axes[0].set_title("CVRP / CMSTP")
     # axes[1].set_title("CMSTP")
 
     fig.tight_layout()
