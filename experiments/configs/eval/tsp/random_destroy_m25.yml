@@ -1,0 +1,12 @@
+method:
+  type: random-destroy
+  seed: 0
+  search: search/sa_m25.yml
+
+settings:
+  main:
+    - problems/tsp_50_data.yml
+    - problems/tsp_100_data.yml
+
+logging:
+  wandb_project: nds

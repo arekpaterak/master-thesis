@@ -74,8 +74,10 @@ search:
     type: greedy
   start_solution_params:
     num_improvement_steps: 50
-    deconstruction_size: 25
+    deconstruction_size: 15
     destroy_type: random_node
+    insert_in_affected_routes_only: false
+    first_repair_uses_rollout_order: false
   n_augmentations: 1
 amp:
   enabled: true
@@ -115,7 +117,9 @@ validation:
         threshold_factor: 15.0
     start_solution_params:
       num_improvement_steps: 50
-      deconstruction_size: 25
+      deconstruction_size: 15
       destroy_type: random_node
+      insert_in_affected_routes_only: false
+      first_repair_uses_rollout_order: false
     n_augmentations: 1
-run_name: nds_tsp_100_split+simple-20260806-001852
+run_name: nds_tsp_100_split+simple_m25-20260831-202957
