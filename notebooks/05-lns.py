@@ -25,7 +25,7 @@ def _():
     from core.lns import GreedyAcceptance, search
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
     from core.models.nds.models.joint import JointNDSModel
-    from core.problems.cvrp import CVRP, CVRPSampler
+    from core.problems.cvrp import CVRPDistribution, CVRPSampler
     from core.problems.cvrp.lns.operators.repair.insert import (
         CVRPGreedyInsertRepair,
     )
@@ -33,20 +33,20 @@ def _():
         CVRPGreedyReconnectRepair,
     )
     from core.problems.cvrp.solve import one_customer_per_route, one_customer_per_route_graph
-    from core.problems.tsp import TSP, TSPSampler
+    from core.problems.tsp import TSPDistribution, TSPSampler
     from core.problems.tsp.lns.operators.repair.insert import TSPGreedyInsertRepair
     from core.problems.tsp.lns.operators.repair.reconnect import TSPGreedyReconnectRepair
     from core.problems.tsp.solve import random_permutation, random_permutation_graph
 
     return (
         JointNDSModel,
-        CVRP,
+        CVRPDistribution,
         CVRPGreedyInsertRepair,
         CVRPGreedyReconnectRepair,
         CVRPSampler,
         GreedyAcceptance,
         RandomNodeDestroy,
-        TSP,
+        TSPDistribution,
         TSPGreedyInsertRepair,
         TSPGreedyReconnectRepair,
         TSPSampler,
@@ -135,9 +135,9 @@ def _(
 
 @app.cell
 def _(
-    CVRP,
+    CVRPDistribution,
     CVRPSampler,
-    TSP,
+    TSPDistribution,
     TSPSampler,
     batch_size_slider,
     mo,
@@ -150,13 +150,13 @@ def _(
     mo.stop(not run.value)
 
     if problem_dropdown.value == "cvrp":
-        instance = CVRPSampler(CVRP.for_n(n_dropdown.value), seed=seed_widget.value)(
+        instance = CVRPSampler(CVRPDistribution.for_n(n_dropdown.value), seed=seed_widget.value)(
             batch_size_slider.value
         )
     else:
-        instance = TSPSampler(TSP(num_locations=n_dropdown.value), seed=seed_widget.value)(
-            batch_size_slider.value
-        )
+        instance = TSPSampler(
+            TSPDistribution(num_locations=n_dropdown.value), seed=seed_widget.value
+        )(batch_size_slider.value)
     if use_gpu_widget.value:
         instance = instance.to(device="cuda")
     return (instance,)
@@ -515,12 +515,12 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(
     JointNDSModel,
-    CVRP,
+    CVRPDistribution,
     CVRPGreedyInsertRepair,
     CVRPGreedyReconnectRepair,
     CVRPSampler,
     RandomNodeDestroy,
-    TSP,
+    TSPDistribution,
     TSPGreedyInsertRepair,
     TSPGreedyReconnectRepair,
     TSPSampler,
@@ -591,7 +591,7 @@ def _(
                 "reconnect": CVRPGreedyReconnectRepair,
                 "insert": CVRPGreedyInsertRepair,
             }
-            sampler = CVRPSampler(CVRP.for_n(n), seed=0)
+            sampler = CVRPSampler(CVRPDistribution.for_n(n), seed=0)
         else:
             start_builders = {
                 "reconnect": random_permutation_graph,
@@ -601,7 +601,7 @@ def _(
                 "reconnect": TSPGreedyReconnectRepair,
                 "insert": TSPGreedyInsertRepair,
             }
-            sampler = TSPSampler(TSP(num_locations=n), seed=0)
+            sampler = TSPSampler(TSPDistribution(num_locations=n), seed=0)
 
         def make_destroy(destroy_name, *, destruction_size, model):
             if destroy_name == "random":

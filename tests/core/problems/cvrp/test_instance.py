@@ -1,33 +1,33 @@
 import pytest
 import torch
 
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.instance import CVRPInstance
 
 
 def test_if_can_visualize_without_batch_dim():
-    instance = CVRPSampler(CVRP.for_n(20))(10)[0]
+    instance = CVRPSampler(CVRPDistribution.for_n(20))(10)[0]
     assert instance.batch_dims == 0
 
     instance.visualize()
 
 
 def test_if_can_visualize_with_batch_of_one():
-    instance = CVRPSampler(CVRP.for_n(20))(10)[:1]
+    instance = CVRPSampler(CVRPDistribution.for_n(20))(10)[:1]
     assert instance.batch_dims == 1
 
     instance.visualize()
 
 
 def test_if_fails_to_visualize_batch():
-    instance = CVRPSampler(CVRP.for_n(20))(10)
+    instance = CVRPSampler(CVRPDistribution.for_n(20))(10)
 
     with pytest.raises(ValueError):
         instance.visualize()
 
 
 def test_sampler_instance_has_unit_coordinate_scale():
-    instance = CVRPSampler(CVRP.for_n(20))(4)
+    instance = CVRPSampler(CVRPDistribution.for_n(20))(4)
     assert instance.coordinate_scale.shape == (4, 1)
     assert torch.all(instance.coordinate_scale == 1.0)
     assert instance.is_normalized

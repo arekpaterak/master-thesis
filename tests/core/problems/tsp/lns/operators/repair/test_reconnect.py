@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.problems.tsp import TSP, TSPSampler
+from core.problems.tsp import TSPDistribution, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.lns.operators.repair.reconnect import TSPGreedyReconnectRepair
 from core.problems.tsp.solve import random_permutation
@@ -20,7 +20,7 @@ def batch_size(request) -> int:
 
 
 def _graph_solution(batch_size: int, num_locations: int = 20) -> TSPGraphSolution:
-    config = TSP(num_locations=num_locations)
+    config = TSPDistribution(num_locations=num_locations)
     instance = TSPSampler(config, seed=42)(batch_size)
     torch.manual_seed(42)
     sequence = random_permutation(instance).tour

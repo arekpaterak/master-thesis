@@ -20,7 +20,7 @@ with app.setup:
     from core.models.attention_model.training_helpers import prepare_baseline, sync_baseline_
     from core.models.utils import load_checkpoint, save_checkpoint
     from core.problems.solution import BaseSolution
-    from core.problems.tsp import TSP, TSPSampler
+    from core.problems.tsp import TSPDistribution, TSPSampler
     from core.problems.tsp.solve import random_permutation
 
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -86,7 +86,7 @@ def _():
 @app.cell
 def _(train_button):
     tsp_sampler = TSPSampler(
-        TSP(
+        TSPDistribution(
             num_locations=20,
             min_coordinate=0.0,
             max_coordinate=1.0,
@@ -187,7 +187,7 @@ def _(model, run_experiments_button):
         accept = GreedyAcceptance()
 
         sampler = TSPSampler(
-            TSP(
+            TSPDistribution(
                 num_locations=num_locations,
                 min_coordinate=0.0,
                 max_coordinate=1.0,

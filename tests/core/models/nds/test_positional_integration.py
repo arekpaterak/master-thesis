@@ -4,13 +4,13 @@ from core.models.embeddings.cvrp import CVRPInitialEmbedding
 from core.models.embeddings.tsp import TSPInitialEmbedding
 from core.models.nds.config import PositionalEncodingConfig
 from core.models.nds.models.joint import JointNDSModel
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
     CVRPSolutionFeatureExtractor,
 )
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
-from core.problems.tsp import TSP, TSPSampler
+from core.problems.tsp import TSPDistribution, TSPSampler
 from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
     TSPSolutionFeatureExtractor,
@@ -20,7 +20,7 @@ from core.problems.tsp.graph_solution import TSPGraphSolution
 
 def test_cvrp_embedding_concat_grows_projection_and_shape():
     B, N, H, dim = 3, 20, 128, 8
-    instance = CVRPSampler(CVRP.for_n(N))(B)
+    instance = CVRPSampler(CVRPDistribution.for_n(N))(B)
     solution = CVRPGraphSolution.one_customer_per_route(instance)
 
     config = PositionalEncodingConfig(dim=dim)
@@ -37,7 +37,7 @@ def test_cvrp_embedding_concat_grows_projection_and_shape():
 
 def test_tsp_embedding_concat_grows_projection_and_shape():
     B, N, H, dim = 3, 20, 128, 8
-    instance = TSPSampler(TSP(num_locations=N))(B)
+    instance = TSPSampler(TSPDistribution(num_locations=N))(B)
     tour = torch.stack([torch.randperm(N) for _ in range(B)])
     solution = TSPGraphSolution.create_from_sequence(instance, tour)
 
@@ -53,7 +53,7 @@ def test_tsp_embedding_concat_grows_projection_and_shape():
 
 def test_cvrp_model_rollout_with_positional_encoding():
     B, R, N, M = 2, 4, 20, 5
-    instance = CVRPSampler(CVRP.for_n(N))(B)
+    instance = CVRPSampler(CVRPDistribution.for_n(N))(B)
     solution = CVRPGraphSolution.one_customer_per_route(instance)
 
     model = JointNDSModel(

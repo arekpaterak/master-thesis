@@ -8,7 +8,7 @@ from core.models.nds.decoders.config import SimpleOnePassDecoderConfig
 from core.models.nds.factory import NDSModel, build_model
 from core.models.nds.metrics import EncoderMetricsRecorder, mean_pairwise_cosine_similarity
 from core.problems import depot_offset
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 
 
@@ -112,7 +112,7 @@ def test_recorder_does_not_track_gradients() -> None:
 
 
 def _cvrp_solution(B: int = 4, N: int = 20) -> CVRPGraphSolution:
-    instance = CVRPSampler(CVRP.for_n(N))(B)
+    instance = CVRPSampler(CVRPDistribution.for_n(N))(B)
     return CVRPGraphSolution.one_customer_per_route(instance)
 
 

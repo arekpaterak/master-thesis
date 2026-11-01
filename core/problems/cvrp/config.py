@@ -22,8 +22,8 @@ CAPACITY_PER_SIZE: dict[int, int] = {
 
 
 @dataclass(frozen=True)
-class CVRP:
-    """Parametrized CVRP problem definition consumed by the sampler."""
+class CVRPDistribution:
+    """Instance distribution for CVRP, consumed by the sampler."""
 
     num_customers: int
     vehicle_capacity_raw: int
@@ -34,8 +34,8 @@ class CVRP:
     distribution_of_locations: Literal["uniform"] = "uniform"
 
     @classmethod
-    def for_n(cls, num_customers: int, **kwargs) -> CVRP:
-        """Create a problem for a given size.
+    def for_n(cls, num_customers: int, **kwargs) -> CVRPDistribution:
+        """Create a distribution for a given size.
 
         Raises ``ValueError`` for unsupported sizes.
         """
@@ -52,7 +52,7 @@ class CVRP:
         )
 
     @classmethod
-    def without_capacity(cls, num_customers: int, **kwargs) -> CVRP:
+    def without_capacity(cls, num_customers: int, **kwargs) -> CVRPDistribution:
         return cls(
             num_customers=num_customers,
             vehicle_capacity_raw=0,
@@ -74,7 +74,7 @@ class CVRPConfig(BaseProblemConfig):
     min_coordinate: float = 0.0
     max_coordinate: float = 1.0
 
-    def to_problem(self) -> CVRP:
+    def to_distribution(self) -> CVRPDistribution:
         common = {
             "min_demand_raw": self.min_demand_raw,
             "max_demand_raw": self.max_demand_raw,
@@ -82,8 +82,8 @@ class CVRPConfig(BaseProblemConfig):
             "max_coordinate": self.max_coordinate,
         }
         if self.vehicle_capacity_raw is None:
-            return CVRP.for_n(self.size, **common)
-        return CVRP(
+            return CVRPDistribution.for_n(self.size, **common)
+        return CVRPDistribution(
             num_customers=self.size,
             vehicle_capacity_raw=self.vehicle_capacity_raw,
             **common,

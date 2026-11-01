@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.problems.tsp.config import TSP
+from core.problems.tsp.config import TSPDistribution
 from core.problems.tsp.sampler import TSPSampler
 
 
@@ -10,7 +10,7 @@ from core.problems.tsp.sampler import TSPSampler
     [1, 5, 10],
 )
 def test_sampler_shape(batch_size: int):
-    config = TSP(num_locations=10, distribution_of_locations="uniform")
+    config = TSPDistribution(num_locations=10, distribution_of_locations="uniform")
     sampler = TSPSampler(config)
 
     sample = sampler(batch_size)
@@ -24,7 +24,7 @@ def test_sampler_shape(batch_size: int):
 
 
 def test_sampler_value_range():
-    config = TSP(
+    config = TSPDistribution(
         num_locations=10,
         distribution_of_locations="uniform",
         min_coordinate=0.0,
@@ -41,7 +41,7 @@ def test_sampler_value_range():
 
 
 def test_sampler_determinism():
-    config = TSP(
+    config = TSPDistribution(
         num_locations=10,
         distribution_of_locations="uniform",
         min_coordinate=0.0,
@@ -61,7 +61,7 @@ def test_sampler_determinism():
 
 
 def test_sampler_different_seeds():
-    config = TSP(
+    config = TSPDistribution(
         num_locations=10,
         distribution_of_locations="uniform",
         min_coordinate=0.0,
@@ -82,7 +82,7 @@ def test_sampler_different_seeds():
 
 
 def test_access_single():
-    config = TSP(
+    config = TSPDistribution(
         num_locations=10,
     )
     sampler = TSPSampler(config)

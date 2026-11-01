@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.lns.operators.repair.insert import CVRPGreedyInsertRepair
 from core.problems.cvrp.solve import one_customer_per_route_graph
@@ -22,7 +22,7 @@ def batch_size(request) -> int:
 class TestCVRPGreedyInsertRepair(FeasibleRepairContract):
     @pytest.fixture
     def complete_solution(self, batch_size: int) -> CVRPGraphSolution:
-        config = CVRP.for_n(20)
+        config = CVRPDistribution.for_n(20)
         instance = CVRPSampler(config, seed=42)(batch_size)
         return one_customer_per_route_graph(instance)
 
@@ -58,7 +58,7 @@ class TestCVRPGreedyInsertRepair(FeasibleRepairContract):
     def test_rollout_batch_shape(self, batch_size: int) -> None:
         """Repair must work when solution has 2D batch shape (B, R) from remove_customers."""
         B, R, N, K = batch_size, 5, 20, 3
-        config = CVRP.for_n(N)
+        config = CVRPDistribution.for_n(N)
         instance = CVRPSampler(config, seed=42)(B)
         solution = one_customer_per_route_graph(instance)
 
@@ -111,7 +111,9 @@ class TestCVRPGreedyInsertRepair(FeasibleRepairContract):
 
     def test_inserts_at_arbitrary_position(self) -> None:
         """Repair must be able to insert mid-route, not only at depot-connected ends."""
-        config = CVRP(num_customers=4, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1)
+        config = CVRPDistribution(
+            num_customers=4, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1
+        )
         instance = CVRPSampler(config, seed=0)(1)
         # Build a route containing 2: 0 -> 1 -> 2 -> 3 -> 4 -> 0
         solution = CVRPGraphSolution.create_from_sequence(
@@ -128,7 +130,9 @@ class TestCVRPGreedyInsertRepair(FeasibleRepairContract):
 
     def test_capacity_respected_via_new_tour_fallback(self) -> None:
         """When every existing route is full, the repair creates a new singleton route."""
-        config = CVRP(num_customers=3, vehicle_capacity_raw=2, min_demand_raw=2, max_demand_raw=2)
+        config = CVRPDistribution(
+            num_customers=3, vehicle_capacity_raw=2, min_demand_raw=2, max_demand_raw=2
+        )
         instance = CVRPSampler(config, seed=0)(1)
         # Each customer has demand 2 == capacity, so each route holds exactly one customer.
         solution = CVRPGraphSolution.create_from_sequence(

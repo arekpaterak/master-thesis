@@ -1,7 +1,7 @@
 from core.lns.config import SearchParams, StartSolutionParams
 from core.lns.improvement_step import ImprovementStep, build_random_node_destroy_step
 from core.lns.start_solution import with_warmup
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.solve import one_customer_per_route_graph
 
@@ -23,7 +23,7 @@ def test_build_random_destroy_step_returns_requested_variant() -> None:
 
 
 def test_warmup_improves_and_stays_feasible() -> None:
-    instance = CVRPSampler(CVRP.for_n(20), seed=42)(4)
+    instance = CVRPSampler(CVRPDistribution.for_n(20), seed=42)(4)
     start_fn = with_warmup(one_customer_per_route_graph, problem_name="cvrp", search=_search(30))
 
     trivial = one_customer_per_route_graph(instance)

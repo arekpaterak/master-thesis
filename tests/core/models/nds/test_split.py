@@ -10,9 +10,9 @@ from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.encoders.config import PositionalEncodingConfig, SplitEncoderConfig
 from core.models.nds.factory import build_model
 from core.models.nds.models.split import SplitNDSModel
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
-from core.problems.tsp import TSP, TSPSampler
+from core.problems.tsp import TSPDistribution, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
 
 
@@ -35,12 +35,12 @@ def _count_encode(model: SplitNDSModel) -> Callable[[], int]:
 
 
 def _cvrp_solution(B: int = 4, N: int = 20) -> CVRPGraphSolution:
-    instance = CVRPSampler(CVRP.for_n(N))(B)
+    instance = CVRPSampler(CVRPDistribution.for_n(N))(B)
     return CVRPGraphSolution.one_customer_per_route(instance)
 
 
 def _tsp_solution(B: int = 3, N: int = 20) -> TSPGraphSolution:
-    instance = TSPSampler(TSP(num_locations=N))(B)
+    instance = TSPSampler(TSPDistribution(num_locations=N))(B)
     tour = torch.stack([torch.randperm(N) for _ in range(B)])
     return TSPGraphSolution.create_from_sequence(instance, tour)
 
