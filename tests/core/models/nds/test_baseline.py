@@ -7,20 +7,23 @@ from core.models.nds.baseline import (
     NoBaselineConfig,
     SharedBaseline,
     SharedBaselineConfig,
-    build_baseline,
 )
 
 
 def test_min_rollouts():
-    assert NoBaseline().min_rollouts() == 1
-    assert SharedBaseline().min_rollouts() == 2
-    assert LeaveOneOutBaseline().min_rollouts() == 2
+    assert NoBaselineConfig().min_rollouts == 1
+    assert SharedBaselineConfig().min_rollouts == 2
+    assert LeaveOneOutBaselineConfig().min_rollouts == 2
 
 
-def test_build_baseline_returns_expected_type():
-    assert isinstance(build_baseline(NoBaselineConfig()), NoBaseline)
-    assert isinstance(build_baseline(SharedBaselineConfig()), SharedBaseline)
-    assert isinstance(build_baseline(LeaveOneOutBaselineConfig()), LeaveOneOutBaseline)
+def test_min_rollouts_is_not_serialized():
+    assert "min_rollouts" not in SharedBaselineConfig().model_dump()
+
+
+def test_config_builds_expected_type():
+    assert isinstance(NoBaselineConfig().build(), NoBaseline)
+    assert isinstance(SharedBaselineConfig().build(), SharedBaseline)
+    assert isinstance(LeaveOneOutBaselineConfig().build(), LeaveOneOutBaseline)
 
 
 def test_no_baseline_is_zero():
