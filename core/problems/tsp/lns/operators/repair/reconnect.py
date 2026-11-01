@@ -17,9 +17,6 @@ class TSPGreedyReconnectRepair(RepairOperator[TSPGraphSolution]):
     the bound is ``2 * M``.
     """
 
-    repair_type = "greedy_reconnect"
-    problem_name = "tsp"
-
     def __init__(
         self,
         *,

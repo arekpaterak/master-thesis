@@ -13,13 +13,13 @@ matplotlib.use("Agg")  # non-interactive backend: plots are saved/logged, never 
 import matplotlib.pyplot as plt
 import torch
 import typer
+import wandb
 import yaml
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 from tqdm import tqdm
 
-import wandb
 from core.models.nds.config import JointModelConfig, TrainConfig
 from core.models.nds.factory import build_model
 from core.models.nds.module import NDSModule
@@ -37,7 +37,7 @@ from core.models.utils import (
     load_checkpoint,
     save_checkpoint,
 )
-from core.problems.dataset import DatasetSampler
+from core.problems import registry
 from core.problems.sampler import Sampler
 from core.results.plots import plot_solutions_from_search, save_figure
 from core.results.wandb_artifacts import upload_final_checkpoint
@@ -227,11 +227,13 @@ def _merge_overrides(yaml_data: dict, overrides: dict[str, object]) -> None:
 
 def _build_samplers(config: TrainConfig) -> tuple[Sampler, Sampler]:
     """Create the training sampler and the validation sampler."""
-    sampler = Sampler.from_config(config.problem)
+    sampler = registry.build_sampler(config.problem)
     if config.validation.dataset_path is None:
-        return sampler, Sampler.from_config(config.problem, seed=config.validation.seed)
+        return sampler, registry.build_sampler(config.problem, seed=config.validation.seed)
 
-    val_sampler = DatasetSampler.from_file(config.problem.name, config.validation.dataset_path)
+    val_sampler = registry.build_dataset_sampler(
+        config.problem.name, config.validation.dataset_path
+    )
     if config.validation.num_instances > len(val_sampler):
         raise ValueError(
             f"validation.num_instances={config.validation.num_instances} exceeds "
@@ -387,6 +389,7 @@ def _run_training(
     nds_module = NDSModule(
         config=config,
         model=model,
+        lns=registry.lns(config.problem.name),
         improvement_step_progress=lambda it: tqdm(it, desc="Improvement steps", leave=False),
         validation_improvement_step_progress=lambda it: tqdm(
             it, desc="Validation improvement steps", leave=False

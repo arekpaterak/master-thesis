@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from core.lns.acceptance_criterion import GreedyAcceptance
+from core.lns.components import LNSComponents
 from core.lns.config import SearchParams
 from core.lns.improvement_step import build_random_node_destroy_step
 from core.lns.search import search as lns_search
@@ -15,7 +16,7 @@ StartSolutionFn = Callable[[BaseProblemInstance], BaseSolution]
 def with_warmup(
     generate_start_solution: StartSolutionFn,
     *,
-    problem_name: str,
+    lns: LNSComponents,
     search: SearchParams,
 ) -> StartSolutionFn:
     params = search.start_solution_params
@@ -32,7 +33,7 @@ def with_warmup(
             "first_repair_uses_rollout_order": params.first_repair_uses_rollout_order,
         }
     )
-    warmup_step = build_random_node_destroy_step(warmup_search, problem_name=problem_name, seed=0)
+    warmup_step = build_random_node_destroy_step(warmup_search, lns=lns, seed=0)
 
     def wrapped(instance: BaseProblemInstance) -> BaseSolution:
         solution = generate_start_solution(instance)

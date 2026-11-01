@@ -9,6 +9,7 @@ from core.models.nds.module import NDSModule
 from core.models.runtime import AmpConfig
 from core.models.trainer import Trainer
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
+from core.problems.cvrp.lns.components import LNS
 
 
 def test_train():
@@ -17,6 +18,7 @@ def test_train():
     model = JointNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(
+        lns=LNS,
         config=TrainConfig(
             trainer=TrainerParams(
                 num_main_improvement_steps=3,
@@ -51,6 +53,7 @@ def test_train_with_numba_apply_and_repair_backend():
     model = JointNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(
+        lns=LNS,
         config=TrainConfig(
             trainer=TrainerParams(
                 num_main_improvement_steps=3,
@@ -80,6 +83,7 @@ def test_train_with_amp_enabled():
     model = JointNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(
+        lns=LNS,
         config=TrainConfig(
             trainer=TrainerParams(
                 num_main_improvement_steps=2,
@@ -130,8 +134,8 @@ def test_encode_once_matches_recompute():
     model_once = build_model(build_config(True).model)
     model_once.load_state_dict(model_baseline.state_dict())
 
-    module_baseline = NDSModule(config=build_config(False), model=model_baseline)
-    module_once = NDSModule(config=build_config(True), model=model_once)
+    module_baseline = NDSModule(config=build_config(False), model=model_baseline, lns=LNS)
+    module_once = NDSModule(config=build_config(True), model=model_once, lns=LNS)
 
     instance = CVRPSampler(CVRPDistribution.for_n(N))(B)
 

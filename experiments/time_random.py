@@ -8,8 +8,7 @@ from core.lns.acceptance_criterion import SimulatedAnnealingAcceptanceConfig
 from core.lns.config import SearchParams, StartSolutionParams
 from core.methods import build_method
 from core.methods.random_destroy import RandomDestroyMethodConfig
-from core.problems import make_problem_config
-from core.problems.dataset import DatasetSampler
+from core.problems import make_problem_config, registry
 from core.solve import solve
 
 DATASET = "data/synthetic/cvrp/vrp100_test_seed1234.pkl"
@@ -66,7 +65,7 @@ def time_batch(method, sampler, batch_size: int) -> float:
 
 
 def run():
-    sampler = DatasetSampler.from_file("cvrp", DATASET)
+    sampler = registry.build_dataset_sampler("cvrp", DATASET)
     print(f"device={DEVICE}, dataset instances={len(sampler)}\n")
 
     configs = [

@@ -17,8 +17,7 @@ with app.setup:
     from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
     from core.models.nds.improvement_step import build_nds_improvement_step
-    from core.problems.sampler import Sampler
-    from core.problems.solve import generate_initial_solution
+    from core.problems import registry
     from figures.utils import (
         figsize,
         project_root,
@@ -253,8 +252,8 @@ def _(
             if has_encode_instance:
                 del model.encode_instance
 
-    def run_search(step, instance, num_steps, acceptance, progress=None):
-        solution = generate_initial_solution(instance)
+    def run_search(step, instance, num_steps, acceptance, initial_solution, progress=None):
+        solution = initial_solution(instance)
         criterion = build_criterion(acceptance, n_steps=max(num_steps, 1))
         steps = range(num_steps)
         if progress is not None:
@@ -269,20 +268,22 @@ def _(
         search = config.search.model_copy(update={"num_rollouts": rollout_size})
         if model is None:
             return build_random_node_destroy_step(
-                search, problem_name=config.problem.name, seed=SEED
+                search, lns=registry.lns(config.problem.name), seed=SEED
             )
-        return build_nds_improvement_step(search, model=model, seed=SEED)
+        return build_nds_improvement_step(
+            search, model=model, lns=registry.lns(config.problem.name), seed=SEED
+        )
 
-    def timed_search(step, instance, num_steps, acceptance, model=None):
+    def timed_search(step, instance, num_steps, acceptance, initial_solution, model=None):
         """Run one search and return its total wall time plus (if a model) the component split."""
         sync()
         start = perf_counter()
         if model is None:
-            run_search(step, instance, num_steps, acceptance)
+            run_search(step, instance, num_steps, acceptance, initial_solution)
             buckets = {"encode/search": 0.0, "encode/iteration": 0.0, "decode/iteration": 0.0}
         else:
             with component_timing(model) as buckets:
-                run_search(step, instance, num_steps, acceptance)
+                run_search(step, instance, num_steps, acceptance, initial_solution)
         sync()
         total = perf_counter() - start
         # Whatever the model timers did not cover (repair, acceptance, etc.) is the remainder.
@@ -291,11 +292,18 @@ def _(
     def measure(config_path, num_steps, batch_size, rollout_size, with_model, progress=None):
         """Time N_BATCHES searches on fresh instances; return the robust mean per component."""
         config = load_config(config_path)
-        sampler = Sampler.from_config(config.problem)
+        sampler = registry.build_sampler(config.problem)
+        initial_solution = registry.problem(config.problem.name).initial_solution
         model = build_model(config.model).to(DEVICE).eval() if with_model else None
         step = build_step(config, rollout_size, model=model)
 
-        run_search(step, sampler(batch_size).to(DEVICE), WARMUP_STEPS, config.search.acceptance)
+        run_search(
+            step,
+            sampler(batch_size).to(DEVICE),
+            WARMUP_STEPS,
+            config.search.acceptance,
+            initial_solution,
+        )
 
         keys = ["encode/search", "encode/iteration", "decode/iteration", "other"]
         samples: dict[str, list[float]] = {key: [] for key in keys}
@@ -304,7 +312,9 @@ def _(
             batches = progress(batches)
         for _ in batches:
             instance = sampler(batch_size).to(DEVICE)
-            detail = timed_search(step, instance, num_steps, config.search.acceptance, model=model)
+            detail = timed_search(
+                step, instance, num_steps, config.search.acceptance, initial_solution, model=model
+            )
             for key in keys:
                 samples[key].append(detail[key])
 

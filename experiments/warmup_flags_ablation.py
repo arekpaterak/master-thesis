@@ -20,13 +20,10 @@ from pathlib import Path
 
 import torch
 
-import core.problems.cvrp.solve  # noqa: F401  (registers the CVRP initial solution)
 from core.lns.config import SearchParams, StartSolutionParams
 from core.lns.start_solution import with_warmup
-from core.problems.dataset import load_dataset
-from core.problems.solve import generate_initial_solution
+from core.problems.cvrp.lns.components import LNS
 
-PROBLEM_NAME = "cvrp"
 DATASET_PATH = Path("data/synthetic/cvrp/vrp100_valid_seed1233.pkl")
 NUM_INSTANCES = 1000
 
@@ -55,9 +52,7 @@ def mean_objective_and_time(
             first_repair_uses_rollout_order=first_repair_uses_rollout_order,
         ),
     )
-    generate_start_solution = with_warmup(
-        generate_initial_solution, problem_name=PROBLEM_NAME, search=search
-    )
+    generate_start_solution = with_warmup(LNS.problem.initial_solution, lns=LNS, search=search)
     start = time.perf_counter()
     final = generate_start_solution(instance)
     elapsed = time.perf_counter() - start
@@ -66,7 +61,7 @@ def mean_objective_and_time(
 
 def main() -> None:
     torch.manual_seed(0)
-    instance = load_dataset(PROBLEM_NAME, DATASET_PATH)[:NUM_INSTANCES]
+    instance = LNS.problem.load_dataset(DATASET_PATH)[:NUM_INSTANCES]
     print(f"Loaded {instance.batch_size[0]} CVRP-{instance.num_customers} instances\n")
 
     # Trigger numba JIT compilation on a small slice so it is excluded from the timings.

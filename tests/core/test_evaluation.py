@@ -8,10 +8,9 @@ from core.evaluation import BatchEvaluationResult, Evaluator, PlotSnapshotCallba
 from core.lns.acceptance_criterion import GreedyAcceptanceConfig
 from core.methods.base import Method
 from core.methods.random_destroy import RANDOM_DESTROY_PRESETS, RandomDestroyMethod
-from core.problems import CVRPConfig, ProblemConfig
+from core.problems import CVRPConfig, ProblemConfig, registry
 from core.problems.cvrp import CVRPSampler
 from core.problems.cvrp.config import CVRPDistribution
-from core.problems.solve import generate_initial_solution
 from core.solve import solve
 
 
@@ -26,10 +25,9 @@ def _build(
         }
     )
     config = base.model_copy(update={"search": search, "seed": 0})
+    lns = registry.lns(problem.name)
     return RandomDestroyMethod.build(
-        config,
-        problem=problem,
-        generate_start_solution=generate_initial_solution,
+        config, lns=lns, generate_start_solution=lns.problem.initial_solution
     )
 
 

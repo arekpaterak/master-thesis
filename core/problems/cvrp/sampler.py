@@ -8,8 +8,6 @@ from .config import CVRPDistribution
 
 
 class CVRPSampler(Sampler[CVRPInstance]):
-    problem_name = "cvrp"
-
     def __init__(self, distribution: CVRPDistribution, seed: int | None = None) -> None:
         assert distribution.distribution_of_locations == "uniform"
 

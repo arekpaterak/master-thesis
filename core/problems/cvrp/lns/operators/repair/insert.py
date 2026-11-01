@@ -23,8 +23,6 @@ class CVRPGreedyInsertRepair(RepairOperator[CVRPGraphSolution]):
     M, since one customer is placed per iteration.
     """
 
-    repair_type = "greedy_insert"
-    problem_name = "cvrp"
     requires_stitch = True
 
     def __init__(

@@ -11,9 +11,6 @@ from core.problems.cmstp.lns.arrays import CMSTPInstanceArrays, CMSTPSolutionArr
 class CMSTPGreedyInsertApplyRepair(NumbaApplyAndRepair):
     """Fused numba greedy attach apply-and-repair for CMSTP."""
 
-    problem_name = "cmstp"
-    repair_name = "greedy_insert"
-
     def _apply_parallel(
         self, solution: CMSTPSolutionArrays, instance: CMSTPInstanceArrays, nodes: np.ndarray
     ) -> CMSTPSolutionArrays:

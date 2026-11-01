@@ -11,9 +11,6 @@ from core.problems.tsp.lns.arrays import TSPInstanceArrays, TSPSolutionArrays
 class TSPGreedyInsertApplyRepair(NumbaApplyAndRepair):
     """Fused numba greedy cheapest-insertion apply-and-repair for TSP."""
 
-    problem_name = "tsp"
-    repair_name = "greedy_insert"
-
     def _apply_parallel(
         self, solution: TSPSolutionArrays, instance: TSPInstanceArrays, nodes: np.ndarray
     ) -> TSPSolutionArrays:

@@ -10,7 +10,7 @@ from pydantic import BaseModel, computed_field
 
 from core.eval.problem_setting import SyntheticProblemSetting
 from core.methods.base import Method
-from core.problems.dataset import DatasetSampler
+from core.problems import registry
 from core.problems.instance import BaseProblemInstance
 from core.problems.sampler import Sampler
 from core.problems.solution import BaseSolution
@@ -86,9 +86,9 @@ class Evaluator:
 
     def _build_sampler(self, setting: SyntheticProblemSetting) -> Sampler:
         if setting.dataset_path is None:
-            return Sampler.from_config(setting.problem, seed=setting.test_seed)
+            return registry.build_sampler(setting.problem, seed=setting.test_seed)
 
-        sampler = DatasetSampler.from_file(setting.problem.name, setting.dataset_path)
+        sampler = registry.build_dataset_sampler(setting.problem.name, setting.dataset_path)
         dataset_problem_size = sampler.problem_size
         if dataset_problem_size != setting.problem.size:
             raise ValueError(

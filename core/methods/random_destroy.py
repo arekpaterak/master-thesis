@@ -4,10 +4,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from core.lns.components import LNSComponents
 from core.lns.config import SearchParams
 from core.lns.improvement_step import build_random_node_destroy_step
 from core.methods.base import Method
-from core.problems import ProblemConfig
 
 
 class RandomDestroyMethodConfig(BaseModel):
@@ -22,12 +22,10 @@ class RandomDestroyMethod:
         cls,
         config: RandomDestroyMethodConfig,
         *,
-        problem: ProblemConfig,
+        lns: LNSComponents,
         generate_start_solution,
     ) -> Method:
-        improvement_step = build_random_node_destroy_step(
-            config.search, problem_name=problem.name, seed=config.seed
-        )
+        improvement_step = build_random_node_destroy_step(config.search, lns=lns, seed=config.seed)
 
         return Method(
             search=config.search,

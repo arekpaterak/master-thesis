@@ -11,8 +11,7 @@ from core.methods.construction import ConstructionMethod, ConstructionMethodConf
 from core.methods.nds_pretrained import NDSPretrainedConfig, NDSPretrainedMethod
 from core.methods.nds_trained import NDSTrainedConfig, NDSTrainedMethod
 from core.methods.random_destroy import RandomDestroyMethod, RandomDestroyMethodConfig
-from core.problems import ProblemConfig
-from core.problems.solve import generate_initial_solution
+from core.problems import ProblemConfig, registry
 
 MethodConfig = Annotated[
     NDSTrainedConfig | NDSPretrainedConfig | RandomDestroyMethodConfig | ConstructionMethodConfig,
@@ -32,22 +31,18 @@ def build_method(
     """Build a Method from any method config, dispatching on its concrete type."""
     # Construction methods build their own start solution and run no improvement search.
     if isinstance(config, ConstructionMethodConfig):
-        return ConstructionMethod.build(config, problem=problem)
+        return ConstructionMethod.build(config, problem=registry.problem(problem.name))
 
-    start_solution = with_warmup(
-        generate_initial_solution, problem_name=problem.name, search=config.search
-    )
+    lns = registry.lns(problem.name)
+    start_solution = with_warmup(lns.problem.initial_solution, lns=lns, search=config.search)
     if isinstance(config, NDSTrainedConfig):
-        return NDSTrainedMethod.build(config, generate_start_solution=start_solution, device=device)
+        return NDSTrainedMethod.build(
+            config, lns=lns, generate_start_solution=start_solution, device=device
+        )
     if isinstance(config, NDSPretrainedConfig):
         return NDSPretrainedMethod.build(
-            config,
-            problem=problem,
-            generate_start_solution=start_solution,
-            device=device,
+            config, lns=lns, generate_start_solution=start_solution, device=device
         )
     if isinstance(config, RandomDestroyMethodConfig):
-        return RandomDestroyMethod.build(
-            config, problem=problem, generate_start_solution=start_solution
-        )
+        return RandomDestroyMethod.build(config, lns=lns, generate_start_solution=start_solution)
     raise TypeError(f"Unknown method config: {type(config).__name__}")

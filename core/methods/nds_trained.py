@@ -7,6 +7,7 @@ import torch
 import yaml
 from pydantic import BaseModel, Field
 
+from core.lns.components import LNSComponents
 from core.lns.config import SearchParams
 from core.methods.base import Method
 from core.models.nds.config import TrainConfig
@@ -47,6 +48,7 @@ class NDSTrainedMethod:
         cls,
         config: NDSTrainedConfig,
         *,
+        lns: LNSComponents,
         generate_start_solution,
         device: torch.device,
     ) -> Method:
@@ -60,7 +62,7 @@ class NDSTrainedMethod:
         model.load_state_dict(ckpt["model"])
         model.eval()
 
-        improvement_step = build_nds_improvement_step(config.search, model=model)
+        improvement_step = build_nds_improvement_step(config.search, model=model, lns=lns)
 
         return Method(
             search=config.search,

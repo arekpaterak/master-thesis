@@ -5,8 +5,6 @@ from core.problems.cmstp.solution import CMSTPSolution
 
 
 class CMSTPGreedyInsertRepair(RepairOperator[CMSTPSolution]):
-    repair_type = "greedy_insert"
-    problem_name = "cmstp"
     requires_stitch = True
 
     def __init__(

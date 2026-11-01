@@ -12,8 +12,9 @@ with app.setup:
 
     from core.problems.cmstp import CMSTPSampler
     from core.problems.cvrp import CVRPSampler
-    from core.problems.solve import generate_initial_solution
+    from core.problems.cvrp.problem import PROBLEM as CVRP
     from core.problems.tsp import TSPSampler
+    from core.problems.tsp.problem import PROBLEM as TSP
     from figures.utils import project_root, save_figure, set_white_background
 
     set_white_background()
@@ -24,7 +25,7 @@ def _():
     mo.md(r"""
     # Start solutions (before warm-up)
 
-    The initial solutions produced directly by `generate_initial_solution`, before any
+    The initial solutions produced directly by each problem's `initial_solution`, before any
     random-improvement warm-up or search: a random tour (TSP), one route per customer
     (CVRP), and a star to the root (CMSTP).
     """)
@@ -52,7 +53,7 @@ def _(seed_ui):
 @app.cell
 def _(DEVICE, N, SEED):
     _instance = TSPSampler.for_size(N, seed=SEED)(1).to(DEVICE)
-    tsp_start = generate_initial_solution(_instance)
+    tsp_start = TSP.initial_solution(_instance)
     return (tsp_start,)
 
 
@@ -88,14 +89,14 @@ def _(TSP_FIGURE_PATH, tsp_fig, tsp_save_button):
 @app.cell
 def _(DEVICE, N, SEED):
     _instance = CVRPSampler.for_size(N, seed=SEED)(1).to(DEVICE)
-    cvrp_start = generate_initial_solution(_instance)
+    cvrp_start = CVRP.initial_solution(_instance)
     return (cvrp_start,)
 
 
 @app.cell
 def _(DEVICE, N, SEED):
     _instance = CMSTPSampler.for_size(N, seed=SEED)(1).to(DEVICE)
-    # cmstp_start = generate_initial_solution(_instance)
+    # cmstp_start = CMSTP.initial_solution(_instance)
     return
 
 

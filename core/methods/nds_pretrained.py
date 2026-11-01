@@ -6,6 +6,7 @@ from typing import Literal, Self
 import torch
 from pydantic import BaseModel, Field, model_validator
 
+from core.lns.components import LNSComponents
 from core.lns.config import SearchParams
 from core.methods.base import Method
 from core.models.nds.config import JointModelConfig, ModelConfig
@@ -19,7 +20,6 @@ from core.models.nds.pretrained.config import (
     ORIGINAL_NDS_ROUTE_AGGREGATION,
     validate_encoder_matches_original_nds,
 )
-from core.problems import ProblemConfig
 
 
 def _original_nds_model() -> JointModelConfig:
@@ -57,7 +57,7 @@ class NDSPretrainedMethod:
         cls,
         config: NDSPretrainedConfig,
         *,
-        problem: ProblemConfig,
+        lns: LNSComponents,
         generate_start_solution,
         device: torch.device,
     ) -> Method:
@@ -66,10 +66,10 @@ class NDSPretrainedMethod:
             load_original_pretrained_encoder_weights,
         )
 
-        if config.model.problem_name != problem.name:
+        if config.model.problem_name != lns.problem.name:
             raise ValueError(
                 f"nds-pretrained model.problem_name '{config.model.problem_name}' does not match "
-                f"the evaluation problem '{problem.name}'."
+                f"the evaluation problem '{lns.problem.name}'."
             )
         model = build_model(config.model).to(device)
         if not isinstance(getattr(model, "decoder", None), AutoregressiveNDSDecoder):
@@ -82,7 +82,7 @@ class NDSPretrainedMethod:
 
         model.eval()
 
-        improvement_step = build_nds_improvement_step(config.search, model=model)
+        improvement_step = build_nds_improvement_step(config.search, model=model, lns=lns)
 
         return Method(
             search=config.search,

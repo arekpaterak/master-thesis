@@ -10,6 +10,7 @@ from core.lns.operators.destroy.base import DestroyOperator
 from core.problems.solution import BaseSolution
 
 if TYPE_CHECKING:
+    from core.lns.components import LNSComponents
     from core.lns.config import SearchParams
 
 Mode = Literal["parallel", "sequential"]
@@ -81,13 +82,11 @@ def build_improvement_step(
     search: SearchParams,
     *,
     destroy: DestroyOperator,
-    problem_name: str,
+    lns: LNSComponents,
     seed: int = 0,
 ) -> ImprovementStep:
     mode, backend = _mode_and_backend(search.improvement_step_type)
-    apply_and_repair = build_apply_and_repair(
-        search, problem_name=problem_name, backend=backend, seed=seed
-    )
+    apply_and_repair = build_apply_and_repair(search, lns=lns, backend=backend, seed=seed)
     return ImprovementStep(
         destroy=destroy,
         apply_and_repair=apply_and_repair,
@@ -97,11 +96,9 @@ def build_improvement_step(
 
 
 def build_random_node_destroy_step(
-    search: SearchParams, *, problem_name: str, seed: int | None
+    search: SearchParams, *, lns: LNSComponents, seed: int | None
 ) -> ImprovementStep:
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
 
     destroy = RandomNodeDestroy(destruction_size=search.deconstruction_size, seed=seed)
-    return build_improvement_step(
-        search, destroy=destroy, problem_name=problem_name, seed=seed or 0
-    )
+    return build_improvement_step(search, destroy=destroy, lns=lns, seed=seed or 0)

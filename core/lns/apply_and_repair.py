@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import contextlib
-import importlib
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, ClassVar, Literal
 
@@ -18,8 +16,10 @@ from core.lns.operators.repair.base import RepairOperator
 from core.lns.utils import best_repair, remove_nodes
 from core.problems._numba_common import ACCEPT_GREEDY, ACCEPT_SA, ACCEPT_UNCONDITIONAL
 from core.problems.solution import BaseSolution
+from core.resolve import resolve
 
 if TYPE_CHECKING:
+    from core.lns.components import LNSComponents
     from core.lns.config import SearchParams
 
 
@@ -30,30 +30,9 @@ class ApplyAndRepair[S: BaseSolution, C: DestroySelection](ABC):
     ``(*B, K)`` candidate solution scored by objective without acceptance (training and
     the parallel search step). ``sequential`` threads the rollouts one after another
     through the incumbent with acceptance, returning a ``(*B,)`` solution.
-
-    Concrete numba-backed subclasses register under ``(problem_name, repair_name)`` and
-    declare a ``selection_type``; ``create`` resolves them. This is the injection point for
-    multiple repairs per problem.
     """
 
     selection_type: ClassVar[type[DestroySelection]]
-    problem_name: ClassVar[str | None] = None
-    repair_name: ClassVar[str | None] = None
-    _registry: ClassVar[dict[tuple[str, str], type[ApplyAndRepair]]] = {}
-
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        problem_name = cls.__dict__.get("problem_name")
-        repair_name = cls.__dict__.get("repair_name")
-        if problem_name is None or repair_name is None:
-            return
-        key = (problem_name, repair_name)
-        if key in ApplyAndRepair._registry:
-            raise ValueError(
-                f"Cannot register {cls.__name__} under {key!r}: "
-                f"already registered to {ApplyAndRepair._registry[key].__name__}."
-            )
-        ApplyAndRepair._registry[key] = cls
 
     @abstractmethod
     def parallel(self, solution: S, selection: C) -> S:
@@ -70,19 +49,6 @@ class ApplyAndRepair[S: BaseSolution, C: DestroySelection](ABC):
         Returns a final solution with ``(*B,)``.
         """
         ...
-
-    @classmethod
-    def create(cls, problem_name: str, repair_name: str, **kwargs: object) -> ApplyAndRepair:
-        # Importing the problem's apply_repair module registers its ApplyAndRepair(s).
-        with contextlib.suppress(ModuleNotFoundError):
-            importlib.import_module(f"core.problems.{problem_name}.lns.apply_repair")
-        subclass = ApplyAndRepair._registry.get((problem_name, repair_name))
-        if subclass is None:
-            raise ValueError(
-                f"No numba ApplyAndRepair registered for problem {problem_name!r} "
-                f"repair {repair_name!r}."
-            )
-        return subclass(**kwargs)
 
 
 class TorchApplyAndRepair[S: BaseSolution](ApplyAndRepair[S, NodeSelection]):
@@ -191,27 +157,29 @@ def acceptance_to_numba(accept: AcceptanceCriterion) -> tuple[int, float]:
 def build_apply_and_repair(
     search: SearchParams,
     *,
-    problem_name: str,
+    lns: LNSComponents,
     backend: Literal["numba", "torch"],
     seed: int = 0,
 ) -> ApplyAndRepair:
-    """Resolve the apply-and-repair for a problem: numba from the registry, torch by wrapping."""
     match backend:
         case "numba":
-            return ApplyAndRepair.create(
-                problem_name=problem_name,
-                repair_name=search.repair_type,
+            numba_cls = resolve(
+                lns.apply_and_repairs,
+                search.repair_type,
+                kind="numba apply-and-repair",
+                problem=lns.problem.name,
+            )
+            return numba_cls(
                 n_repairs=search.n_repairs,
                 first_repair_uses_selection_order=search.first_repair_uses_rollout_order,
                 insert_in_affected_routes_only=search.insert_in_affected_routes_only,
                 seed=seed,
             )
         case "torch":
-            repair = RepairOperator.create(
-                problem_name=problem_name,
-                repair_type=search.repair_type,
-                deconstruction_size=search.deconstruction_size,
+            repair_cls = resolve(
+                lns.repairs, search.repair_type, kind="repair", problem=lns.problem.name
             )
+            repair = repair_cls(deconstruction_size=search.deconstruction_size)
             return TorchApplyAndRepair(repair=repair, n_repairs=search.n_repairs)
         case _:
             raise ValueError(f"Unknown apply-and-repair backend: {backend!r}")
