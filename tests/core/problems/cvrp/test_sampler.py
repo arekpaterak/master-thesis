@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.problems.cvrp.config import CVRP
+from core.problems.cvrp.config import CVRPDistribution
 from core.problems.cvrp.sampler import CVRPSampler
 
 
@@ -10,7 +10,7 @@ from core.problems.cvrp.sampler import CVRPSampler
     [1, 5, 10],
 )
 def test_sampler_shape(batch_size: int):
-    config = CVRP.for_n(20)
+    config = CVRPDistribution.for_n(20)
     sampler = CVRPSampler(config)
 
     sample = sampler(batch_size)
@@ -30,7 +30,7 @@ def test_sampler_shape(batch_size: int):
 
 
 def test_sampler_value_range():
-    config = CVRP.for_n(20)
+    config = CVRPDistribution.for_n(20)
     sampler = CVRPSampler(config)
     batch_size = 5
 
@@ -58,7 +58,7 @@ def test_sampler_value_range():
 
 
 def test_sampler_determinism():
-    config = CVRP.for_n(20)
+    config = CVRPDistribution.for_n(20)
     seed = 42
     sampler1 = CVRPSampler(config, seed=seed)
     sampler2 = CVRPSampler(config, seed=seed)
@@ -79,7 +79,7 @@ def test_sampler_determinism():
 
 
 def test_sampler_different_seeds():
-    config = CVRP.for_n(20)
+    config = CVRPDistribution.for_n(20)
     seed1 = 42
     seed2 = 43
     sampler1 = CVRPSampler(config, seed=seed1)
@@ -95,7 +95,7 @@ def test_sampler_different_seeds():
 
 
 def test_access_single():
-    config = CVRP.for_n(20)
+    config = CVRPDistribution.for_n(20)
     sampler = CVRPSampler(config)
     batch_size = 5
 

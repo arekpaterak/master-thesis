@@ -3,7 +3,7 @@ import torch
 
 from core.lns.acceptance_criterion import UnconditionalAcceptance
 from core.problems.cmstp import CMSTPSolution
-from core.problems.cmstp.config import CMSTP
+from core.problems.cmstp.config import CMSTPDistribution
 from core.problems.cmstp.construction import star
 from core.problems.cmstp.lns.apply_repair import CMSTPGreedyInsertApplyRepair
 from core.problems.cmstp.sampler import CMSTPSampler
@@ -13,7 +13,9 @@ from tests.core.lns.operators.repair.apply_repair_templates import FeasibleApply
 class TestCMSTPApplyRepair(FeasibleApplyRepairContract):
     @pytest.fixture
     def complete_solution(self, batch_size: int) -> CMSTPSolution:
-        instance = CMSTPSampler(CMSTP(num_customers=20, capacity_raw=30), seed=0)(batch_size)
+        instance = CMSTPSampler(CMSTPDistribution(num_customers=20, capacity_raw=30), seed=0)(
+            batch_size
+        )
         return star(instance)
 
     def make_apply_repair(self, **kwargs: object) -> CMSTPGreedyInsertApplyRepair:

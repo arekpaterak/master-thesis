@@ -1,13 +1,15 @@
 import torch
 
 from core.problems.cmstp import CMSTPInstance
-from core.problems.cmstp.config import CMSTP
+from core.problems.cmstp.config import CMSTPDistribution
 from core.problems.cmstp.construction import esau_williams, star
 from core.problems.cmstp.sampler import CMSTPSampler
 
 
 def _random_batch(num_customers: int = 20, batch_size: int = 8) -> CMSTPInstance:
-    return CMSTPSampler(CMSTP(num_customers=num_customers, capacity_raw=30), seed=0)(batch_size)
+    return CMSTPSampler(CMSTPDistribution(num_customers=num_customers, capacity_raw=30), seed=0)(
+        batch_size
+    )
 
 
 def test_esau_williams_is_complete_and_feasible():

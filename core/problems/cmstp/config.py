@@ -10,10 +10,10 @@ from core.problems.cvrp.config import CAPACITY_PER_SIZE
 
 
 @dataclass(frozen=True)
-class CMSTP:
-    """Parametrized CMSTP problem definition consumed by the sampler.
+class CMSTPDistribution:
+    """Instance distribution for CMSTP, consumed by the sampler.
 
-    Fields mirror ``CVRP``: the instance data (depot + customers + demand + capacity) is
+    Fields mirror ``CVRPDistribution``: the instance data (depot + customers + demand + capacity) is
     identical; only the solution built over it differs (a capacitated spanning tree rooted
     at node 0 instead of a set of routes).
     """
@@ -27,8 +27,8 @@ class CMSTP:
     distribution_of_locations: Literal["uniform"] = "uniform"
 
     @classmethod
-    def for_n(cls, num_customers: int, **kwargs) -> CMSTP:
-        """Create a problem for a given size, reusing the CVRP capacity schedule."""
+    def for_n(cls, num_customers: int, **kwargs) -> CMSTPDistribution:
+        """Create a distribution for a given size, reusing the CVRP capacity schedule."""
         if num_customers not in CAPACITY_PER_SIZE:
             raise ValueError(
                 f"No standard capacity for n={num_customers}. "
@@ -54,7 +54,7 @@ class CMSTPConfig(BaseProblemConfig):
     min_coordinate: float = 0.0
     max_coordinate: float = 1.0
 
-    def to_problem(self) -> CMSTP:
+    def to_distribution(self) -> CMSTPDistribution:
         common = {
             "min_demand_raw": self.min_demand_raw,
             "max_demand_raw": self.max_demand_raw,
@@ -62,8 +62,8 @@ class CMSTPConfig(BaseProblemConfig):
             "max_coordinate": self.max_coordinate,
         }
         if self.capacity_raw is None:
-            return CMSTP.for_n(self.size, **common)
-        return CMSTP(
+            return CMSTPDistribution.for_n(self.size, **common)
+        return CMSTPDistribution(
             num_customers=self.size,
             capacity_raw=self.capacity_raw,
             **common,

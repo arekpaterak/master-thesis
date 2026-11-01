@@ -1,7 +1,7 @@
 import torch
 
 from core.problems.cmstp import CMSTPInstance, CMSTPSolution
-from core.problems.cmstp.config import CMSTP
+from core.problems.cmstp.config import CMSTPDistribution
 from core.problems.cmstp.construction import star
 from core.problems.cmstp.sampler import CMSTPSampler
 from core.states.destroy import initial_action_mask
@@ -15,7 +15,7 @@ def test_compute_subtree_ids_matches_branches():
 
 
 def test_star_start_is_complete_and_feasible():
-    instance = CMSTPSampler(CMSTP(num_customers=20, capacity_raw=30), seed=0)(4)
+    instance = CMSTPSampler(CMSTPDistribution(num_customers=20, capacity_raw=30), seed=0)(4)
     solution = star(instance)
     assert bool(solution.is_complete.all())
     assert bool(solution.is_feasible.all())
@@ -37,7 +37,7 @@ def test_node_degree_counts_variable_fan_out():
 
 
 def test_numpy_roundtrip_reproduces_subtree_ids():
-    instance = CMSTPSampler(CMSTP(num_customers=20, capacity_raw=30), seed=0)(4)
+    instance = CMSTPSampler(CMSTPDistribution(num_customers=20, capacity_raw=30), seed=0)(4)
     solution = star(instance)
     arrays = solution.to_numpy()
     rebuilt = CMSTPSolution.from_numpy(

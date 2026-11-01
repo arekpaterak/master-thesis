@@ -1,7 +1,7 @@
 import pytest
 
 from core.models.nds.models.joint import JointNDSModel
-from core.problems.cvrp import CVRP, CVRPSampler, CVRPSolution
+from core.problems.cvrp import CVRPDistribution, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import one_customer_per_route
 
 
@@ -12,7 +12,7 @@ def nds_test_model() -> JointNDSModel:
 
 @pytest.fixture
 def example_solution() -> CVRPSolution:
-    sampler = CVRPSampler(CVRP.for_n(20))
+    sampler = CVRPSampler(CVRPDistribution.for_n(20))
     instance = sampler(4)
     solution = one_customer_per_route(instance)
     return solution

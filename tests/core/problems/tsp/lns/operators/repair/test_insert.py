@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.problems.tsp import TSP, TSPSampler, TSPSolution
+from core.problems.tsp import TSPDistribution, TSPSampler, TSPSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.lns.operators.repair.insert import TSPGreedyInsertRepair
 from core.problems.tsp.solve import random_permutation
@@ -22,7 +22,7 @@ def batch_size(request) -> int:
 class TestTSPGreedyInsertRepair(RepairContract):
     @pytest.fixture
     def complete_solution(self, batch_size: int) -> TSPGraphSolution:
-        config = TSP(num_locations=20)
+        config = TSPDistribution(num_locations=20)
         instance = TSPSampler(config, seed=42)(batch_size)
         torch.manual_seed(42)
         sequence = random_permutation(instance).tour
@@ -73,7 +73,7 @@ class TestTSPGreedyInsertRepair(RepairContract):
         Uses a large destruction size relative to instance size, so insertion order
         actually interacts between free nodes and the pick order matters.
         """
-        config = TSP(num_locations=20)
+        config = TSPDistribution(num_locations=20)
         instance = TSPSampler(config, seed=42)(4)
         torch.manual_seed(42)
         sequence = random_permutation(instance).tour
@@ -88,7 +88,7 @@ class TestTSPGreedyInsertRepair(RepairContract):
 
     def test_inserts_at_arbitrary_position(self) -> None:
         """Repair must be able to insert mid-tour, not only at fragment ends."""
-        config = TSP(num_locations=5)
+        config = TSPDistribution(num_locations=5)
         instance = TSPSampler(config, seed=0)(1)
         # Tour 0 -> 1 -> 2 -> 3 -> 4 -> 0.
         solution = TSPGraphSolution.create_from_sequence(
@@ -113,7 +113,7 @@ class TestTSPGreedyInsertRepair(RepairContract):
         self, batch_size: int, num_locations: int, destruction_size: int
     ) -> None:
         """Insert repair also handles the sequence-based ``TSPSolution`` (not just the graph)."""
-        config = TSP(num_locations=num_locations)
+        config = TSPDistribution(num_locations=num_locations)
         instance = TSPSampler(config, seed=42)(batch_size)
 
         torch.manual_seed(42)

@@ -5,13 +5,13 @@ from core.models.nds.encoders.config import EncoderConfig, JointEncoderConfig, S
 from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.encoders.norm import InstanceNorm
 from core.models.nds.encoders.split import SplitNDSEncoder
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
     CVRPSolutionFeatureExtractor,
 )
 from core.problems.cvrp.solve import one_customer_per_route
-from core.problems.tsp import TSP, TSPSampler
+from core.problems.tsp import TSPDistribution, TSPSampler
 from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
     TSPSolutionFeatureExtractor,
@@ -20,7 +20,7 @@ from core.problems.tsp.solve import random_permutation
 
 
 def _cvrp_encoder_inputs(B: int, N: int):
-    sampler = CVRPSampler(CVRP.for_n(N))
+    sampler = CVRPSampler(CVRPDistribution.for_n(N))
     instance = sampler(B)
     solution = one_customer_per_route(instance)
     instance_features = CVRPInstanceFeatureExtractor()(instance)
@@ -29,7 +29,7 @@ def _cvrp_encoder_inputs(B: int, N: int):
 
 
 def _tsp_encoder_inputs(B: int, N: int):
-    instance = TSPSampler(TSP(num_locations=N), seed=42)(B)
+    instance = TSPSampler(TSPDistribution(num_locations=N), seed=42)(B)
     solution = random_permutation(instance, seed=42)
     instance_features = TSPInstanceFeatureExtractor()(instance)
     solution_features = TSPSolutionFeatureExtractor()(solution)
@@ -111,7 +111,7 @@ def test_split_encoder_final_norm_only_at_fusion_output() -> None:
 
 def test_initial_node_embedding() -> None:
     N = 20
-    sampler = CVRPSampler(CVRP.for_n(N))
+    sampler = CVRPSampler(CVRPDistribution.for_n(N))
     instance = sampler(4)
 
     instance_features = CVRPInstanceFeatureExtractor()(instance)

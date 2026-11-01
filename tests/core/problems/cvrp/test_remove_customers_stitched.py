@@ -1,13 +1,15 @@
 import pytest
 import torch
 
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 
 
 @pytest.fixture
 def instance():
-    config = CVRP(num_customers=5, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1)
+    config = CVRPDistribution(
+        num_customers=5, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1
+    )
     return CVRPSampler(config, seed=0)(1)
 
 

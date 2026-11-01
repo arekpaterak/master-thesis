@@ -8,12 +8,12 @@ from core.models.nds.models.joint import JointNDSModel
 from core.models.nds.module import NDSModule
 from core.models.runtime import AmpConfig
 from core.models.trainer import Trainer
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 
 
 def test_train():
     B, R, N = 4, 10, 20
-    sampler = CVRPSampler(CVRP.for_n(N))
+    sampler = CVRPSampler(CVRPDistribution.for_n(N))
     model = JointNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(
@@ -47,7 +47,7 @@ def test_train():
 def test_train_with_numba_apply_and_repair_backend():
     """End-to-end training step with the numba apply-and-repair backend."""
     B, R, N = 4, 10, 20
-    sampler = CVRPSampler(CVRP.for_n(N))
+    sampler = CVRPSampler(CVRPDistribution.for_n(N))
     model = JointNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(
@@ -76,7 +76,7 @@ def test_train_with_numba_apply_and_repair_backend():
 
 def test_train_with_amp_enabled():
     B, R, N = 4, 10, 20
-    sampler = CVRPSampler(CVRP.for_n(N))
+    sampler = CVRPSampler(CVRPDistribution.for_n(N))
     model = JointNDSModel(problem_name="cvrp")
 
     nds_module = NDSModule(
@@ -133,7 +133,7 @@ def test_encode_once_matches_recompute():
     module_baseline = NDSModule(config=build_config(False), model=model_baseline)
     module_once = NDSModule(config=build_config(True), model=model_once)
 
-    instance = CVRPSampler(CVRP.for_n(N))(B)
+    instance = CVRPSampler(CVRPDistribution.for_n(N))(B)
 
     torch.manual_seed(0)
     summary_baseline = module_baseline.training_step(

@@ -6,7 +6,7 @@ from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.destroy.base import DestroyOperator
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.lns.operators.destroy.selection import EdgeSelection
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.lns.apply_repair import CVRPGreedyInsertApplyRepair
 from core.problems.cvrp.solve import one_customer_per_route_graph
@@ -16,7 +16,7 @@ NUM_ROLLOUTS = 4
 
 @pytest.fixture
 def solution() -> CVRPGraphSolution:
-    instance = CVRPSampler(CVRP.for_n(20), seed=42)(4)
+    instance = CVRPSampler(CVRPDistribution.for_n(20), seed=42)(4)
     return one_customer_per_route_graph(instance)
 
 

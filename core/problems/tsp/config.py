@@ -7,8 +7,8 @@ from core.problems.config import BaseProblemConfig
 
 
 @dataclass(frozen=True)
-class TSP:
-    """Parametrized TSP problem definition consumed by the sampler."""
+class TSPDistribution:
+    """Instance distribution for TSP, consumed by the sampler."""
 
     num_locations: int
     min_coordinate: float = 0.0
@@ -29,8 +29,8 @@ class TSPConfig(BaseProblemConfig):
     min_coordinate: float = 0.0
     max_coordinate: float = 1.0
 
-    def to_problem(self) -> TSP:
-        return TSP(
+    def to_distribution(self) -> TSPDistribution:
+        return TSPDistribution(
             num_locations=self.size,
             min_coordinate=self.min_coordinate,
             max_coordinate=self.max_coordinate,

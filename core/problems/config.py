@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from core.problems.cvrp.config import CVRP
-    from core.problems.tsp.config import TSP
+    from core.problems.cmstp.config import CMSTPDistribution
+    from core.problems.cvrp.config import CVRPDistribution
+    from core.problems.tsp.config import TSPDistribution
 
 
 class BaseProblemConfig(BaseModel):
@@ -14,7 +15,7 @@ class BaseProblemConfig(BaseModel):
 
     Concrete problem configs (e.g. ``CVRPConfig``, ``TSPConfig``) subclass this, narrow
     ``name`` to a discriminating literal, add problem-specific fields, and build their
-    domain problem definition via ``to_problem``.
+    instance distribution via ``to_distribution``.
     """
 
     name: str
@@ -24,7 +25,7 @@ class BaseProblemConfig(BaseModel):
         description="Problem size (number of customers/locations).",
     )
 
-    def to_problem(self) -> CVRP | TSP:
+    def to_distribution(self) -> CVRPDistribution | TSPDistribution | CMSTPDistribution:
         raise NotImplementedError
 
 
