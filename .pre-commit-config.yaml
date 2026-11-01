@@ -7,3 +7,14 @@ repos:
         args: [--fix]
       # Run the formatter
       - id: ruff-format
+  - repo: local
+    hooks:
+      # Type check the whole project with the ty version locked in uv.lock.
+      # Filenames are not passed: a change in one file can produce
+      # diagnostics in another, so ty always checks the configured project.
+      - id: ty
+        name: ty
+        entry: uv run ty check
+        language: system
+        pass_filenames: false
+        types: [python]
