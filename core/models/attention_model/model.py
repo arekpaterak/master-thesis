@@ -1,10 +1,8 @@
 import torch
 import torch.nn as nn
-from torch_geometric.data import Batch
 
 from core.models.attention_model.decoder import Decoder
 from core.models.attention_model.encoder import Encoder
-from core.models.attention_model.preprocessing import make_complete_graph
 from core.models.entropy import entropy
 from core.models.rollout import Rollout
 from core.problems.cvrp import CVRPInstance
@@ -83,20 +81,8 @@ class AttentionModel(nn.Module):
         batch_size = instance.batch_size[0]
         n = instance.num_nodes
 
-        data = Batch.from_data_list(
-            [make_complete_graph(instance.locations[b]) for b in range(batch_size)]
-        )
-        assert data["edge_index"].shape[0] == 2, (
-            "Expected edge_index to have shape (2, total_edges)"
-        )
-
         features = self.feature_extractor(instance)
-        h_nodes, h_graph = self.encoder(
-            edge_index=data["edge_index"],
-            batch=data["batch"],
-            instance_features=features,
-        )
-        h_nodes = h_nodes.view(batch_size, n, -1)
+        h_nodes, h_graph = self.encoder(features)
 
         log_p_of_selected = []
         entropies, entropies_norm = [], []
