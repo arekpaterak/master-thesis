@@ -14,11 +14,10 @@ with app.setup:
     from core.eval.config import EvaluationConfig
     from core.eval.problem_setting import SyntheticProblemSetting
     from core.evaluation import Evaluator
-    from core.methods import build_method
     from core.problems import make_problem_config
     from figures.utils import project_root, save_figure
 
-    # build_method resolves the method's run_dir relative to the working directory, so
+    # Building a method resolves its run_dir relative to the working directory, so
     # normalise to the repo root regardless of where the notebook is launched from.
     os.chdir(project_root())
 
@@ -91,7 +90,7 @@ def _(BATCH_SIZE, CONFIG_PATH, DATASET_PATH, DEVICE, NUM_INSTANCES):
         config = deepcopy(eval_config.method)
         config.search.num_rollouts = num_rollouts
         config.search.num_improvement_steps = num_improvement_steps
-        return build_method(config, problem=problem, device=DEVICE)
+        return config.build(problem=problem, device=DEVICE)
 
     return method_for, setting
 

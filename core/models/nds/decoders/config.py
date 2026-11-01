@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from abc import abstractmethod
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from core.models.layers.cross_attention import CrossAttentionConfig
 from core.models.layers.decoder_query import DecoderQueryConfig
+from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
+from core.models.nds.decoders.base import DestroyDecoder
+from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
+from core.models.nds.decoders.one_pass.slot import SlotDecoder
 
 
 class _DecoderConfigBase(BaseModel):
@@ -21,6 +26,22 @@ class _DecoderConfigBase(BaseModel):
         ),
     )
 
+    @abstractmethod
+    def build(
+        self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0
+    ) -> DestroyDecoder:
+        """``num_context_nodes`` is the number of leading non-selectable nodes (e.g. the depot)."""
+        ...
+
+    def _shared(self, *, hidden_dim: int, num_heads: int) -> dict[str, Any]:
+        return dict(
+            hidden_dim=hidden_dim,
+            seed_dim=self.seed_dim,
+            poly_dim=self.poly_dim,
+            num_heads=num_heads,
+            with_poly=self.with_poly,
+        )
+
 
 class AutoregressiveDecoderConfig(_DecoderConfigBase):
     type: Literal["ar"] = "ar"
@@ -29,6 +50,14 @@ class AutoregressiveDecoderConfig(_DecoderConfigBase):
         title="Use hidden decoding state",
         description="Use hidden decoding state, updated with a GRU.",
     )
+
+    def build(
+        self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0
+    ) -> AutoregressiveNDSDecoder:
+        return AutoregressiveNDSDecoder(
+            **self._shared(hidden_dim=hidden_dim, num_heads=num_heads),
+            use_hidden_decoding_state=self.use_hidden_decoding_state,
+        )
 
 
 class SimpleOnePassDecoderConfig(_DecoderConfigBase):
@@ -51,6 +80,16 @@ class SimpleOnePassDecoderConfig(_DecoderConfigBase):
                 "The query needs a pooling, a learned base or context nodes; it cannot be empty."
             )
         return self
+
+    def build(
+        self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0
+    ) -> SimpleOnePassDecoder:
+        return SimpleOnePassDecoder(
+            **self._shared(hidden_dim=hidden_dim, num_heads=num_heads),
+            query=self.query,
+            cross_attention=self.cross_attention,
+            num_context_nodes=num_context_nodes,
+        )
 
 
 class SlotDecoderConfig(_DecoderConfigBase):
@@ -89,6 +128,16 @@ class SlotDecoderConfig(_DecoderConfigBase):
         if self.query.learned:
             raise ValueError("Slot query cannot be learned; the slot queries are the learned base.")
         return self
+
+    def build(self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0) -> SlotDecoder:
+        return SlotDecoder(
+            **self._shared(hidden_dim=hidden_dim, num_heads=num_heads),
+            num_slots=self.num_slots,
+            slot_self_attention=self.slot_self_attention,
+            cross_attention=self.cross_attention,
+            query=self.query,
+            num_context_nodes=num_context_nodes,
+        )
 
 
 DecoderConfig = Annotated[

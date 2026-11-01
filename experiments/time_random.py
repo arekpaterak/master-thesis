@@ -6,7 +6,6 @@ import torch
 
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptanceConfig
 from core.lns.config import SearchParams, StartSolutionParams
-from core.methods import build_method
 from core.methods.random_destroy import RandomDestroyMethodConfig
 from core.problems import make_problem_config, registry
 from core.solve import solve
@@ -38,7 +37,7 @@ def make_method(
     )
     cfg = RandomDestroyMethodConfig(seed=0, search=search)
     problem = make_problem_config(name="cvrp", size=100)
-    return build_method(cfg, problem=problem, device=DEVICE)
+    return cfg.build(problem=problem, device=DEVICE)
 
 
 def warmup(sampler, step_types: list[str]) -> None:

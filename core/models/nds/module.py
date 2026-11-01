@@ -19,7 +19,6 @@ from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.metrics import RolloutMetricsRecorder
 from core.models.nds.policy_loss import build_policy_loss
-from core.models.nds.reward import build_reward
 from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,
@@ -94,7 +93,7 @@ class NDSModule(Module):
             apply_and_repair=build_apply_and_repair(
                 config.search, lns=lns, backend=config.search.apply_and_repair_backend
             ),
-            compute_reward=build_reward(config.reward),
+            compute_reward=config.reward.build(),
             policy_loss=build_policy_loss(config.loss),
             baseline=build_baseline(config.baseline),
             amp_enabled=amp_enabled,

@@ -3,7 +3,6 @@ from __future__ import annotations
 from core.models.nds.config import ModelConfig, SplitModelConfig
 from core.problems import depot_offset
 
-from .decoders.factory import build_decoder
 from .models import NDSModel
 from .models.joint import JointNDSModel
 from .models.split import SplitNDSModel
@@ -23,8 +22,7 @@ def build_model(model_params: ModelConfig) -> NDSModel:
     if isinstance(model_params, SplitModelConfig):
         return SplitNDSModel(
             **shared_kwargs,
-            decoder=build_decoder(
-                decoder_config,
+            decoder=decoder_config.build(
                 hidden_dim=model_params.hidden_dim,
                 num_heads=model_params.num_heads,
                 num_context_nodes=depot_offset(model_params.problem_name),

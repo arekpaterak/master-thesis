@@ -4,7 +4,6 @@ import torch
 from core.models.layers.cross_attention import CrossAttentionConfig
 from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.nds.decoders.config import SimpleOnePassDecoderConfig, SlotDecoderConfig
-from core.models.nds.decoders.factory import build_decoder
 from core.models.nds.decoders.one_pass.simple import SimpleOnePassDecoder
 from core.models.nds.decoders.one_pass.slot import SlotDecoder
 
@@ -179,12 +178,11 @@ def test_simple_query_produces_logits(query_pooling, query_learned):
 
 @pytest.mark.parametrize("query_pooling, query_learned", QUERY_COMPONENTS)
 def test_simple_query_is_wired_to_factory(query_pooling, query_learned):
-    decoder = build_decoder(
-        SimpleOnePassDecoderConfig(
-            query=DecoderQueryConfig(pooling=query_pooling, learned=query_learned),
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SimpleOnePassDecoderConfig(
+        query=DecoderQueryConfig(pooling=query_pooling, learned=query_learned),
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
     )
@@ -207,10 +205,9 @@ def test_simple_skip_mha_produces_logits():
 
 
 def test_simple_skip_mha_is_wired_to_factory():
-    decoder = build_decoder(
-        SimpleOnePassDecoderConfig(
-            cross_attention=CrossAttentionConfig(skip=True), seed_dim=SEED_DIM, poly_dim=POLY_DIM
-        ),
+    decoder = SimpleOnePassDecoderConfig(
+        cross_attention=CrossAttentionConfig(skip=True), seed_dim=SEED_DIM, poly_dim=POLY_DIM
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
     )
@@ -237,12 +234,11 @@ def test_simple_cross_attn_residual_produces_logits():
 
 
 def test_simple_cross_attn_residual_is_wired_to_factory():
-    decoder = build_decoder(
-        SimpleOnePassDecoderConfig(
-            cross_attention=CrossAttentionConfig(residual=True),
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SimpleOnePassDecoderConfig(
+        cross_attention=CrossAttentionConfig(residual=True),
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
     )
@@ -298,8 +294,7 @@ def test_simple_context_handling_exclude_drops_context():
 
 @pytest.mark.parametrize("num_context_nodes, expected", [(1, "merge"), (0, "exclude")])
 def test_simple_context_is_wired_to_factory(num_context_nodes, expected):
-    decoder = build_decoder(
-        SimpleOnePassDecoderConfig(seed_dim=SEED_DIM, poly_dim=POLY_DIM),
+    decoder = SimpleOnePassDecoderConfig(seed_dim=SEED_DIM, poly_dim=POLY_DIM).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
         num_context_nodes=num_context_nodes,
@@ -345,12 +340,11 @@ def test_simple_attend_context_does_not_mutate_action_mask():
 
 @pytest.mark.parametrize("attend_context", [True, False])
 def test_simple_attend_context_is_wired_to_factory(attend_context):
-    decoder = build_decoder(
-        SimpleOnePassDecoderConfig(
-            cross_attention=CrossAttentionConfig(attend_to_context=attend_context),
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SimpleOnePassDecoderConfig(
+        cross_attention=CrossAttentionConfig(attend_to_context=attend_context),
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
         num_context_nodes=1,
@@ -362,13 +356,12 @@ def test_simple_attend_context_is_wired_to_factory(attend_context):
 
 @pytest.mark.parametrize("slot_self_attention", ["none", "pre", "post"])
 def test_slot_self_attention_config_is_wired_to_factory(slot_self_attention):
-    decoder = build_decoder(
-        SlotDecoderConfig(
-            num_slots=M,
-            slot_self_attention=slot_self_attention,
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SlotDecoderConfig(
+        num_slots=M,
+        slot_self_attention=slot_self_attention,
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
     )
@@ -396,13 +389,12 @@ def test_slot_cross_attn_residual_produces_logits():
 
 @pytest.mark.parametrize("cross_attn_residual", [True, False])
 def test_slot_cross_attn_residual_is_wired_to_factory(cross_attn_residual):
-    decoder = build_decoder(
-        SlotDecoderConfig(
-            num_slots=M,
-            cross_attention=CrossAttentionConfig(residual=cross_attn_residual),
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SlotDecoderConfig(
+        num_slots=M,
+        cross_attention=CrossAttentionConfig(residual=cross_attn_residual),
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
     )
@@ -424,13 +416,12 @@ def test_slot_skip_cross_attn_produces_logits():
 
 
 def test_slot_skip_cross_attn_is_wired_to_factory():
-    decoder = build_decoder(
-        SlotDecoderConfig(
-            num_slots=M,
-            cross_attention=CrossAttentionConfig(skip=True),
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SlotDecoderConfig(
+        num_slots=M,
+        cross_attention=CrossAttentionConfig(skip=True),
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
     )
@@ -454,13 +445,12 @@ def test_slot_node_pooling_produces_logits(node_pooling):
 
 @pytest.mark.parametrize("node_pooling", ["none", "mean", "max", "meanmax"])
 def test_slot_node_pooling_is_wired_to_factory(node_pooling):
-    decoder = build_decoder(
-        SlotDecoderConfig(
-            num_slots=M,
-            query=DecoderQueryConfig(pooling=node_pooling),
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SlotDecoderConfig(
+        num_slots=M,
+        query=DecoderQueryConfig(pooling=node_pooling),
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
     )
@@ -497,13 +487,12 @@ def test_slot_separate_context_grounds_without_pooling():
 
 
 def test_slot_separate_context_is_wired_to_factory():
-    decoder = build_decoder(
-        SlotDecoderConfig(
-            num_slots=M,
-            query=DecoderQueryConfig(pooling="none", context_handling="separate"),
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SlotDecoderConfig(
+        num_slots=M,
+        query=DecoderQueryConfig(pooling="none", context_handling="separate"),
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
         num_context_nodes=1,
@@ -530,13 +519,12 @@ def test_slot_attend_context_produces_logits():
 
 @pytest.mark.parametrize("attend_context", [True, False])
 def test_slot_attend_context_is_wired_to_factory(attend_context):
-    decoder = build_decoder(
-        SlotDecoderConfig(
-            num_slots=M,
-            cross_attention=CrossAttentionConfig(attend_to_context=attend_context),
-            seed_dim=SEED_DIM,
-            poly_dim=POLY_DIM,
-        ),
+    decoder = SlotDecoderConfig(
+        num_slots=M,
+        cross_attention=CrossAttentionConfig(attend_to_context=attend_context),
+        seed_dim=SEED_DIM,
+        poly_dim=POLY_DIM,
+    ).build(
         hidden_dim=HIDDEN_DIM,
         num_heads=NUM_HEADS,
         num_context_nodes=1,

@@ -9,7 +9,7 @@ with app.setup:
     import torch
 
     from core.lns.config import SearchParams, StartSolutionParams
-    from core.methods import RandomDestroyMethodConfig, build_method
+    from core.methods import RandomDestroyMethodConfig
     from core.problems import make_problem_config
     from core.problems.cmstp import CMSTPSampler
     from core.problems.cvrp import CVRPSampler
@@ -97,7 +97,7 @@ def _(
             start_solution_params=StartSolutionParams(num_improvement_steps=WARMUP_STEPS),
         )
         config = RandomDestroyMethodConfig(seed=SEED, search=search)
-        return build_method(config, problem=make_problem_config(problem_name, n), device=DEVICE)
+        return config.build(problem=make_problem_config(problem_name, n), device=DEVICE)
 
     return (build_random_method,)
 

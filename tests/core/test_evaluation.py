@@ -6,9 +6,10 @@ import torch
 from core.eval.problem_setting import SyntheticProblemSetting
 from core.evaluation import BatchEvaluationResult, Evaluator, PlotSnapshotCallback
 from core.lns.acceptance_criterion import GreedyAcceptanceConfig
+from core.lns.config import StartSolutionParams
 from core.methods.base import Method
-from core.methods.random_destroy import RANDOM_DESTROY_PRESETS, RandomDestroyMethod
-from core.problems import CVRPConfig, ProblemConfig, registry
+from core.methods.random_destroy import RANDOM_DESTROY_PRESETS
+from core.problems import CVRPConfig, ProblemConfig
 from core.problems.cvrp import CVRPSampler
 from core.problems.cvrp.config import CVRPDistribution
 from core.solve import solve
@@ -22,13 +23,11 @@ def _build(
         update={
             "num_improvement_steps": num_steps,
             "acceptance": GreedyAcceptanceConfig() if greedy else base.search.acceptance,
+            "start_solution_params": StartSolutionParams(num_improvement_steps=0),
         }
     )
     config = base.model_copy(update={"search": search, "seed": 0})
-    lns = registry.lns(problem.name)
-    return RandomDestroyMethod.build(
-        config, lns=lns, generate_start_solution=lns.problem.initial_solution
-    )
+    return config.build(problem=problem, device=torch.device("cpu"))
 
 
 @pytest.fixture
