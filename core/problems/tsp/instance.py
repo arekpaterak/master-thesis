@@ -14,6 +14,8 @@ class TSPInstance(BaseProblemInstance):
     locations: torch.Tensor
     """(B, N, 2) or (N, 2)"""
 
+    num_fixed_nodes = 0
+
     @classmethod
     def create(cls, locations: torch.Tensor) -> TSPInstance:
         batch_size = locations.shape[0] if locations.dim() == 3 else []

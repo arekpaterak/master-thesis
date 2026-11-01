@@ -18,7 +18,6 @@ from tqdm import tqdm
 from core.eval.config import EvaluationConfig, EvaluationRunConfig
 from core.eval.problem_setting import CVRPLibProblemSetting, SyntheticProblemSetting
 from core.evaluation import EvaluationResult, Evaluator, PlotSnapshotCallback
-from core.methods import build_method
 from core.methods.base import Method
 from core.methods.nds_trained import NDSTrainedConfig
 from core.problems import make_problem_config
@@ -193,7 +192,7 @@ def _build_method(eval_config: EvaluationConfig, device: torch.device) -> Method
     # NDS generalizes across sizes and the baselines only need problem.name, so the
     # method is built once and reused across every setting.
     representative_problem = make_problem_config(name=eval_config.problem_name, size=100)
-    return build_method(eval_config.method, problem=representative_problem, device=device)
+    return eval_config.method.build(problem=representative_problem, device=device)
 
 
 def _run_synthetic(

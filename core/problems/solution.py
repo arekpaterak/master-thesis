@@ -36,6 +36,11 @@ class BaseSolution(TensorClass, ABC):
     def num_unassigned(self) -> torch.Tensor: ...
 
     @abstractmethod
+    def remove_nodes(self, nodes: torch.Tensor, *, stitch: bool = False) -> Self:
+        """``nodes`` is [*B, M] for a single set or [*B, R, M] for R parallel sets."""
+        ...
+
+    @abstractmethod
     def objective(self) -> torch.Tensor: ...
 
     @abstractmethod

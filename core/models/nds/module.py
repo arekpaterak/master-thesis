@@ -8,6 +8,7 @@ import torch.optim as optim
 
 from core.lns.acceptance_criterion import build_criterion
 from core.lns.apply_and_repair import build_apply_and_repair
+from core.lns.components import LNSComponents
 from core.lns.start_solution import with_warmup
 from core.models.module import Module
 from core.models.nds.baseline import build_baseline
@@ -18,7 +19,6 @@ from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.metrics import RolloutMetricsRecorder
 from core.models.nds.policy_loss import build_policy_loss
-from core.models.nds.reward import build_reward
 from core.models.nds.training import (
     BatchTrainSummary,
     EpochTrainAccumulator,
@@ -30,7 +30,6 @@ from core.models.nds.validation import (
     NDSValidationStep,
 )
 from core.problems.instance import BaseProblemInstance
-from core.problems.solve import generate_initial_solution
 
 
 class NDSModule(Module):
@@ -42,6 +41,7 @@ class NDSModule(Module):
         *,
         config: TrainConfig,
         model: NDSModel,
+        lns: LNSComponents,
         improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
         validation_improvement_step_progress: Callable[
             [Iterable[int]], Iterable[int]
@@ -76,14 +76,12 @@ class NDSModule(Module):
         )
 
         generate_training_start_solution = with_warmup(
-            generate_initial_solution, problem_name=config.problem.name, search=config.search
+            lns.problem.initial_solution, lns=lns, search=config.search
         )
         generate_validation_start_solution = with_warmup(
-            generate_initial_solution,
-            problem_name=config.problem.name,
-            search=config.validation.search,
+            lns.problem.initial_solution, lns=lns, search=config.validation.search
         )
-        training_improvement_step = build_nds_improvement_step(config.search, model=model)
+        training_improvement_step = build_nds_improvement_step(config.search, model=model, lns=lns)
 
         self._training_step = NDSTrainingStep(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
@@ -93,11 +91,9 @@ class NDSModule(Module):
             generate_start_solution=generate_training_start_solution,
             improvement_step=training_improvement_step,
             apply_and_repair=build_apply_and_repair(
-                config.search,
-                problem_name=config.problem.name,
-                backend=config.search.apply_and_repair_backend,
+                config.search, lns=lns, backend=config.search.apply_and_repair_backend
             ),
-            compute_reward=build_reward(config.reward),
+            compute_reward=config.reward.build(),
             policy_loss=build_policy_loss(config.loss),
             baseline=build_baseline(config.baseline),
             amp_enabled=amp_enabled,
@@ -116,6 +112,7 @@ class NDSModule(Module):
         validation_improvement_step = build_nds_improvement_step(
             config.validation.search,
             model=model,
+            lns=lns,
             recorder=validation_rollout_recorder,
         )
 

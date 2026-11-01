@@ -153,26 +153,26 @@ class TSPSolution(BaseSolution):
             "tour_phase is only implemented for TSPGraphSolution, not the sequence representation."
         )
 
-    def remove_nodes(self, to_remove: torch.Tensor) -> TSPSolution:
+    def remove_nodes(self, nodes: torch.Tensor, *, stitch: bool = False) -> TSPSolution:
         """
         Deconstruct the TSP solution.
 
         Args:
-            to_remove: Tensor containing node indices to remove with shape [..., deconstruction_size].
+            nodes: Tensor containing node indices to remove with shape [..., deconstruction_size].
 
         Returns:
             A new solution with the specified nodes replaced by -1.
         """
         # 1. Determine the target batch shape by broadcasting leading dimensions
-        target_batch_shape = torch.broadcast_shapes(self.batch_size, to_remove.shape[:-1])
+        target_batch_shape = torch.broadcast_shapes(self.batch_size, nodes.shape[:-1])
 
         # 2. Expand tour and instance to match the new batch shape
         tour = self.tour.expand(*target_batch_shape, -1)
         instance = self.instance.expand(*target_batch_shape)
 
-        # 3. Create a mask identifying where nodes in the tour match nodes in to_remove
+        # 3. Create a mask identifying where nodes in the tour match the removed nodes
         # (..., num_nodes, 1) == (..., 1, deconstruction_size) -> (..., num_nodes)
-        is_removed = (tour.unsqueeze(-1) == to_remove.unsqueeze(-2)).any(dim=-1)
+        is_removed = (tour.unsqueeze(-1) == nodes.unsqueeze(-2)).any(dim=-1)
 
         # 4. Create the new tour with -1 at masked positions
         new_tour = tour.clone().masked_fill_(is_removed, self.UNASSIGNED)

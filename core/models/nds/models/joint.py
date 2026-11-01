@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Literal
 
 import torch.nn as nn
 
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
-from core.models.nds.decoders.factory import build_decoder
 from core.models.nds.encoders.config import JointEncoderConfig, PositionalEncodingConfig
 from core.models.nds.encoders.joint import JointEncoder
 from core.models.nds.seed_sampler import sample_seed
@@ -24,6 +22,7 @@ from core.problems.cvrp.features import (
     CVRPSolutionFeatureExtractor,
 )
 from core.problems.instance import BaseProblemInstance
+from core.problems.names import ProblemName
 from core.problems.solution import BaseSolution
 from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
@@ -44,7 +43,7 @@ class JointNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: Literal["tsp", "cvrp", "cmstp"],
+        problem_name: ProblemName,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -85,8 +84,7 @@ class JointNDSModel(nn.Module):
             encoder_config=encoder_config,
             positional=positional,
         )
-        self.decoder = build_decoder(
-            decoder or AutoregressiveDecoderConfig(),
+        self.decoder = (decoder or AutoregressiveDecoderConfig()).build(
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             num_context_nodes=depot_offset(problem_name),

@@ -21,9 +21,6 @@ class CVRPGreedyReconnectRepair(RepairOperator[CVRPGraphSolution]):
     non-removed predecessors), so the bound is ``2 * M``.
     """
 
-    repair_type = "greedy_reconnect"
-    problem_name = "cvrp"
-
     def __init__(
         self,
         *,

@@ -6,12 +6,12 @@ import torch
 from core.lns.acceptance_criterion import SimulatedAnnealingAcceptance
 from core.lns.apply_and_repair import TorchApplyAndRepair
 from core.lns.improvement_step import ImprovementStep
-from core.lns.operators.repair import RepairOperator
 from core.lns.search import AugmentationExchange, search
 from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
+from core.problems.cvrp.lns.operators.repair.reconnect import CVRPGreedyReconnectRepair
 
 B, A, N, R, DECONSTRUCTION_SIZE = 2, 3, 8, 4, 3
 
@@ -63,9 +63,7 @@ def test_rollout_plain_path_is_unchanged(model: JointNDSModel):
 
 def test_augmented_sa_search_with_model_reduces_to_batch_augmentation(model: JointNDSModel):
     solution = _make_solution(augment=A)
-    repair = RepairOperator.create(
-        "cvrp", "greedy_reconnect", deconstruction_size=DECONSTRUCTION_SIZE
-    )
+    repair = CVRPGreedyReconnectRepair(deconstruction_size=DECONSTRUCTION_SIZE)
     destroy = ModelNodeDestroy(model=model, deconstruction_size=DECONSTRUCTION_SIZE)
     improvement_step = ImprovementStep(
         destroy=destroy,

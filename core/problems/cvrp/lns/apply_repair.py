@@ -11,8 +11,6 @@ from core.problems.cvrp.lns.arrays import CVRPInstanceArrays, CVRPSolutionArrays
 class CVRPGreedyInsertApplyRepair(NumbaApplyAndRepair):
     """Fused numba greedy cheapest-insertion apply-and-repair for CVRP."""
 
-    problem_name = "cvrp"
-    repair_name = "greedy_insert"
     supports_affected_routes_only = True
 
     def _apply_parallel(

@@ -4,10 +4,10 @@ from pathlib import Path
 from typing import Literal, Self
 
 import torch
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 
 from core.lns.config import SearchParams
-from core.methods.base import Method
+from core.methods.base import Method, MethodConfigBase
 from core.models.nds.config import JointModelConfig, ModelConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig
@@ -19,7 +19,7 @@ from core.models.nds.pretrained.config import (
     ORIGINAL_NDS_ROUTE_AGGREGATION,
     validate_encoder_matches_original_nds,
 )
-from core.problems import ProblemConfig
+from core.problems import ProblemConfig, registry
 
 
 def _original_nds_model() -> JointModelConfig:
@@ -34,7 +34,7 @@ def _original_nds_model() -> JointModelConfig:
     )
 
 
-class NDSPretrainedConfig(BaseModel):
+class NDSPretrainedConfig(MethodConfigBase):
     """Config for evaluating the original NDS pretrained checkpoint as a baseline."""
 
     type: Literal["nds-pretrained"] = "nds-pretrained"
@@ -50,42 +50,28 @@ class NDSPretrainedConfig(BaseModel):
         validate_encoder_matches_original_nds(self.model.encoder)
         return self
 
-
-class NDSPretrainedMethod:
-    @classmethod
-    def build(
-        cls,
-        config: NDSPretrainedConfig,
-        *,
-        problem: ProblemConfig,
-        generate_start_solution,
-        device: torch.device,
-    ) -> Method:
+    def build(self, *, problem: ProblemConfig, device: torch.device) -> Method:
         from core.models.nds.pretrained.load import (
             load_original_pretrained_decoder_weights,
             load_original_pretrained_encoder_weights,
         )
 
-        if config.model.problem_name != problem.name:
+        if self.model.problem_name != problem.name:
             raise ValueError(
-                f"nds-pretrained model.problem_name '{config.model.problem_name}' does not match "
+                f"nds-pretrained model.problem_name '{self.model.problem_name}' does not match "
                 f"the evaluation problem '{problem.name}'."
             )
-        model = build_model(config.model).to(device)
+        model = build_model(self.model).to(device)
         if not isinstance(getattr(model, "decoder", None), AutoregressiveNDSDecoder):
             raise ValueError(
                 "Expected the original NDS checkpoint to be used with an autoregressive decoder."
             )
 
-        load_original_pretrained_encoder_weights(model.encoder, config.checkpoint_path)
-        load_original_pretrained_decoder_weights(model.decoder, config.checkpoint_path)
+        load_original_pretrained_encoder_weights(model.encoder, self.checkpoint_path)
+        load_original_pretrained_decoder_weights(model.decoder, self.checkpoint_path)
 
         model.eval()
 
-        improvement_step = build_nds_improvement_step(config.search, model=model)
-
-        return Method(
-            search=config.search,
-            generate_start_solution=generate_start_solution,
-            improvement_step=improvement_step,
-        )
+        lns = registry.lns(problem.name)
+        improvement_step = build_nds_improvement_step(self.search, model=model, lns=lns)
+        return Method.from_lns(self.search, lns=lns, improvement_step=improvement_step)

@@ -8,8 +8,6 @@ from core.problems.sampler import Sampler
 
 
 class CMSTPSampler(Sampler[CMSTPInstance]):
-    problem_name = "cmstp"
-
     def __init__(self, distribution: CMSTPDistribution, seed: int | None = None) -> None:
         assert distribution.distribution_of_locations == "uniform"
 
