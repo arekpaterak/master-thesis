@@ -21,6 +21,7 @@ class CVRPInstance(BaseProblemInstance):
     """(B, 1) or (1,) - cumulative scale factor applied by normalize_(). 1.0 for sampler instances."""
 
     DEPOT = 0
+    num_fixed_nodes = 1
 
     @classmethod
     def create(

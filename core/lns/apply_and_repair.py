@@ -13,7 +13,7 @@ from core.lns.acceptance_criterion import (
 )
 from core.lns.operators.destroy.selection import DestroySelection, NodeSelection
 from core.lns.operators.repair.base import RepairOperator
-from core.lns.utils import best_repair, remove_nodes
+from core.lns.utils import best_repair
 from core.problems._numba_common import ACCEPT_GREEDY, ACCEPT_SA, ACCEPT_UNCONDITIONAL
 from core.problems.solution import BaseSolution
 from core.resolve import resolve
@@ -59,7 +59,7 @@ class TorchApplyAndRepair[S: BaseSolution](ApplyAndRepair[S, NodeSelection]):
         self._n_repairs = n_repairs
 
     def parallel(self, solution: S, selection: NodeSelection) -> S:
-        deconstructed = remove_nodes(solution, selection.nodes, stitch=self._repair.requires_stitch)
+        deconstructed = solution.remove_nodes(selection.nodes, stitch=self._repair.requires_stitch)
         return best_repair(self._repair, deconstructed, self._n_repairs)
 
     def sequential(self, solution: S, selection: NodeSelection, accept: AcceptanceCriterion) -> S:
@@ -67,8 +67,8 @@ class TorchApplyAndRepair[S: BaseSolution](ApplyAndRepair[S, NodeSelection]):
         num_rollouts = nodes.shape[-2]
         current = solution
         for r in range(num_rollouts):
-            deconstructed = remove_nodes(
-                current, nodes[..., r, :], stitch=self._repair.requires_stitch
+            deconstructed = current.remove_nodes(
+                nodes[..., r, :], stitch=self._repair.requires_stitch
             )
             candidate = best_repair(self._repair, deconstructed, self._n_repairs)
             mask = accept(current, candidate)

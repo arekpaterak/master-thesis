@@ -270,7 +270,7 @@ class CVRPSolution(BaseSolution):
 
         return CVRPSolution.create(instance=instance, sequence=new_sequence)
 
-    def remove_nodes(self, nodes: torch.Tensor) -> CVRPSolution:
+    def remove_nodes(self, nodes: torch.Tensor, *, stitch: bool = False) -> CVRPSolution:
         """
         Alias for remove_customers, since in CVRP we only remove customers (not depots).
         """
