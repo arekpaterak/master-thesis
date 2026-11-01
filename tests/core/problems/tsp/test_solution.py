@@ -165,3 +165,9 @@ def test_tour_index(tour, expected):
     tour_index = solution.tour_index()
 
     assert torch.equal(tour_index, expected)
+
+
+def test_remove_nodes_rejects_stitch():
+    solution = random_permutation(TSPSampler(TSPDistribution(num_locations=5))(2))
+    with pytest.raises(ValueError, match="TSPGraphSolution"):
+        solution.remove_nodes(torch.tensor([[1], [2]]), stitch=True)

@@ -163,6 +163,8 @@ class TSPSolution(BaseSolution):
         Returns:
             A new solution with the specified nodes replaced by -1.
         """
+        if stitch:
+            raise ValueError("TSPSolution cannot stitch removed nodes; use TSPGraphSolution.")
         # 1. Determine the target batch shape by broadcasting leading dimensions
         target_batch_shape = torch.broadcast_shapes(self.batch_size, nodes.shape[:-1])
 
