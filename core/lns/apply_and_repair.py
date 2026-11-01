@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, ClassVar, Literal
 
+import numpy as np
 import torch
 
 from core.lns.acceptance_criterion import (
@@ -95,7 +96,10 @@ class NumbaApplyAndRepair[S: BaseSolution](ApplyAndRepair[S, NodeSelection], ABC
         self._n_repairs = n_repairs
         self._first_repair_uses_order = first_repair_uses_selection_order
         self._insert_in_affected_routes_only = insert_in_affected_routes_only
-        self._seed = seed
+        self._rng = np.random.default_rng(seed)
+
+    def _next_seed(self) -> int:
+        return int(self._rng.integers(2**31))
 
     def parallel(self, solution: S, selection: NodeSelection) -> S:
         out = self._apply_parallel(
