@@ -5,7 +5,7 @@ import torch
 from core.lns.acceptance_criterion import GreedyAcceptance
 from core.lns.apply_and_repair import TorchApplyAndRepair
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.lns._numba import apply_and_repair_parallel, apply_and_repair_sequential
 from core.problems.cvrp.lns.apply_repair import CVRPGreedyInsertApplyRepair
@@ -23,7 +23,7 @@ class TestCVRPApplyRepair(FeasibleApplyRepairContract, DegreeTwoApplyRepairMixin
 
     @pytest.fixture
     def complete_solution(self, batch_size: int) -> CVRPGraphSolution:
-        instance = CVRPSampler(CVRP.for_n(20), seed=42)(batch_size)
+        instance = CVRPSampler(CVRPDistribution.for_n(20), seed=42)(batch_size)
         return one_customer_per_route_graph(instance)
 
     def make_apply_repair(self, **kwargs: object) -> CVRPGreedyInsertApplyRepair:
@@ -48,7 +48,7 @@ class TestCVRPApplyRepair(FeasibleApplyRepairContract, DegreeTwoApplyRepairMixin
         assert (repaired.prev_nodes[..., 0] == CVRPGraphSolution.UNASSIGNED).all()
 
     def test_with_multidim_batch(self) -> None:
-        instance = CVRPSampler(CVRP.for_n(20), seed=1)(3).augment(2)
+        instance = CVRPSampler(CVRPDistribution.for_n(20), seed=1)(3).augment(2)
         solution = one_customer_per_route_graph(instance)
         assert solution.batch_size == torch.Size([3, 2])
 
@@ -75,7 +75,7 @@ class TestCVRPApplyRepair(FeasibleApplyRepairContract, DegreeTwoApplyRepairMixin
 
     def test_repaired_objective_matches_numba(self) -> None:
         """The rebuilt torch solution's objective equals the numba's objective."""
-        solution = one_customer_per_route_graph(CVRPSampler(CVRP.for_n(20), seed=42)(4))
+        solution = one_customer_per_route_graph(CVRPSampler(CVRPDistribution.for_n(20), seed=42)(4))
         selection = RandomNodeDestroy(destruction_size=10, seed=1).select(solution, 8)
         result = CVRPGreedyInsertApplyRepair(n_repairs=3, seed=7).parallel(solution, selection)
 
@@ -88,7 +88,7 @@ class TestCVRPApplyRepair(FeasibleApplyRepairContract, DegreeTwoApplyRepairMixin
 
     def test_quality_matches_torch(self) -> None:
         """Same repair policy, independent RNG -> objectives close in aggregate."""
-        solution = one_customer_per_route_graph(CVRPSampler(CVRP.for_n(20), seed=42)(4))
+        solution = one_customer_per_route_graph(CVRPSampler(CVRPDistribution.for_n(20), seed=42)(4))
         selection = RandomNodeDestroy(destruction_size=10, seed=1).select(solution, 8)
 
         torch_result = TorchApplyAndRepair(repair=CVRPGreedyInsertRepair(), n_repairs=5).parallel(

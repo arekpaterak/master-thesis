@@ -1,13 +1,13 @@
 import pytest
 import torch
 
-from core.problems.tsp import TSP, TSPSampler
+from core.problems.tsp import TSPDistribution, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
 from core.problems.tsp.solve import random_permutation_graph
 
 
 def test_create_from_sequence():
-    instance = TSPSampler(TSP(num_locations=4))(3)
+    instance = TSPSampler(TSPDistribution(num_locations=4))(3)
     sequence = torch.tensor(
         [
             [0, 1, 2, 3],
@@ -44,7 +44,7 @@ def test_create_from_sequence():
 
 
 def test_fail_to_create_with_unassigned_nodes():
-    instance = TSPSampler(TSP(num_locations=4))(2)
+    instance = TSPSampler(TSPDistribution(num_locations=4))(2)
     sequence = torch.tensor(
         [
             [0, 1, -1, 3],
@@ -86,7 +86,7 @@ def test_fail_to_create_with_unassigned_nodes():
     ],
 )
 def test_remove_edges(sequence, to_nodes, expected_next, expected_prev):
-    instance = TSPSampler(TSP(num_locations=4))(len(sequence))
+    instance = TSPSampler(TSPDistribution(num_locations=4))(len(sequence))
     solution = TSPGraphSolution.create_from_sequence(
         instance=instance, sequence=torch.tensor(sequence)
     )
@@ -98,7 +98,7 @@ def test_remove_edges(sequence, to_nodes, expected_next, expected_prev):
 
 
 def test_add_edges():
-    instance = TSPSampler(TSP(num_locations=4))(2)
+    instance = TSPSampler(TSPDistribution(num_locations=4))(2)
 
     solution = TSPGraphSolution.create_from_sequence(instance)
 
@@ -132,7 +132,7 @@ class TestMultiDimBatch:
     @pytest.fixture
     def solution_2d(self):
         B, R, N, K = 3, 5, 10, 2
-        instance = TSPSampler(TSP(num_locations=N))(B)
+        instance = TSPSampler(TSPDistribution(num_locations=N))(B)
         flat = random_permutation_graph(instance)  # (B,) batch
         # Use first K nodes per element
         nodes = torch.arange(K).unsqueeze(0).unsqueeze(0).expand(B, R, K)

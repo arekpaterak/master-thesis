@@ -55,7 +55,7 @@ class Sampler[T: BaseProblemInstance](ABC):
     @classmethod
     def from_config(cls, config: BaseProblemConfig, *, seed: int | None = None) -> Sampler:
         """Build a sampler from a problem config, honoring its problem-specific fields."""
-        return cls._resolve(config.name)(config.to_problem(), seed=seed)
+        return cls._resolve(config.name)(config.to_distribution(), seed=seed)
 
     @classmethod
     def _resolve(cls, problem_name: str) -> type[Sampler]:

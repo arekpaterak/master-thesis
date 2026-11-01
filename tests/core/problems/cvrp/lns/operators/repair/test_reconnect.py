@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.lns.operators.repair.reconnect import CVRPGreedyReconnectRepair
 from core.problems.cvrp.solve import one_customer_per_route_graph
@@ -22,7 +22,7 @@ def batch_size(request) -> int:
 class TestCVRPGreedyReconnectRepair(FeasibleRepairContract):
     @pytest.fixture
     def complete_solution(self, batch_size: int) -> CVRPGraphSolution:
-        config = CVRP.for_n(20)
+        config = CVRPDistribution.for_n(20)
         instance = CVRPSampler(config, seed=42)(batch_size)
         return one_customer_per_route_graph(instance)
 
@@ -56,7 +56,7 @@ class TestCVRPGreedyReconnectRepair(FeasibleRepairContract):
     def test_rollout_batch_shape(self, batch_size: int) -> None:
         """Repair must work when solution has 2D batch shape (B, R) from remove_customers."""
         B, R, N, K = batch_size, 5, 20, 3
-        config = CVRP.for_n(N)
+        config = CVRPDistribution.for_n(N)
         instance = CVRPSampler(config, seed=42)(B)
         solution = one_customer_per_route_graph(instance)
 
@@ -103,7 +103,7 @@ class TestCVRPGreedyReconnectRepair(FeasibleRepairContract):
 
     def test_repair_is_stochastic(self) -> None:
         """Repeated repair calls must produce different solutions so n_repairs > 1 is meaningful."""
-        config = CVRP.for_n(20)
+        config = CVRPDistribution.for_n(20)
         instance = CVRPSampler(config, seed=42)(4)
         solution = one_customer_per_route_graph(instance)
         destroy = RandomNodeDestroy[CVRPGraphSolution](destruction_size=8, seed=42)

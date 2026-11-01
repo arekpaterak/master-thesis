@@ -10,7 +10,7 @@ from core.methods.base import Method
 from core.methods.random_destroy import RANDOM_DESTROY_PRESETS, RandomDestroyMethod
 from core.problems import CVRPConfig, ProblemConfig
 from core.problems.cvrp import CVRPSampler
-from core.problems.cvrp.config import CVRP
+from core.problems.cvrp.config import CVRPDistribution
 from core.problems.solve import generate_initial_solution
 from core.solve import solve
 
@@ -123,7 +123,7 @@ def test_solve_returns_solution_with_matching_batch_shape(
 ) -> None:
     method = _build("source", tiny_eval_config.problem)
     sampler = CVRPSampler(
-        CVRP.for_n(tiny_eval_config.problem.size), seed=tiny_eval_config.test_seed
+        CVRPDistribution.for_n(tiny_eval_config.problem.size), seed=tiny_eval_config.test_seed
     )
     instance = sampler(2)
     final_solution = solve(method, instance)
@@ -162,7 +162,7 @@ def test_plot_snapshot_callback_warns_when_batch_too_small(
 def test_solve_on_step_fires_once_per_step_plus_initial() -> None:
     problem = CVRPConfig(size=20)
     method = _build("source", problem, num_steps=4)
-    sampler = CVRPSampler(CVRP.for_n(problem.size), seed=0)
+    sampler = CVRPSampler(CVRPDistribution.for_n(problem.size), seed=0)
     seen_steps: list[int] = []
 
     def on_step(step: int, _solution) -> None:

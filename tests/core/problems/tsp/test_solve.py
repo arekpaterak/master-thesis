@@ -1,13 +1,13 @@
 import pytest
 
-from core.problems.tsp import TSP, TSPInstance, TSPSampler
+from core.problems.tsp import TSPDistribution, TSPInstance, TSPSampler
 from core.problems.tsp.solution import TSPSolution
 from core.problems.tsp.solve import STRATEGIES
 
 
 @pytest.fixture
 def simple_instance() -> TSPInstance:
-    config = TSP(num_locations=10, distribution_of_locations="uniform")
+    config = TSPDistribution(num_locations=10, distribution_of_locations="uniform")
     sampler = TSPSampler(config)
     batch_size = 5
     return sampler(batch_size)
@@ -16,7 +16,7 @@ def simple_instance() -> TSPInstance:
 @pytest.fixture
 def sampled_instance(request) -> TSPInstance:
     batch_size, num_locations = request.param
-    config = TSP(
+    config = TSPDistribution(
         num_locations=num_locations,
         distribution_of_locations="uniform",
     )

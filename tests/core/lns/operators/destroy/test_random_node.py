@@ -2,13 +2,13 @@ import pytest
 
 from core.lns.operators.destroy.random_node import RandomNodeDestroy
 from core.problems.cmstp import CMSTPSolution
-from core.problems.cmstp.config import CMSTP
+from core.problems.cmstp.config import CMSTPDistribution
 from core.problems.cmstp.construction import star
 from core.problems.cmstp.sampler import CMSTPSampler
-from core.problems.cvrp import CVRP, CVRPSampler, CVRPSolution
+from core.problems.cvrp import CVRPDistribution, CVRPSampler, CVRPSolution
 from core.problems.cvrp.solve import one_customer_per_route
 from core.problems.solution import BaseSolution
-from core.problems.tsp import TSP, TSPSampler
+from core.problems.tsp import TSPDistribution, TSPSampler
 from core.problems.tsp.solution import TSPSolution
 from core.problems.tsp.solve import random_permutation
 
@@ -17,7 +17,7 @@ from core.problems.tsp.solve import random_permutation
 def tsp_solution() -> TSPSolution:
     batch_size = 3
     n = 10
-    instance = TSPSampler(TSP(num_locations=n))(batch_size)
+    instance = TSPSampler(TSPDistribution(num_locations=n))(batch_size)
     return random_permutation(instance)
 
 
@@ -25,7 +25,7 @@ def tsp_solution() -> TSPSolution:
 def cvrp_solution() -> CVRPSolution:
     batch_size = 3
     n = 10
-    instance = CVRPSampler(CVRP.without_capacity(n))(batch_size)
+    instance = CVRPSampler(CVRPDistribution.without_capacity(n))(batch_size)
     solution = one_customer_per_route(instance)
     return solution
 
@@ -34,7 +34,7 @@ def cvrp_solution() -> CVRPSolution:
 def cmstp_solution() -> CMSTPSolution:
     batch_size = 3
     n = 10
-    instance = CMSTPSampler(CMSTP(num_customers=n, capacity_raw=30), seed=0)(batch_size)
+    instance = CMSTPSampler(CMSTPDistribution(num_customers=n, capacity_raw=30), seed=0)(batch_size)
     return star(instance)
 
 

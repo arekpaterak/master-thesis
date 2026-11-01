@@ -1,13 +1,15 @@
 import pytest
 import torch
 
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 
 
 @pytest.fixture
 def instance():
-    config = CVRP(num_customers=4, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1)
+    config = CVRPDistribution(
+        num_customers=4, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1
+    )
     return CVRPSampler(config, seed=0)(2)
 
 
@@ -335,9 +337,11 @@ def test_is_not_complete_after_remove(instance):
 
 def test_multi_dim_batch_shape(instance):
     """All operations must work with (B, R) batch shapes from rollouts."""
-    from core.problems.cvrp import CVRP, CVRPSampler
+    from core.problems.cvrp import CVRPDistribution, CVRPSampler
 
-    config = CVRP(num_customers=4, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1)
+    config = CVRPDistribution(
+        num_customers=4, vehicle_capacity_raw=10, min_demand_raw=1, max_demand_raw=1
+    )
     instance = CVRPSampler(config, seed=0)(2)
 
     sequence = torch.tensor([[0, 1, 2, 0, 3, 4, 0], [0, 4, 3, 0, 2, 1, 0]], dtype=torch.long)

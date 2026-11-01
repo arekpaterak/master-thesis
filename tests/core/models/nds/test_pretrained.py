@@ -11,7 +11,7 @@ from core.models.nds.pretrained.load import (
     load_original_pretrained_decoder_weights,
     load_original_pretrained_encoder_weights,
 )
-from core.problems.cvrp import CVRP, CVRPSampler
+from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
     CVRPSolutionFeatureExtractor,
@@ -57,7 +57,7 @@ def test_load_pretrained_zeros_in_proj_bias() -> None:
 @requires_checkpoint
 def test_load_pretrained_encoder_forward() -> None:
     B, N = 2, 100
-    sampler = CVRPSampler(CVRP.for_n(N))
+    sampler = CVRPSampler(CVRPDistribution.for_n(N))
     instance = sampler(B)
     solution = one_customer_per_route(instance)
 
@@ -96,7 +96,7 @@ def test_load_pretrained_fails_on_incompatible_architecture() -> None:
 @requires_checkpoint
 def test_load_pretrained_model_forward() -> None:
     B, R, N, k = 2, 4, 100, 15
-    sampler = CVRPSampler(CVRP.for_n(N))
+    sampler = CVRPSampler(CVRPDistribution.for_n(N))
     instance = sampler(B)
     solution = one_customer_per_route(instance)
 
