@@ -11,7 +11,6 @@ from core.lns.apply_and_repair import build_apply_and_repair
 from core.lns.components import LNSComponents
 from core.lns.start_solution import with_warmup
 from core.models.module import Module
-from core.models.nds.baseline import build_baseline
 from core.models.nds.config import TrainConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.encoders.split import SplitNDSEncoder
@@ -95,7 +94,7 @@ class NDSModule(Module):
             ),
             compute_reward=config.reward.build(),
             policy_loss=build_policy_loss(config.loss),
-            baseline=build_baseline(config.baseline),
+            baseline=config.baseline.build(),
             amp_enabled=amp_enabled,
             amp_dtype=amp_dtype,
             scaler=self._scaler,

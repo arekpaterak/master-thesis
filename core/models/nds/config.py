@@ -17,7 +17,6 @@ from core.logging_config import LoggingConfig
 from core.models.nds.baseline import (
     BaselineConfig,
     SharedBaselineConfig,
-    build_baseline,
 )
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 from core.models.nds.encoders.config import (
@@ -271,7 +270,7 @@ class TrainConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_rollouts_for_baseline(self) -> Self:
         """The training rollout count must support the chosen baseline."""
-        required = build_baseline(self.baseline).min_rollouts()
+        required = self.baseline.min_rollouts
         if self.search.num_rollouts < required:
             raise ValueError(
                 f"baseline '{self.baseline.type}' requires search.num_rollouts >= "
