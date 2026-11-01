@@ -5,22 +5,11 @@ from core.models.attention_model.decoder import Decoder
 from core.models.attention_model.encoder import Encoder
 from core.models.entropy import entropy
 from core.models.rollout import Rollout
-from core.problems.cvrp import CVRPInstance
+from core.problems.cvrp.constructive.env import CVRPConstructiveEnv
 from core.problems.cvrp.features import CVRPInstanceFeatureExtractor
-from core.problems.cvrp.solution import CVRPSolution
 from core.problems.instance import BaseProblemInstance
-from core.problems.tsp import TSPInstance
+from core.problems.tsp.constructive.env import TSPConstructiveEnv
 from core.problems.tsp.features import TSPInstanceFeatureExtractor
-from core.problems.tsp.solution import TSPSolution
-from core.states.constructive import CVRPConstructiveState, TSPConstructiveState
-
-
-def rollout_to_solution(rollout: Rollout, instance: BaseProblemInstance):
-    if isinstance(instance, TSPInstance):
-        return TSPSolution.create(instance=instance, tour=rollout.actions)
-    if isinstance(instance, CVRPInstance):
-        return CVRPSolution.create(instance=instance, sequence=rollout.actions)
-    raise TypeError(f"Unsupported instance type: {type(instance)}")
 
 
 class AttentionModel(nn.Module):
@@ -41,8 +30,10 @@ class AttentionModel(nn.Module):
         match problem_name:
             case "cvrp":
                 self.feature_extractor = CVRPInstanceFeatureExtractor()
+                self.env = CVRPConstructiveEnv()
             case "tsp":
                 self.feature_extractor = TSPInstanceFeatureExtractor()
+                self.env = TSPConstructiveEnv()
             case _:
                 raise ValueError(f"Unsupported problem_name: {problem_name}")
 
@@ -89,35 +80,24 @@ class AttentionModel(nn.Module):
 
         actions: list[torch.Tensor]
 
-        if self.problem_name == "tsp":
-            if previous_actions is None:
-                state = TSPConstructiveState.initial(
-                    batch_size=batch_size,
-                    num_nodes=n,
-                    device=instance.locations.device,
-                )
-                actions = []
-            else:
-                state = TSPConstructiveState.from_partial(
-                    partial_tour=previous_actions,
-                    num_nodes=n,
-                )
-                actions = [previous_actions[:, i] for i in range(previous_actions.shape[1])]
-        elif self.problem_name == "cvrp":
-            state = CVRPConstructiveState.initial(
-                demand=instance.normalized_demand,
-                capacity=torch.ones_like(instance.capacity),
-            )
+        if previous_actions is None:
+            state = self.env.reset(instance)
             actions = []
         else:
-            raise ValueError("Unknown problem type.")
+            state = self.env.replay(instance, previous_actions)
+            actions = list(previous_actions.unbind(-1))
 
-        while not state.all_done():
-            log_p = self.decoder(node_embeddings=h_nodes, graph_embedding=h_graph, state=state)
+        while not self.env.all_done(state):
+            log_p = self.decoder(
+                node_embeddings=h_nodes,
+                graph_embedding=h_graph,
+                state=state,
+                action_mask=self.env.action_mask(state),
+            )
             selected = log_p.argmax(-1) if greedy else log_p.exp().multinomial(1).squeeze(-1)
             log_p_of_selected.append(log_p.gather(-1, selected.unsqueeze(-1)).squeeze(-1))
             actions.append(selected)
-            state = state.transition(selected)
+            state = self.env.step(state, selected)
 
             step_entropy = entropy(log_p)
             entropies.append(step_entropy.entropy)

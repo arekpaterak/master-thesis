@@ -5,7 +5,7 @@ import time
 import torch
 from pydantic import BaseModel
 
-from core.models.attention_model.model import AttentionModel, rollout_to_solution
+from core.models.attention_model.model import AttentionModel
 from core.problems.instance import BaseProblemInstance
 
 
@@ -91,8 +91,8 @@ def training_step(
         baseline_rollout = baseline.rollout(instance, greedy=True)
 
     # Minimize the cost
-    obj_model = rollout_to_solution(rollout, instance).objective()
-    obj_baseline = rollout_to_solution(baseline_rollout, instance).objective()
+    obj_model = model.env.to_solution(instance, rollout.actions).objective()
+    obj_baseline = model.env.to_solution(instance, baseline_rollout.actions).objective()
     advantage = (obj_model - obj_baseline).detach()
     # No sign flip here since we minimize the cost
     loss = (advantage * rollout.log_p).mean()
