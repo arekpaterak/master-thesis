@@ -52,6 +52,22 @@ class _DecoderConfigBase(BaseModel):
             attention_scaling=self.attention_scaling,
         )
 
+    @abstractmethod
+    def build(
+        self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0
+    ) -> DestroyDecoder:
+        """``num_context_nodes`` is the number of leading non-selectable nodes (e.g. the depot)."""
+        ...
+
+    def _shared(self, *, hidden_dim: int, num_heads: int) -> dict[str, Any]:
+        return dict(
+            hidden_dim=hidden_dim,
+            seed_dim=self.seed_dim,
+            poly_dim=self.poly_dim,
+            num_heads=num_heads,
+            with_poly=self.with_poly,
+        )
+
 
 class AutoregressiveDecoderConfig(_DecoderConfigBase):
     type: Literal["ar"] = "ar"
