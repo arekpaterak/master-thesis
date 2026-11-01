@@ -31,6 +31,9 @@ with app.setup:
             self._destroy = destroy
             self._repair = repair
 
+        def reset(self) -> None:
+            pass
+
         @contextmanager
         def search_session(self, solution: BaseSolution):
             yield

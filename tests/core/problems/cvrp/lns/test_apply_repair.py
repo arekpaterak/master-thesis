@@ -80,11 +80,31 @@ class TestCVRPApplyRepair(FeasibleApplyRepairContract, DegreeTwoApplyRepairMixin
         result = CVRPGreedyInsertApplyRepair(n_repairs=3, seed=7).parallel(solution, selection)
 
         nodes = selection.nodes.cpu().numpy().astype(np.int64)
+        first_base_seed = int(np.random.default_rng(7).integers(2**31))
         _out, objective = apply_and_repair_parallel(
-            solution.to_numpy(), solution.instance.to_numpy(), nodes, n_repairs=3, base_seed=7
+            solution.to_numpy(),
+            solution.instance.to_numpy(),
+            nodes,
+            n_repairs=3,
+            base_seed=first_base_seed,
         )
 
         assert torch.allclose(result.objective().double(), torch.from_numpy(objective), atol=1e-6)
+
+    def test_each_call_draws_new_randomness_reproducibly(self) -> None:
+        solution = one_customer_per_route_graph(CVRPSampler(CVRPDistribution.for_n(20), seed=42)(4))
+        selection = RandomNodeDestroy(destruction_size=10, seed=1).select(solution, 8)
+        a = CVRPGreedyInsertApplyRepair(n_repairs=1, seed=7)
+        b = CVRPGreedyInsertApplyRepair(n_repairs=1, seed=7)
+
+        first, second = a.parallel(solution, selection), a.parallel(solution, selection)
+
+        assert not torch.equal(first.objective(), second.objective())
+        assert torch.equal(first.objective(), b.parallel(solution, selection).objective())
+        assert torch.equal(second.objective(), b.parallel(solution, selection).objective())
+
+        a.reset()
+        assert torch.equal(first.objective(), a.parallel(solution, selection).objective())
 
     def test_quality_matches_torch(self) -> None:
         """Same repair policy, independent RNG -> objectives close in aggregate."""

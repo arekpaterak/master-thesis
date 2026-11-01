@@ -33,6 +33,7 @@ def search[S: BaseSolution](
     step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
 ) -> SearchResult:
     criterion.reset()
+    improvement_step.reset()
     best = solution
     history: list[float] = []
     with improvement_step.search_session(solution):

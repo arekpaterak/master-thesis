@@ -21,7 +21,7 @@ class CVRPGreedyInsertApplyRepair(NumbaApplyAndRepair):
             instance,
             nodes,
             n_repairs=self._n_repairs,
-            base_seed=self._seed,
+            base_seed=self._next_seed(),
             first_repair_uses_order=self._first_repair_uses_order,
             insert_in_affected_routes_only=self._insert_in_affected_routes_only,
         )
@@ -43,7 +43,7 @@ class CVRPGreedyInsertApplyRepair(NumbaApplyAndRepair):
             accept_kind=accept_kind,
             temperature=temperature,
             eps=EPS,
-            base_seed=self._seed,
+            base_seed=self._next_seed(),
             first_repair_uses_order=self._first_repair_uses_order,
             insert_in_affected_routes_only=self._insert_in_affected_routes_only,
         )
