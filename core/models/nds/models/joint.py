@@ -5,6 +5,7 @@ from contextlib import contextmanager
 
 import torch.nn as nn
 
+from core.envs.destroy import DestroyEnv
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 from core.models.nds.encoders.config import JointEncoderConfig, PositionalEncodingConfig
 from core.models.nds.encoders.joint import JointEncoder
@@ -28,7 +29,6 @@ from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
     TSPSolutionFeatureExtractor,
 )
-from core.states.destroy import initial_action_mask
 
 
 class JointNDSModel(nn.Module):
@@ -113,15 +113,12 @@ class JointNDSModel(nn.Module):
         solution_features = self.solution_feature_extractor(solution).to(device)
 
         h_nodes = self.encoder(instance_features, solution_features)  # (B, N, D)
-        action_mask = initial_action_mask(
-            self.problem_name, batch_size=B, num_nodes=h_nodes.shape[1], device=device
-        )  # (B, N)
-
+        env = DestroyEnv(horizon=deconstruction_size)
         rollout = self.decoder.rollout(
             h_nodes=h_nodes,
             seed=seed,
-            action_mask=action_mask,
-            deconstruction_size=deconstruction_size,
+            env=env,
+            state=env.reset(instance, device=device),
             greedy=greedy,
         )
         return unflatten_rollout(rollout, batch_dims)

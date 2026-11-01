@@ -5,6 +5,7 @@ from contextlib import contextmanager
 
 import torch.nn as nn
 
+from core.envs.destroy import DestroyEnv
 from core.models.nds.decoders.base import DestroyDecoder
 from core.models.nds.encoders.config import PositionalEncodingConfig, SplitEncoderConfig
 from core.models.nds.encoders.split import InstanceCache, SplitNDSEncoder
@@ -15,7 +16,6 @@ from core.models.utils import get_model_device
 from core.problems.instance import BaseProblemInstance
 from core.problems.names import ProblemName
 from core.problems.solution import BaseSolution
-from core.states.destroy import initial_action_mask
 
 
 class SplitNDSModel(nn.Module):
@@ -111,16 +111,12 @@ class SplitNDSModel(nn.Module):
 
         h_nodes = self.encoder(cache, solution)
 
-        N = h_nodes.shape[1]
-        action_mask = initial_action_mask(
-            self.problem_name, batch_size=B, num_nodes=N, device=device
-        )  # (B, N)
-
+        env = DestroyEnv(horizon=deconstruction_size)
         rollout = self.decoder.rollout(
             h_nodes=h_nodes,
             seed=seed,
-            action_mask=action_mask,
-            deconstruction_size=deconstruction_size,
+            env=env,
+            state=env.reset(instance, device=device),
             greedy=greedy,
         )
         return unflatten_rollout(rollout, batch_dims)

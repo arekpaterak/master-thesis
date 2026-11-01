@@ -1,9 +1,9 @@
 import pytest
 import torch
 
+from core.envs.destroy import DestroyState
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.seed_sampler import sample_seed
-from core.states.destroy import CVRPDestroyState
 
 B, rollout_size, N, seed_dim = 2, 10, 4, 10
 
@@ -14,9 +14,9 @@ def test_decoder_step(use_hidden_decoding_state: bool) -> None:
     embedded_nodes = torch.randn(B, N + 1, 128)
     z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=seed_dim)
 
-    problem_state = CVRPDestroyState.build_initial(
-        batch_size=B, rollout_size=rollout_size, num_nodes=N + 1, device=embedded_nodes.device
-    )
+    action_mask = torch.zeros(B, 1, N + 1, dtype=torch.bool)
+    action_mask[..., 0] = True
+    problem_state = DestroyState(action_mask=action_mask, last_node_idx=None, num_selected=0)
     decoder_state = decoder.build_initial_state(batch_size=B, rollout_size=rollout_size)
     cache = decoder.build_cache(h_nodes=embedded_nodes, seed=z)
 

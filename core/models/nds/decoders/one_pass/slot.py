@@ -5,6 +5,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 
+from core.envs.destroy import DestroyEnv, DestroyState
 from core.models.entropy import entropy
 from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.compatibility_scorer import CompatibilityScorer
@@ -149,16 +150,16 @@ class SlotDecoder(OnePassDestroyDecoder):
         *,
         h_nodes: torch.Tensor,
         seed: torch.Tensor,
-        action_mask: torch.Tensor,
-        deconstruction_size: int,
+        env: DestroyEnv,
+        state: DestroyState,
         greedy: bool,
         **kwargs,
     ) -> Rollout:
-        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
-        assert deconstruction_size == self.num_slots
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), state.action_mask: (B, 1, N)
+        assert env.horizon == self.num_slots
 
         scores = self.forward(
-            h_nodes=h_nodes, seed=seed, action_mask=action_mask
+            h_nodes=h_nodes, seed=seed, action_mask=state.action_mask.squeeze(1)
         )  # (B, R, M, N) raw, forbidden nodes at -inf
         B, R, M, N = scores.shape
 

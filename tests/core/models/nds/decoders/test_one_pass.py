@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from core.envs.destroy import DestroyEnv, DestroyState
 from core.models.layers.cross_attention import CrossAttentionConfig
 from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.nds.decoders.config import SimpleOnePassDecoderConfig, SlotDecoderConfig
@@ -12,6 +13,10 @@ HIDDEN_DIM = 16
 SEED_DIM = 8
 POLY_DIM = 32
 NUM_HEADS = 2
+
+
+def _initial_state(action_mask: torch.Tensor) -> DestroyState:
+    return DestroyState(action_mask=action_mask.unsqueeze(1), last_node_idx=None, num_selected=0)
 
 
 def _simple(
@@ -97,8 +102,8 @@ def test_without_poly_greedy_is_seed_independent(make_decoder):
         return decoder.rollout(
             h_nodes=h_nodes,
             seed=seed,
-            action_mask=action_mask,
-            deconstruction_size=M,
+            env=DestroyEnv(horizon=M),
+            state=_initial_state(action_mask),
             greedy=True,
             **extra_kwargs,
         ).actions
@@ -120,8 +125,8 @@ def test_produces_M_actions(make_decoder, greedy):
     rollout = decoder.rollout(
         h_nodes=h_nodes,
         seed=seed,
-        action_mask=action_mask,
-        deconstruction_size=M,
+        env=DestroyEnv(horizon=M),
+        state=_initial_state(action_mask),
         greedy=greedy,
         **extra_kwargs,
     )
@@ -143,8 +148,8 @@ def test_masked_nodes_not_selected(make_decoder):
     rollout = decoder.rollout(
         h_nodes=h_nodes,
         seed=seed,
-        action_mask=action_mask,
-        deconstruction_size=M,
+        env=DestroyEnv(horizon=M),
+        state=_initial_state(action_mask),
         greedy=False,
         **extra_kwargs,
     )
@@ -547,8 +552,8 @@ def test_slot_actions_are_distinct(greedy):
     rollout = decoder.rollout(
         h_nodes=h_nodes,
         seed=seed,
-        action_mask=action_mask,
-        deconstruction_size=M,
+        env=DestroyEnv(horizon=M),
+        state=_initial_state(action_mask),
         greedy=greedy,
     )
 

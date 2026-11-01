@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 
+from core.envs.destroy import DestroyEnv, DestroyState
 from core.models.entropy import entropy
 from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.compatibility_scorer import CompatibilityScorer
@@ -86,13 +87,16 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         *,
         h_nodes: torch.Tensor,
         seed: torch.Tensor,
-        action_mask: torch.Tensor,
-        deconstruction_size: int,
+        env: DestroyEnv,
+        state: DestroyState,
         greedy: bool,
         **kwargs,
     ) -> Rollout:
-        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
-        logits = self.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)  # (B, R, N)
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), state.action_mask: (B, 1, N)
+        deconstruction_size = env.horizon
+        logits = self.forward(
+            h_nodes=h_nodes, seed=seed, action_mask=state.action_mask.squeeze(1)
+        )  # (B, R, N)
 
         log_p_detached = logits.detach()
         if greedy:
