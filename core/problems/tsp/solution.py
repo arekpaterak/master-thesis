@@ -163,12 +163,17 @@ class TSPSolution(BaseSolution):
         Returns:
             A new solution with the specified nodes replaced by -1.
         """
-        # 1. Determine the target batch shape by broadcasting leading dimensions
-        target_batch_shape = torch.broadcast_shapes(self.batch_size, nodes.shape[:-1])
+        if stitch:
+            raise ValueError("TSPSolution cannot stitch removed nodes; use TSPGraphSolution.")
+        # 1. Append rollout dims, then broadcast the batch to the leading dims of nodes
+        expanded = self
+        for _ in range(nodes.dim() - 1 - self.batch_dims):
+            expanded = expanded.unsqueeze(-1)
+        target_batch_shape = torch.broadcast_shapes(expanded.batch_size, nodes.shape[:-1])
 
         # 2. Expand tour and instance to match the new batch shape
-        tour = self.tour.expand(*target_batch_shape, -1)
-        instance = self.instance.expand(*target_batch_shape)
+        tour = expanded.tour.expand(*target_batch_shape, -1)
+        instance = expanded.instance.expand(*target_batch_shape)
 
         # 3. Create a mask identifying where nodes in the tour match the removed nodes
         # (..., num_nodes, 1) == (..., 1, deconstruction_size) -> (..., num_nodes)

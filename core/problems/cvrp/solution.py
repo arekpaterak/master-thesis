@@ -274,6 +274,8 @@ class CVRPSolution(BaseSolution):
         """
         Alias for remove_customers, since in CVRP we only remove customers (not depots).
         """
+        if stitch:
+            raise ValueError("CVRPSolution cannot stitch removed nodes; use CVRPGraphSolution.")
         return self.remove_customers(nodes)
 
     def routes(self) -> list[torch.Tensor]:
