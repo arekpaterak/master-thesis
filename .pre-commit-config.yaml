@@ -1,9 +1,17 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.6
+  - repo: local
     hooks:
       # Run the linter
       - id: ruff-check
-        args: [--fix]
+        name: ruff check
+        entry: uv run --frozen --only-group dev ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
       # Run the formatter
       - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen --only-group dev ruff format --force-exclude
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true

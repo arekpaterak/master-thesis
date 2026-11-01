@@ -9,8 +9,8 @@ with app.setup:
     import marimo as mo
     import matplotlib.pyplot as plt
     import polars as pl
-
     import wandb
+
     from figures.runs import METHOD_COLORS, TRAIN_RUNS, WANDB_PROJECT
     from figures.utils import (
         figsize,
