@@ -108,6 +108,11 @@ def test_deconstructed():
         ([[0, 1, 2, 3]], [[1]], [[0, -1, 2, 3]]),
         ([[0, -1, 2, 3]], [[1, 2]], [[0, -1, -1, 3]]),
         ([[0, 1, 2, 3]], [[0, 4]], [[-1, 1, 2, 3]]),
+        (
+            [[0, 1, 2, 3], [3, 2, 1, 0]],
+            [[[1], [2]], [[3], [0]]],
+            [[[0, -1, 2, 3], [0, 1, -1, 3]], [[-1, 2, 1, 0], [3, 2, 1, -1]]],
+        ),
     ],
 )
 def test_remove_nodes(tour, to_remove, expected):
@@ -165,3 +170,9 @@ def test_tour_index(tour, expected):
     tour_index = solution.tour_index()
 
     assert torch.equal(tour_index, expected)
+
+
+def test_remove_nodes_rejects_stitch():
+    solution = random_permutation(TSPSampler(TSPDistribution(num_locations=5))(2))
+    with pytest.raises(ValueError, match="TSPGraphSolution"):
+        solution.remove_nodes(torch.tensor([[1], [2]]), stitch=True)

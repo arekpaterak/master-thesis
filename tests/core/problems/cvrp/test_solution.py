@@ -515,3 +515,9 @@ def test_remove_customers(sequence, to_remove, expected):
     assert deconstructed_solution.is_deconstructed.all()
     assert deconstructed_solution.instance.batch_size == deconstructed_solution.batch_size
     assert deconstructed_solution.instance.locations.shape[:-2] == deconstructed_solution.batch_size
+
+
+def test_remove_nodes_rejects_stitch():
+    solution = one_customer_per_route(CVRPSampler(CVRPDistribution.for_n(20))(2))
+    with pytest.raises(ValueError, match="CVRPGraphSolution"):
+        solution.remove_nodes(torch.tensor([[1], [2]]), stitch=True)
