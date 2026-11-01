@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +20,7 @@ from core.problems import make_problem_config
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _TRAIN_SCRIPT = _PROJECT_ROOT / "experiments" / "train.py"
+_RUNS_DIR = _PROJECT_ROOT / "experiments" / "runs"
 
 
 def _minimal_config(model: ModelConfig) -> TrainConfig:
@@ -73,13 +75,24 @@ _CASES = [
     ids=[f"{problem}-{model.encoder_mode}" for problem, model in _CASES],
 )
 def test_nds_runnable_as_script(tmp_path, problem, model):
-    config_file = tmp_path / "config.yml"
+    config_file = tmp_path / f"test-train-{model.encoder_mode}.yml"
     config_file.write_text(yaml.dump(_minimal_config(model).model_dump()))
+    run_dir = _RUNS_DIR / problem / config_file.stem
 
-    result = subprocess.run(
-        [sys.executable, str(_TRAIN_SCRIPT), str(config_file), "--problem.name", problem],
-        capture_output=True,
-        text=True,
-        cwd=_PROJECT_ROOT,
-    )
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(_TRAIN_SCRIPT),
+                str(config_file),
+                "--problem.name",
+                problem,
+                "--tmp",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=_PROJECT_ROOT,
+        )
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
     assert result.returncode == 0, result.stderr
