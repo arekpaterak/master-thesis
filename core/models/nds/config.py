@@ -34,6 +34,7 @@ from core.models.nds.reward import AbsoluteRewardConfig, RewardConfig
 from core.models.optimizer import OptimizerConfig
 from core.models.runtime import AmpConfig, CompileConfig
 from core.problems import CVRPConfig, ProblemConfig
+from core.problems.names import ProblemName
 
 
 class _ModelConfigBase(BaseModel):
@@ -43,7 +44,7 @@ class _ModelConfigBase(BaseModel):
     :data:`ModelParams`.
     """
 
-    problem_name: Literal["tsp", "cvrp", "cmstp"] = Field(
+    problem_name: ProblemName = Field(
         title="Problem name",
         description="Problem type the model targets. Under a train config it is resolved from "
         "the problem config when omitted; must match it when set.",

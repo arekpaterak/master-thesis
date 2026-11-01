@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Literal
 
 import torch.nn as nn
 
@@ -14,6 +13,7 @@ from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
 from core.problems.instance import BaseProblemInstance
+from core.problems.names import ProblemName
 from core.problems.solution import BaseSolution
 from core.states.destroy import initial_action_mask
 
@@ -28,7 +28,7 @@ class SplitNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: Literal["tsp", "cvrp", "cmstp"],
+        problem_name: ProblemName,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,

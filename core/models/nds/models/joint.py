@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Literal
 
 import torch.nn as nn
 
@@ -24,6 +23,7 @@ from core.problems.cvrp.features import (
     CVRPSolutionFeatureExtractor,
 )
 from core.problems.instance import BaseProblemInstance
+from core.problems.names import ProblemName
 from core.problems.solution import BaseSolution
 from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
@@ -44,7 +44,7 @@ class JointNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: Literal["tsp", "cvrp", "cmstp"],
+        problem_name: ProblemName,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
