@@ -5,7 +5,6 @@ from core.models.nds.reward import (
     AbsoluteRewardConfig,
     RelativeReward,
     RelativeRewardConfig,
-    build_reward,
 )
 
 
@@ -15,9 +14,9 @@ def _objectives():
     return objective_before, objective_after
 
 
-def test_build_reward_returns_expected_type():
-    assert isinstance(build_reward(AbsoluteRewardConfig()), AbsoluteReward)
-    assert isinstance(build_reward(RelativeRewardConfig()), RelativeReward)
+def test_config_builds_expected_type():
+    assert isinstance(AbsoluteRewardConfig().build(), AbsoluteReward)
+    assert isinstance(RelativeRewardConfig().build(), RelativeReward)
 
 
 def test_absolute_reward_is_clamped_objective_delta():

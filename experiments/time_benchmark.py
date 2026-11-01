@@ -48,11 +48,9 @@ from core.models.nds.decoders.config import (
 )
 from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
-from core.problems import make_problem_config
+from core.problems import make_problem_config, registry
 from core.problems.instance import BaseProblemInstance
-from core.problems.sampler import Sampler
 from core.problems.solution import BaseSolution
-from core.problems.solve import generate_initial_solution
 
 OUTPUT_DEFAULT = Path(__file__).parent / "results" / "tables" / "time_benchmark.csv"
 
@@ -152,11 +150,13 @@ def _build_step(
     """Build a fresh improvement step. NDS models start with an empty instance cache,
     so the first timed step pays the (real) one-time encoding cost."""
     if spec.model_params is None:
-        return build_random_node_destroy_step(search, problem_name=problem_name, seed=seed)
+        return build_random_node_destroy_step(search, lns=registry.lns(problem_name), seed=seed)
 
     model = build_model(spec.model_params).to(device)
     model.eval()
-    return build_nds_improvement_step(search, model=model, seed=seed)
+    return build_nds_improvement_step(
+        search, model=model, lns=registry.lns(problem_name), seed=seed
+    )
 
 
 def _count_parameters(spec: MethodSpec) -> int:
@@ -246,9 +246,10 @@ def _warmup(
             n_repairs=n_repairs,
             acceptance=acceptance,
         )
-        step = build_random_node_destroy_step(search, problem_name=problem_name, seed=seed)
+        lns = registry.lns(problem_name)
+        step = build_random_node_destroy_step(search, lns=lns, seed=seed)
         criterion = build_criterion(search.acceptance, n_steps=max(warmup, 1))
-        solution = generate_initial_solution(instance)
+        solution = lns.problem.initial_solution(instance)
         criterion.reset()
         with torch.no_grad():
             for _ in range(warmup):
@@ -311,7 +312,7 @@ def main(
 
     problem_name = "cvrp"
     problem_config = make_problem_config(name=problem_name, size=size)
-    sampler = Sampler.from_config(problem_config, seed=seed)
+    sampler = registry.build_sampler(problem_config, seed=seed)
     instance = sampler(batch_size).to(torch_device)
 
     all_specs = _method_specs(deconstruction_size, problem_name)
@@ -360,7 +361,7 @@ def main(
                 step = _build_step(
                     spec, search, problem_name=problem_name, device=torch_device, seed=seed
                 )
-                solution = generate_initial_solution(instance)
+                solution = registry.problem(problem_name).initial_solution(instance)
                 criterion = build_criterion(search.acceptance, n_steps=num_steps)
                 cumulative, objective = _run_search(
                     step,

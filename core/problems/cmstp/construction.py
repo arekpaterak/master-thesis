@@ -6,7 +6,6 @@ from core.problems.cmstp._esau_williams import esau_williams_batch
 from core.problems.cmstp.instance import CMSTPInstance
 from core.problems.cmstp.lns.arrays import CMSTPSolutionArrays
 from core.problems.cmstp.solution import CMSTPSolution
-from core.problems.construction.base import ConstructionHeuristic
 
 
 def star(instance: CMSTPInstance) -> CMSTPSolution:
@@ -43,19 +42,3 @@ def esau_williams(instance: CMSTPInstance) -> CMSTPSolution:
         batch_size=instance.batch_size,
         device=instance.locations.device,
     )
-
-
-class StarConstruction(ConstructionHeuristic[CMSTPInstance, CMSTPSolution]):
-    construction_name = "star"
-    problem_name = "cmstp"
-
-    def __call__(self, instance: CMSTPInstance) -> CMSTPSolution:
-        return star(instance)
-
-
-class EsauWilliamsConstruction(ConstructionHeuristic[CMSTPInstance, CMSTPSolution]):
-    construction_name = "esau_williams"
-    problem_name = "cmstp"
-
-    def __call__(self, instance: CMSTPInstance) -> CMSTPSolution:
-        return esau_williams(instance)

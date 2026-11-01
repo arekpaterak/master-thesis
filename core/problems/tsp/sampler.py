@@ -7,8 +7,6 @@ from core.problems.tsp import TSPDistribution, TSPInstance
 
 
 class TSPSampler(Sampler[TSPInstance]):
-    problem_name = "tsp"
-
     def __init__(self, distribution: TSPDistribution, seed: int | None = None) -> None:
         assert distribution.distribution_of_locations == "uniform"
 

@@ -56,23 +56,26 @@ class RelativeReward(Reward):
         return improvement.clamp(min=0.0)
 
 
-class AbsoluteRewardConfig(BaseModel):
+class _RewardConfigBase(BaseModel):
+    @abstractmethod
+    def build(self) -> Reward: ...
+
+
+class AbsoluteRewardConfig(_RewardConfigBase):
     type: Literal["absolute"] = "absolute"
 
+    def build(self) -> AbsoluteReward:
+        return AbsoluteReward()
 
-class RelativeRewardConfig(BaseModel):
+
+class RelativeRewardConfig(_RewardConfigBase):
     type: Literal["relative"] = "relative"
+
+    def build(self) -> RelativeReward:
+        return RelativeReward()
 
 
 RewardConfig = Annotated[
     AbsoluteRewardConfig | RelativeRewardConfig,
     Field(discriminator="type"),
 ]
-
-
-def build_reward(config: RewardConfig) -> Reward:
-    match config:
-        case AbsoluteRewardConfig():
-            return AbsoluteReward()
-        case RelativeRewardConfig():
-            return RelativeReward()

@@ -122,6 +122,9 @@ class CMSTPSolution(BaseSolution):
         """(...) int - number of customers without a parent."""
         return (self._parent[..., 1:] == self.UNASSIGNED).sum(dim=-1)
 
+    def remove_nodes(self, nodes: torch.Tensor, *, stitch: bool = False) -> CMSTPSolution:
+        raise NotImplementedError("CMSTP removes nodes only inside the numba apply-and-repair.")
+
     def node_degree(self) -> torch.Tensor:
         """(..., N) int - tree degree per customer: parent edge plus child edges.
 

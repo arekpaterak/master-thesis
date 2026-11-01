@@ -9,8 +9,6 @@ from core.problems.tsp.graph_solution import TSPGraphSolution
 
 
 class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
-    repair_type = "greedy_insert"
-    problem_name = "tsp"
     requires_stitch = True
 
     def __init__(

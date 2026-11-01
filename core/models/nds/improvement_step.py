@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from core.lns.components import LNSComponents
 from core.lns.config import SearchParams
 from core.lns.improvement_step import ImprovementStep, build_improvement_step
 from core.models.nds.factory import NDSModel
@@ -10,6 +11,7 @@ def build_nds_improvement_step(
     search: SearchParams,
     *,
     model: NDSModel,
+    lns: LNSComponents,
     seed: int = 0,
     recorder: RolloutMetricsRecorder | None = None,
 ) -> ImprovementStep:
@@ -20,6 +22,4 @@ def build_nds_improvement_step(
         deconstruction_size=search.deconstruction_size,
         recorder=recorder,
     )
-    return build_improvement_step(
-        search, destroy=destroy, problem_name=model.problem_name, seed=seed
-    )
+    return build_improvement_step(search, destroy=destroy, lns=lns, seed=seed)

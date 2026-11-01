@@ -12,14 +12,14 @@ with app.setup:
     import numpy as np
     import seaborn as sns
     import torch
+    import wandb
     import yaml
 
-    import wandb
     from core.models.nds.config import TrainConfig
     from core.models.nds.factory import build_model
     from core.models.nds.module import NDSModule
     from core.models.optimizer import build_optimizer
-    from core.problems.sampler import Sampler
+    from core.problems import registry
     from figures.runs import TRAIN_RUNS, WANDB_PROJECT
     from figures.utils import (
         figsize,
@@ -225,9 +225,9 @@ def measure_config(
     config = TrainConfig.model_validate(yaml.safe_load((project_root() / config_path).read_text()))
     config.search.num_rollouts = rollouts
     model = build_model(config.model).to(device)
-    module = NDSModule(config=config, model=model)
+    module = NDSModule(config=config, model=model, lns=registry.lns(config.problem.name))
     optimizer = build_optimizer(config.optimizer, module.parameters())
-    sampler = Sampler.from_config(config.problem)
+    sampler = registry.build_sampler(config.problem)
 
     samples: dict[str, list[float]] = {stem: [] for stem in metrics}
     for batch_index in mo.status.progress_bar(

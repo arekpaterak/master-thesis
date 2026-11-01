@@ -10,12 +10,12 @@ from core.lns.acceptance_criterion import (
 from core.lns.apply_and_repair import TorchApplyAndRepair
 from core.lns.config import SearchParams, StartSolutionParams
 from core.lns.improvement_step import ImprovementStep
-from core.lns.operators.repair import RepairOperator
 from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.models.joint import JointNDSModel
 from core.models.nds.validation import EpochValidationAccumulator, NDSValidationStep
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
+from core.problems.cvrp.lns.operators.repair.reconnect import CVRPGreedyReconnectRepair
 
 B, N, R, DECONSTRUCTION_SIZE, STEPS = 2, 8, 4, 3, 3
 
@@ -44,9 +44,7 @@ def _make_validation_step(model: JointNDSModel, n_augmentations: int) -> NDSVali
         ),
         start_solution_params=StartSolutionParams(num_improvement_steps=0),
     )
-    repair = RepairOperator.create(
-        "cvrp", "greedy_reconnect", deconstruction_size=DECONSTRUCTION_SIZE
-    )
+    repair = CVRPGreedyReconnectRepair(deconstruction_size=DECONSTRUCTION_SIZE)
     improvement_step = ImprovementStep(
         destroy=ModelNodeDestroy(model=model, deconstruction_size=DECONSTRUCTION_SIZE),
         apply_and_repair=TorchApplyAndRepair(repair=repair, n_repairs=1),
