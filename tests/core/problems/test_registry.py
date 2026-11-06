@@ -2,6 +2,8 @@ from typing import get_args
 
 import pytest
 
+from core.lns.apply_and_repair import build_apply_and_repair
+from core.lns.config import SearchParams
 from core.problems import registry
 from core.problems.cmstp.construction import esau_williams, star
 from core.problems.names import PROBLEM_NAMES
@@ -20,8 +22,19 @@ def test_components_match_their_problem(name: str) -> None:
     lns = registry.lns(name)
     assert lns.problem is registry.problem(name)
     assert lns.problem.name == name
-    assert "greedy_insert" in lns.repairs
     assert "greedy_insert" in lns.apply_and_repairs
+
+
+@pytest.mark.parametrize("name", ["tsp", "cvrp"])
+def test_routing_problems_have_torch_repairs(name: str) -> None:
+    assert {"greedy_insert", "greedy_reconnect"} <= set(registry.lns(name).repairs)
+
+
+def test_cmstp_torch_backend_names_the_missing_repair() -> None:
+    with pytest.raises(
+        ValueError, match=r"No repair 'greedy_insert' for problem 'cmstp'\. Available: none\."
+    ):
+        build_apply_and_repair(SearchParams(), lns=registry.lns("cmstp"), backend="torch")
 
 
 def test_unknown_problem_lists_available() -> None:
