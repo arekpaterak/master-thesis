@@ -4,14 +4,14 @@ repos:
       # Run the linter
       - id: ruff-check
         name: ruff check
-        entry: uv run ruff check --force-exclude --fix
+        entry: uv run --frozen --only-group dev ruff check --force-exclude --fix
         language: system
         types_or: [python, pyi, jupyter]
         require_serial: true
       # Run the formatter
       - id: ruff-format
         name: ruff format
-        entry: uv run ruff format --force-exclude
+        entry: uv run --frozen --only-group dev ruff format --force-exclude
         language: system
         types_or: [python, pyi, jupyter]
         require_serial: true
