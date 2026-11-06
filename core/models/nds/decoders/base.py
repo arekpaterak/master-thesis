@@ -33,6 +33,7 @@ class DestroyDecoder(nn.Module, ABC):
         env: DestroyEnv,
         state: DestroyState,
         greedy: bool,
+        generator: torch.Generator,
         **kwargs,
     ) -> Rollout:
         """Select ``env.horizon`` nodes starting from ``state`` and return the Rollout.
@@ -44,6 +45,7 @@ class DestroyDecoder(nn.Module, ABC):
             env: The destroy MDP; its ``horizon`` is the number of nodes to select (M).
             state: The initial state from ``env.reset``.
             greedy: If True, select deterministically; otherwise sample stochastically.
+            generator: Source of randomness for sampling, on the device of ``h_nodes``.
             **kwargs: Decoder-specific additional inputs.
 
         Returns:

@@ -277,6 +277,12 @@ class TrainConfig(BaseModel):
     compile: CompileConfig = Field(default_factory=CompileConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
+    seed: int = Field(
+        default=0,
+        title="Seed",
+        description="Seed for the initial weights, the policy's sampling and the acceptance "
+        "during training.",
+    )
     run_name: str = Field(
         default="",
         title="Run name",

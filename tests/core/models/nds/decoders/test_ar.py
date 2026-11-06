@@ -12,7 +12,9 @@ B, rollout_size, N, seed_dim = 2, 10, 4, 10
 def test_decoder_step(use_hidden_decoding_state: bool) -> None:
     decoder = AutoregressiveNDSDecoder(use_hidden_decoding_state=use_hidden_decoding_state)
     embedded_nodes = torch.randn(B, N + 1, 128)
-    z = sample_seed(batch_size=B, rollout_size=rollout_size, seed_dim=seed_dim)
+    z = sample_seed(
+        batch_size=B, rollout_size=rollout_size, seed_dim=seed_dim, generator=torch.Generator()
+    )
 
     action_mask = torch.zeros(B, 1, N + 1, dtype=torch.bool)
     action_mask[..., 0] = True

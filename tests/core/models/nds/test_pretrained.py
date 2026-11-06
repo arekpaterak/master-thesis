@@ -18,6 +18,7 @@ from core.problems.cvrp.features import (
 )
 from core.problems.cvrp.nds.components import NDS as CVRP_NDS
 from core.problems.cvrp.solve import one_customer_per_route
+from core.random import SeededGenerator
 
 CHECKPOINT = Path("../experiments/pretrained/nds/cvrp_100/checkpoint-2000.pt")
 
@@ -106,7 +107,9 @@ def test_load_pretrained_model_forward() -> None:
     model.eval()
 
     with torch.no_grad():
-        rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=k)
+        rollout = model.rollout(
+            solution, rollouts_per_solution=R, deconstruction_size=k, rng=SeededGenerator(0)
+        )
 
     assert rollout.actions.shape == (B, R, k)
 

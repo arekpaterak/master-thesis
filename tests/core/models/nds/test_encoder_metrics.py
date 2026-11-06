@@ -9,6 +9,7 @@ from core.models.nds.models import NDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.registry import build_nds_model
+from core.random import SeededGenerator
 
 
 def test_orthogonal_embeddings_have_zero_cosine() -> None:
@@ -137,8 +138,12 @@ def test_attach_records_once_per_rollout_for_both_models() -> None:
     solution = _cvrp_solution()
     for model in (_split_model().eval(), _joint_model().eval()):
         with _attach(model) as recorder:
-            model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
-            model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
+            model.rollout(
+                solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0)
+            )
+            model.rollout(
+                solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0)
+            )
 
         assert recorder._embeddings_cos_sim._total_weight == 2
         assert -1.0 <= recorder.embeddings_cos_sim <= 1.0
@@ -149,10 +154,12 @@ def test_attach_detaches_after_the_block() -> None:
     solution = _cvrp_solution()
 
     with _attach(model) as recorder:
-        model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
+        model.rollout(
+            solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0)
+        )
     count_after_block = recorder._embeddings_cos_sim._total_weight
 
-    model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
+    model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0))
     assert recorder._embeddings_cos_sim._total_weight == count_after_block == 1
 
 

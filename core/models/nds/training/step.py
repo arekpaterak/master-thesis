@@ -24,6 +24,7 @@ from core.models.nds.training.logs import BatchTrainSummary
 from core.models.nds.training.passes import EncodeOncePass, ModelPass, RecomputePass
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
+from core.random import SeededGenerator
 
 
 class NDSTrainingStep:
@@ -47,6 +48,7 @@ class NDSTrainingStep:
         improvement_step_progress: Callable[[Iterable[int]], Iterable[int]] = lambda it: it,
         rollout_selection: Literal["reward", "objective"] = "objective",
         acceptance: AcceptanceCriterion = UnconditionalAcceptance(),
+        seed: int | None = None,
     ) -> None:
         self._num_main_improvement_steps = num_main_improvement_steps
         self._num_initial_improvement_steps = num_initial_improvement_steps
@@ -65,6 +67,7 @@ class NDSTrainingStep:
         self._improvement_step_progress = improvement_step_progress
         self._rollout_selection = rollout_selection
         self._acceptance = acceptance
+        self._rng = SeededGenerator(seed)
 
     def __call__(
         self,
@@ -129,6 +132,7 @@ class NDSTrainingStep:
                         solution,
                         rollouts_per_solution=self._rollouts_per_solution,
                         deconstruction_size=self._deconstruction_size,
+                        rng=self._rng,
                         greedy=False,
                     )
 

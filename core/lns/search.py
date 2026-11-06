@@ -6,6 +6,7 @@ from typing import NamedTuple, Self
 import torch
 
 from core.problems.solution import BaseSolution
+from core.random import SeededGenerator
 
 from .acceptance_criterion import (
     AcceptanceCriterion,
@@ -52,13 +53,22 @@ def search[S: BaseSolution](
 class AugmentationExchange:
     """Cross-augmentation exchange for augmented simulated annealing."""
 
-    def __init__(self, criterion: SimulatedAnnealingAcceptance, threshold_factor: float) -> None:
+    def __init__(
+        self,
+        criterion: SimulatedAnnealingAcceptance,
+        threshold_factor: float,
+        seed: int | None = None,
+    ) -> None:
         self._criterion = criterion
         self._threshold_factor = threshold_factor
+        self._rng = SeededGenerator(seed)
 
     @classmethod
     def from_config(
-        cls, config: AcceptanceCriterionConfig, criterion: AcceptanceCriterion
+        cls,
+        config: AcceptanceCriterionConfig,
+        criterion: AcceptanceCriterion,
+        seed: int | None = None,
     ) -> Self | None:
         if (
             not isinstance(config, SimulatedAnnealingAcceptanceConfig)
@@ -68,22 +78,26 @@ class AugmentationExchange:
         assert isinstance(criterion, SimulatedAnnealingAcceptance), (
             f"Expected an SA criterion for {type(config).__name__}, got {type(criterion).__name__}"
         )
-        return cls(criterion, config.augmented_exchange.threshold_factor)
+        return cls(criterion, config.augmented_exchange.threshold_factor, seed=seed)
 
     def __call__[S: BaseSolution](self, solution: S) -> S:
         costs = solution.objective()  # (B, A)
         best_cost = costs.min(dim=-1, keepdim=True).values  # (B, 1)
         threshold = best_cost + self._criterion.temperature * self._threshold_factor  # (B, 1)
-        return self._exchange_above_threshold(solution, costs, threshold)
+        return self._exchange_above_threshold(
+            solution, costs, threshold, generator=self._rng.on(costs.device)
+        )
 
     @staticmethod
     def _exchange_above_threshold[S: BaseSolution](
-        solution: S, costs: torch.Tensor, threshold: torch.Tensor
+        solution: S, costs: torch.Tensor, threshold: torch.Tensor, *, generator: torch.Generator
     ) -> S:
         is_bad = costs > threshold  # (B, A)
         has_any_good = (~is_bad).any(dim=-1, keepdim=True)  # (B, 1)
 
-        noise = torch.rand_like(costs).masked_fill(is_bad, float("-inf"))
+        noise = torch.rand(
+            costs.shape, generator=generator, dtype=costs.dtype, device=costs.device
+        ).masked_fill(is_bad, float("-inf"))
         random_good_idx = noise.argmax(dim=-1, keepdim=True)  # (B, 1)
 
         candidate = solution.gather(-1, random_good_idx).expand(*solution.batch_size)

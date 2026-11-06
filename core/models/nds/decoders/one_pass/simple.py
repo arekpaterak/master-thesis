@@ -12,6 +12,7 @@ from core.models.layers.cross_attention import CrossAttention, CrossAttentionCon
 from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.layers.poly_net import PolyNet
 from core.models.rollout import Rollout
+from core.random import sample_gumbel
 
 from .base import OnePassDestroyDecoder
 from .utils import log_prob_of_sequence_without_replacement
@@ -115,6 +116,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         env: DestroyEnv,
         state: DestroyState,
         greedy: bool,
+        generator: torch.Generator,
         **kwargs,
     ) -> Rollout:
         # h_nodes: (B, N, D), seed: (B, R, seed_dim), state.action_mask: (B, 1, N)
@@ -127,9 +129,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         if greedy:
             selected = log_p_detached.topk(deconstruction_size, dim=-1).indices  # (B, R, M)
         else:
-            gumbel = torch.distributions.Gumbel(
-                torch.zeros_like(log_p_detached), torch.ones_like(log_p_detached)
-            ).sample()
+            gumbel = sample_gumbel(log_p_detached, generator=generator)
             selected = (
                 (log_p_detached + gumbel).topk(deconstruction_size, dim=-1).indices
             )  # (B, R, M)

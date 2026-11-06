@@ -16,6 +16,7 @@ from core.models.rollout import Rollout
 from core.models.utils import get_model_device
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
+from core.random import SeededGenerator
 
 if TYPE_CHECKING:
     from core.models.nds.components import NDSComponents
@@ -68,6 +69,7 @@ class JointNDSModel(nn.Module):
         *,
         rollouts_per_solution: int,
         deconstruction_size: int,
+        rng: SeededGenerator,
         greedy: bool = False,
     ) -> Rollout:
         solution, batch_dims = flatten_instance_batch(solution)
@@ -77,8 +79,13 @@ class JointNDSModel(nn.Module):
         R = rollouts_per_solution
         device = get_model_device(self)
 
+        generator = rng.on(device)
         seed = sample_seed(
-            batch_size=B, rollout_size=R, seed_dim=self.decoder.seed_dim, device=device
+            batch_size=B,
+            rollout_size=R,
+            seed_dim=self.decoder.seed_dim,
+            generator=generator,
+            device=device,
         )
 
         instance_features = self.instance_feature_extractor(instance).to(device)
@@ -92,6 +99,7 @@ class JointNDSModel(nn.Module):
             env=env,
             state=env.reset(instance, device=device),
             greedy=greedy,
+            generator=generator,
         )
         return unflatten_rollout(rollout, batch_dims)
 

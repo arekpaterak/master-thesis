@@ -21,5 +21,6 @@ def build_nds_improvement_step(
         model=model,
         deconstruction_size=search.deconstruction_size,
         recorder=recorder,
+        seed=seed,
     )
     return build_improvement_step(search, destroy=destroy, lns=lns, seed=seed)

@@ -243,7 +243,9 @@ def _build_samplers(config: TrainConfig) -> tuple[Sampler, Sampler]:
 
 
 def _build_model(config: TrainConfig) -> torch.nn.Module:
-    model = build_nds_model(config.model)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(config.seed)
+        model = build_nds_model(config.model)
 
     # original_pretrained_weights / freeze_encoder are joint-only;
     # the split model cannot initialise from a pretrained NDS encoder.

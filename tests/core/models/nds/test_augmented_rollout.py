@@ -13,6 +13,7 @@ from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
 from core.problems.cvrp.lns.operators.repair.reconnect import CVRPGreedyReconnectRepair
 from core.problems.cvrp.nds.components import NDS as CVRP_NDS
+from core.random import SeededGenerator
 
 B, A, N, R, DECONSTRUCTION_SIZE = 2, 3, 8, 4, 3
 
@@ -41,6 +42,7 @@ def test_rollout_on_augmented_solution_keeps_augmentation_dim(model: JointNDSMod
         rollouts_per_solution=R,
         deconstruction_size=DECONSTRUCTION_SIZE,
         greedy=False,
+        rng=SeededGenerator(0),
     )
 
     assert rollout.batch_size == torch.Size([B, A, R])
@@ -56,6 +58,7 @@ def test_rollout_plain_path_is_unchanged(model: JointNDSModel):
         rollouts_per_solution=R,
         deconstruction_size=DECONSTRUCTION_SIZE,
         greedy=False,
+        rng=SeededGenerator(0),
     )
 
     assert rollout.batch_size == torch.Size([B, R])

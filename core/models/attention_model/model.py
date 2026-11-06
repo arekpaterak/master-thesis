@@ -10,6 +10,7 @@ from core.problems.cvrp.features import CVRPInstanceFeatureExtractor
 from core.problems.instance import BaseProblemInstance
 from core.problems.tsp.constructive.env import TSPConstructiveEnv
 from core.problems.tsp.features import TSPInstanceFeatureExtractor
+from core.random import SeededGenerator
 
 
 class AttentionModel(nn.Module):
@@ -55,11 +56,13 @@ class AttentionModel(nn.Module):
         *,
         greedy: bool = False,
         previous_actions: torch.Tensor | None = None,
+        rng: SeededGenerator | None = None,
     ) -> Rollout:
         return self.rollout(
             instance,
             greedy=greedy,
             previous_actions=previous_actions,
+            rng=rng,
         )
 
     def rollout(
@@ -68,7 +71,11 @@ class AttentionModel(nn.Module):
         *,
         greedy: bool = False,
         previous_actions: torch.Tensor | None = None,
+        rng: SeededGenerator | None = None,
     ) -> Rollout:
+        """``rng`` is required unless ``greedy``."""
+        if not greedy and rng is None:
+            raise ValueError("Sampling a rollout needs an rng; pass rng= or greedy=True.")
         batch_size = instance.batch_size[0]
         n = instance.num_nodes
 
@@ -94,7 +101,10 @@ class AttentionModel(nn.Module):
                 state=state,
                 action_mask=self.env.action_mask(state),
             )
-            selected = log_p.argmax(-1) if greedy else log_p.exp().multinomial(1).squeeze(-1)
+            if greedy:
+                selected = log_p.argmax(-1)
+            else:
+                selected = log_p.exp().multinomial(1, generator=rng.on(log_p.device)).squeeze(-1)
             log_p_of_selected.append(log_p.gather(-1, selected.unsqueeze(-1)).squeeze(-1))
             actions.append(selected)
             state = self.env.step(state, selected)

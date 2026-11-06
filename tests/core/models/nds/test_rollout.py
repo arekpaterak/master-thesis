@@ -4,6 +4,7 @@ from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler, CVRPSolution
 from core.problems.cvrp.nds.components import NDS as CVRP_NDS
 from core.problems.cvrp.solve import one_customer_per_route
+from core.random import SeededGenerator
 
 
 @pytest.fixture(scope="session")
@@ -31,6 +32,7 @@ def test_if_can_produce_rollout(
         rollouts_per_solution=ROLLOUTS_PER_SOLUTION,
         deconstruction_size=DECONSTRUCTION_SIZE,
         greedy=False,
+        rng=SeededGenerator(0),
     )
 
     assert rollout.actions.shape == (4, ROLLOUTS_PER_SOLUTION, DECONSTRUCTION_SIZE)

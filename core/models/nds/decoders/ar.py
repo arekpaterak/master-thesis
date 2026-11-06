@@ -14,6 +14,7 @@ from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.poly_net import PolyNet
 from core.models.nds.decoders.base import DestroyDecoder
 from core.models.rollout import Rollout
+from core.random import sample_categorical
 
 if TYPE_CHECKING:
     from core.models.nds.decoders.config import AutoregressiveDecoderConfig
@@ -149,6 +150,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         env: DestroyEnv,
         state: DestroyState,
         greedy: bool,
+        generator: torch.Generator,
         **kwargs,
     ) -> Rollout:
         """Autoregressively select ``env.horizon`` nodes from ``h_nodes``."""
@@ -171,7 +173,9 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
             )
 
             distribution = torch.distributions.Categorical(logits=logits)
-            idx = logits.argmax(dim=-1) if greedy else distribution.sample()
+            idx = (
+                logits.argmax(dim=-1) if greedy else sample_categorical(logits, generator=generator)
+            )
             selected.append(idx)
             log_prob_of_selected.append(distribution.log_prob(idx))
 

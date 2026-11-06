@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from core.models.attention_model.model import AttentionModel
 from core.problems.instance import BaseProblemInstance
+from core.random import SeededGenerator
 
 
 class BatchSummary(BaseModel):
@@ -77,6 +78,7 @@ def training_step(
     baseline: AttentionModel,
     optimizer: torch.optim.Optimizer,
     instance: BaseProblemInstance,
+    rng: SeededGenerator,
 ) -> BatchSummary:
     start = time.perf_counter()
     device = next(model.parameters()).device
@@ -85,7 +87,7 @@ def training_step(
 
     optimizer.zero_grad()
 
-    rollout = model.rollout(instance, greedy=False)
+    rollout = model.rollout(instance, greedy=False, rng=rng)
 
     with torch.no_grad():
         baseline_rollout = baseline.rollout(instance, greedy=True)

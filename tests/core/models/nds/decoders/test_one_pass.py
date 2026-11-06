@@ -107,6 +107,7 @@ def test_without_poly_greedy_is_seed_independent(make_decoder):
             state=_initial_state(action_mask),
             greedy=True,
             **extra_kwargs,
+            generator=torch.Generator(),
         ).actions
 
     # Without PolyNet the greedy decode ignores the seed entirely.
@@ -130,6 +131,7 @@ def test_produces_M_actions(make_decoder, greedy):
         state=_initial_state(action_mask),
         greedy=greedy,
         **extra_kwargs,
+        generator=torch.Generator(),
     )
 
     assert rollout.actions.shape == (B, R, M)
@@ -153,6 +155,7 @@ def test_masked_nodes_not_selected(make_decoder):
         state=_initial_state(action_mask),
         greedy=False,
         **extra_kwargs,
+        generator=torch.Generator(),
     )
 
     assert (rollout.actions != 0).all()
@@ -556,6 +559,7 @@ def test_slot_actions_are_distinct(greedy):
         env=DestroyEnv(horizon=M),
         state=_initial_state(action_mask),
         greedy=greedy,
+        generator=torch.Generator(),
     )
 
     for row in rollout.actions.reshape(-1, M):
@@ -575,6 +579,7 @@ def test_slot_with_more_slots_selects_only_the_horizon():
         env=DestroyEnv(horizon=M),
         state=_initial_state(torch.zeros(B, N, dtype=torch.bool)),
         greedy=False,
+        generator=torch.Generator(),
     )
 
     assert rollout.actions.shape == (B, R, M)
@@ -590,4 +595,5 @@ def test_slot_rejects_a_horizon_beyond_its_slots():
             env=DestroyEnv(horizon=M),
             state=_initial_state(torch.zeros(B, N, dtype=torch.bool)),
             greedy=False,
+            generator=torch.Generator(),
         )

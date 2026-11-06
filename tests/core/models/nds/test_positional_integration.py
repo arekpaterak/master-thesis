@@ -17,6 +17,7 @@ from core.problems.tsp.features import (
     TSPSolutionFeatureExtractor,
 )
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.random import SeededGenerator
 
 
 def test_cvrp_embedding_concat_grows_projection_and_shape():
@@ -62,5 +63,7 @@ def test_cvrp_model_rollout_with_positional_encoding():
         positional=PositionalEncodingConfig(dim=8),
     )
     model.eval()
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
+    rollout = model.rollout(
+        solution, rollouts_per_solution=R, deconstruction_size=M, rng=SeededGenerator(0)
+    )
     assert rollout.actions.shape == (B, R, M)

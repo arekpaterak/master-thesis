@@ -38,6 +38,7 @@ def _():
     from core.problems.tsp.lns.operators.repair.insert import TSPGreedyInsertRepair
     from core.problems.tsp.lns.operators.repair.reconnect import TSPGreedyReconnectRepair
     from core.problems.tsp.solve import random_permutation, random_permutation_graph
+    from core.random import SeededGenerator
 
     return (
         JointNDSModel,
@@ -60,6 +61,7 @@ def _():
         registry,
         search,
         time,
+        SeededGenerator,
         torch,
     )
 
@@ -518,6 +520,7 @@ def _(mo):
 def _(
     JointNDSModel,
     registry,
+    SeededGenerator,
     CVRPDistribution,
     CVRPGreedyInsertRepair,
     CVRPGreedyReconnectRepair,
@@ -617,6 +620,8 @@ def _(
 
                 return destroy
 
+            rng = SeededGenerator(0)
+
             @torch.no_grad()
             def destroy(start):
                 rollout = model.rollout(
@@ -624,6 +629,7 @@ def _(
                     rollouts_per_solution=rollout_size,
                     deconstruction_size=destruction_size,
                     greedy=False,
+                    rng=rng,
                 )
                 # actions: (B, R, k); broadcasts the (B,) solution to (B, R).
                 return start.remove_nodes(rollout.nodes)

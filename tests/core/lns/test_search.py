@@ -36,7 +36,9 @@ def test_exchange_above_threshold_replaces_only_bad_with_good():
     threshold = torch.tensor([[2.0]] * B)
 
     torch.manual_seed(123)
-    new_solution = AugmentationExchange._exchange_above_threshold(solution, costs, threshold)
+    new_solution = AugmentationExchange._exchange_above_threshold(
+        solution, costs, threshold, generator=torch.Generator()
+    )
 
     # All slots remain valid CVRP graph solutions (route IDs stay >= 0 for customers).
     assert (new_solution.route_ids[..., 1:] >= 0).all()
@@ -58,7 +60,9 @@ def test_exchange_with_no_good_solutions_keeps_existing_solutions():
     costs = torch.tensor([[5.0, 5.0, 5.0]] * B)
     threshold = torch.tensor([[1.0]] * B)
 
-    new_solution = AugmentationExchange._exchange_above_threshold(solution, costs, threshold)
+    new_solution = AugmentationExchange._exchange_above_threshold(
+        solution, costs, threshold, generator=torch.Generator()
+    )
     assert torch.equal(new_solution._next, solution._next)
     assert torch.equal(new_solution._prev, solution._prev)
     assert torch.equal(new_solution._route_id, solution._route_id)

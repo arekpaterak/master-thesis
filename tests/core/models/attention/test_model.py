@@ -3,6 +3,7 @@ import pytest
 from core.models.attention_model.model import AttentionModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.tsp import TSPDistribution, TSPSampler
+from core.random import SeededGenerator
 
 
 @pytest.mark.parametrize("problem", ["tsp", "cvrp"])
@@ -16,7 +17,7 @@ def test_attention_model_rollout(problem: str):
     else:
         instance = CVRPSampler(CVRPDistribution.for_n(20))(batch_size)
 
-    result = model.rollout(instance, greedy=False)
+    result = model.rollout(instance, greedy=False, rng=SeededGenerator(0))
     assert result.actions.shape[0] == batch_size
     assert result.log_p.shape == (batch_size,)
     assert isinstance(result.mean_entropy, float)

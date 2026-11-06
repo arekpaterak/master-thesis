@@ -14,6 +14,7 @@ from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.layers.poly_net import PolyNet
 from core.models.rollout import Rollout
+from core.random import sample_categorical
 
 from .base import OnePassDestroyDecoder
 
@@ -179,6 +180,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         env: DestroyEnv,
         state: DestroyState,
         greedy: bool,
+        generator: torch.Generator,
         **kwargs,
     ) -> Rollout:
         # h_nodes: (B, N, D), seed: (B, R, seed_dim), state.action_mask: (B, 1, N)
@@ -201,10 +203,9 @@ class SlotDecoder(OnePassDestroyDecoder):
             log_p = torch.log_softmax(
                 scores[:, :, slot, :].masked_fill(already_selected, float("-inf")), dim=-1
             )  # (B, R, N)
-            if greedy:
-                idx = log_p.argmax(dim=-1)  # (B, R)
-            else:
-                idx = torch.distributions.Categorical(logits=log_p).sample()  # (B, R)
+            idx = (
+                log_p.argmax(dim=-1) if greedy else sample_categorical(log_p, generator=generator)
+            )  # (B, R)
 
             selected.append(idx)
             log_probs.append(log_p.gather(-1, idx.unsqueeze(-1)).squeeze(-1))  # (B, R)

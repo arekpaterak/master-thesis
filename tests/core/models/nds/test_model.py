@@ -2,6 +2,7 @@ from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.nds.components import NDS as CVRP_NDS
 from core.problems.cvrp.solve import one_customer_per_route
+from core.random import SeededGenerator
 
 
 def test_model() -> None:
@@ -12,7 +13,9 @@ def test_model() -> None:
 
     model = JointNDSModel(components=CVRP_NDS)
 
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
+    rollout = model.rollout(
+        solution, rollouts_per_solution=R, deconstruction_size=M, rng=SeededGenerator(0)
+    )
 
     assert rollout.actions.shape == (B, R, M)
     assert rollout.log_p.shape == (B, R)

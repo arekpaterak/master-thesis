@@ -20,6 +20,7 @@ from core.models.attention_model.training_helpers import prepare_baseline, sync_
 from core.models.module import Module
 from core.problems.instance import BaseProblemInstance
 from core.problems.sampler import Sampler
+from core.random import SeededGenerator
 
 
 class AMModule(Module):
@@ -33,6 +34,7 @@ class AMModule(Module):
         eval_batch_size: int = 512,
         alpha: float = 0.05,
         on_baseline_sync: Callable[[OneSidedPairedTTestResult], None] | None = None,
+        seed: int | None = None,
     ) -> None:
         self.model = model
         self.baseline = prepare_baseline(model)
@@ -41,6 +43,7 @@ class AMModule(Module):
         self._eval_batch_size = eval_batch_size
         self._alpha = alpha
         self._on_baseline_sync = on_baseline_sync
+        self._rng = SeededGenerator(seed)
 
     def parameters(self) -> Iterator[nn.Parameter]:
         return self.model.parameters()
@@ -57,6 +60,7 @@ class AMModule(Module):
             baseline=self.baseline,
             optimizer=optimizer,
             instance=instance,
+            rng=self._rng,
         )
 
     def on_epoch_train_end(self, _: EpochSummary) -> None:
