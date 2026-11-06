@@ -35,6 +35,9 @@ class ApplyAndRepair[S: BaseSolution, C: DestroySelection](ABC):
 
     selection_type: ClassVar[type[DestroySelection]]
 
+    def reset(self) -> None:
+        """Restart any internal randomness; called at the start of every search."""
+
     @abstractmethod
     def parallel(self, solution: S, selection: C) -> S:
         """
@@ -96,7 +99,12 @@ class NumbaApplyAndRepair[S: BaseSolution](ApplyAndRepair[S, NodeSelection], ABC
         self._n_repairs = n_repairs
         self._first_repair_uses_order = first_repair_uses_selection_order
         self._insert_in_affected_routes_only = insert_in_affected_routes_only
+        self._seed = seed
         self._rng = np.random.default_rng(seed)
+
+    def reset(self) -> None:
+        # A search's repair streams depend only on the seed, not on earlier searches.
+        self._rng = np.random.default_rng(self._seed)
 
     def _next_seed(self) -> int:
         return int(self._rng.integers(2**31))

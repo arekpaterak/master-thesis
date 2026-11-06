@@ -103,6 +103,9 @@ class TestCVRPApplyRepair(FeasibleApplyRepairContract, DegreeTwoApplyRepairMixin
         assert torch.equal(first.objective(), b.parallel(solution, selection).objective())
         assert torch.equal(second.objective(), b.parallel(solution, selection).objective())
 
+        a.reset()
+        assert torch.equal(first.objective(), a.parallel(solution, selection).objective())
+
     def test_quality_matches_torch(self) -> None:
         """Same repair policy, independent RNG -> objectives close in aggregate."""
         solution = one_customer_per_route_graph(CVRPSampler(CVRPDistribution.for_n(20), seed=42)(4))

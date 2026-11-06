@@ -35,6 +35,9 @@ class ImprovementStep:
         self._mode = mode
         self._num_rollouts = num_rollouts
 
+    def reset(self) -> None:
+        self._apply_and_repair.reset()
+
     @contextmanager
     def search_session(self, solution: BaseSolution) -> Iterator[None]:
         with self._destroy.search_session(solution):
@@ -54,6 +57,9 @@ class ImprovementStep:
 
 class NoopImprovementStep(ImprovementStep):
     def __init__(self) -> None:
+        pass
+
+    def reset(self) -> None:
         pass
 
     @contextmanager
