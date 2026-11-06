@@ -56,13 +56,14 @@ def _slot(
     cross_attn_residual=False,
     skip_cross_attn=False,
     num_context_nodes=0,
+    num_slots=M,
 ):
     return SlotDecoder(
         hidden_dim=HIDDEN_DIM,
         seed_dim=SEED_DIM,
         poly_dim=POLY_DIM,
         num_heads=NUM_HEADS,
-        num_slots=M,
+        num_slots=num_slots,
         slot_self_attention=slot_self_attention,
         cross_attention=CrossAttentionConfig(
             skip=skip_cross_attn, attend_to_context=attend_context, residual=cross_attn_residual
@@ -561,3 +562,32 @@ def test_slot_actions_are_distinct(greedy):
         assert row.unique().numel() == M  # all distinct
     assert (rollout.actions != 0).all()  # forbidden node never selected
     assert torch.isfinite(rollout.log_p).all()
+
+
+def test_slot_with_more_slots_selects_only_the_horizon():
+    decoder, _ = _slot(num_slots=M + 3)
+    h_nodes = torch.randn(B, N, HIDDEN_DIM)
+    seed = torch.randn(B, R, SEED_DIM)
+
+    rollout = decoder.rollout(
+        h_nodes=h_nodes,
+        seed=seed,
+        env=DestroyEnv(horizon=M),
+        state=_initial_state(torch.zeros(B, N, dtype=torch.bool)),
+        greedy=False,
+    )
+
+    assert rollout.actions.shape == (B, R, M)
+    assert all(row.unique().numel() == M for row in rollout.actions.reshape(-1, M))
+
+
+def test_slot_rejects_a_horizon_beyond_its_slots():
+    decoder, _ = _slot(num_slots=M - 1)
+    with pytest.raises(ValueError, match="num_slots must be at least"):
+        decoder.rollout(
+            h_nodes=torch.randn(B, N, HIDDEN_DIM),
+            seed=torch.randn(B, R, SEED_DIM),
+            env=DestroyEnv(horizon=M),
+            state=_initial_state(torch.zeros(B, N, dtype=torch.bool)),
+            greedy=False,
+        )

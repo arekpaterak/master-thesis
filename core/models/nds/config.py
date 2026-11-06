@@ -322,6 +322,17 @@ class TrainConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_deconstruction_size_for_decoder(self) -> Self:
+        """The decoder must be able to select as many nodes as training and validation remove."""
+        limit = self.model.decoder.max_deconstruction_size
+        needed = max(self.search.deconstruction_size, self.validation.search.deconstruction_size)
+        if limit is not None and needed > limit:
+            raise ValueError(
+                f"The decoder selects at most {limit} nodes, but the search removes {needed}."
+            )
+        return self
+
+    @model_validator(mode="after")
     def _assign_run_name(self) -> Self:
         """Generate a unique timestamped run name once, unless one was supplied."""
         if not self.run_name:

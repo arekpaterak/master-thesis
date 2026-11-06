@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
 
 from core.envs.destroy import DestroyEnv, DestroyState
@@ -13,6 +15,9 @@ from core.models.rollout import Rollout
 
 from .base import OnePassDestroyDecoder
 from .utils import log_prob_of_sequence_without_replacement
+
+if TYPE_CHECKING:
+    from core.models.nds.decoders.config import SimpleOnePassDecoderConfig
 
 
 class SimpleOnePassDecoder(OnePassDestroyDecoder):
@@ -53,6 +58,26 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         )
         self.final_scorer = CompatibilityScorer(
             hidden_dim=hidden_dim, C=C, use_projections=False, attention_scaling=attention_scaling
+        )
+
+    @classmethod
+    def from_config(
+        cls,
+        config: SimpleOnePassDecoderConfig,
+        *,
+        hidden_dim: int,
+        num_heads: int,
+        num_context_nodes: int,
+    ) -> SimpleOnePassDecoder:
+        return cls(
+            hidden_dim=hidden_dim,
+            seed_dim=config.seed_dim,
+            poly_dim=config.poly_dim,
+            num_heads=num_heads,
+            with_poly=config.with_poly,
+            query=config.query,
+            cross_attention=config.cross_attention,
+            num_context_nodes=num_context_nodes,
         )
 
     @property

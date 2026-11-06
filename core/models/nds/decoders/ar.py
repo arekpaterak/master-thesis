@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import torch
 import torch.nn as nn
@@ -14,6 +14,9 @@ from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.poly_net import PolyNet
 from core.models.nds.decoders.base import DestroyDecoder
 from core.models.rollout import Rollout
+
+if TYPE_CHECKING:
+    from core.models.nds.decoders.config import AutoregressiveDecoderConfig
 
 
 class DecoderCache(NamedTuple):
@@ -119,6 +122,19 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
 
         self.final_scorer = CompatibilityScorer(
             hidden_dim=hidden_dim, C=C, use_projections=False, attention_scaling=attention_scaling
+        )
+
+    @classmethod
+    def from_config(
+        cls, config: AutoregressiveDecoderConfig, *, hidden_dim: int, num_heads: int
+    ) -> AutoregressiveNDSDecoder:
+        return cls(
+            hidden_dim=hidden_dim,
+            seed_dim=config.seed_dim,
+            poly_dim=config.poly_dim,
+            num_heads=num_heads,
+            with_poly=config.with_poly,
+            use_hidden_decoding_state=config.use_hidden_decoding_state,
         )
 
     @property

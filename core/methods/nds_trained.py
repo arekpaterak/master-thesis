@@ -46,6 +46,12 @@ class NDSTrainedConfig(MethodConfigBase):
                 f"nds-trained model.problem_name '{train_config.model.problem_name}' does not "
                 f"match the evaluation problem '{problem.name}'."
             )
+        limit = train_config.model.decoder.max_deconstruction_size
+        if limit is not None and self.search.deconstruction_size > limit:
+            raise ValueError(
+                f"The model in {self.run_dir} selects at most {limit} nodes, but the search "
+                f"removes {self.search.deconstruction_size}."
+            )
         model = build_nds_model(train_config.model).to(device)
         model.load_state_dict(ckpt["model"])
         model.eval()
