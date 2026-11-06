@@ -41,6 +41,11 @@ class NDSTrainedConfig(MethodConfigBase):
             weights_only=True,
         )
         train_config = _load_train_config(self.run_dir, ckpt)
+        if train_config.model.problem_name != problem.name:
+            raise ValueError(
+                f"nds-trained model.problem_name '{train_config.model.problem_name}' does not "
+                f"match the evaluation problem '{problem.name}'."
+            )
         model = build_model(train_config.model).to(device)
         model.load_state_dict(ckpt["model"])
         model.eval()
