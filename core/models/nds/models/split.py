@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 import torch.nn as nn
 
@@ -14,8 +15,10 @@ from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
 from core.problems.instance import BaseProblemInstance
-from core.problems.names import ProblemName
 from core.problems.solution import BaseSolution
+
+if TYPE_CHECKING:
+    from core.models.nds.components import NDSComponents
 
 
 class SplitNDSModel(nn.Module):
@@ -28,7 +31,7 @@ class SplitNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: ProblemName,
+        components: NDSComponents,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -38,9 +41,9 @@ class SplitNDSModel(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.problem_name = problem_name
+        self.components = components
         self.encoder = SplitNDSEncoder(
-            problem_name=problem_name,
+            components=components,
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,

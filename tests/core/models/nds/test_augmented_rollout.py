@@ -12,6 +12,7 @@ from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
 from core.problems.cvrp.lns.operators.repair.reconnect import CVRPGreedyReconnectRepair
+from core.problems.cvrp.nds.components import NDS as CVRP_NDS
 
 B, A, N, R, DECONSTRUCTION_SIZE = 2, 3, 8, 4, 3
 
@@ -29,7 +30,7 @@ def _make_solution(*, augment: int | None) -> CVRPGraphSolution:
 
 @pytest.fixture(scope="module")
 def model() -> JointNDSModel:
-    return JointNDSModel(problem_name="cvrp")
+    return JointNDSModel(components=CVRP_NDS)
 
 
 def test_rollout_on_augmented_solution_keeps_augmentation_dim(model: JointNDSModel):

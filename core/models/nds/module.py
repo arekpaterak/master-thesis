@@ -14,9 +14,9 @@ from core.models.module import Module
 from core.models.nds.config import TrainConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.encoders.split import SplitNDSEncoder
-from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.metrics import RolloutMetricsRecorder
+from core.models.nds.models import NDSModel
 from core.models.nds.policy_loss import build_policy_loss
 from core.models.nds.training import (
     BatchTrainSummary,

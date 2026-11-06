@@ -1,5 +1,6 @@
 from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
+from core.problems.cvrp.nds.components import NDS as CVRP_NDS
 from core.problems.cvrp.solve import one_customer_per_route
 
 
@@ -9,7 +10,7 @@ def test_model() -> None:
     instance = sampler(B)
     solution = one_customer_per_route(instance)
 
-    model = JointNDSModel(problem_name="cvrp")
+    model = JointNDSModel(components=CVRP_NDS)
 
     rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
 

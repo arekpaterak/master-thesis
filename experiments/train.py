@@ -21,7 +21,6 @@ from rich.table import Table
 from tqdm import tqdm
 
 from core.models.nds.config import JointModelConfig, TrainConfig
-from core.models.nds.factory import build_model
 from core.models.nds.module import NDSModule
 from core.models.nds.pretrained.load import (
     load_original_pretrained_decoder_weights,
@@ -38,6 +37,7 @@ from core.models.utils import (
     save_checkpoint,
 )
 from core.problems import registry
+from core.problems.registry import build_nds_model
 from core.problems.sampler import Sampler
 from core.results.plots import plot_solutions_from_search, save_figure
 from core.results.wandb_artifacts import upload_final_checkpoint
@@ -243,7 +243,7 @@ def _build_samplers(config: TrainConfig) -> tuple[Sampler, Sampler]:
 
 
 def _build_model(config: TrainConfig) -> torch.nn.Module:
-    model = build_model(config.model)
+    model = build_nds_model(config.model)
 
     # original_pretrained_weights / freeze_encoder are joint-only;
     # the split model cannot initialise from a pretrained NDS encoder.

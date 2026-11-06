@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import math
+from abc import abstractmethod
 from datetime import datetime
-from typing import Annotated, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
@@ -24,6 +25,8 @@ from core.models.nds.encoders.config import (
     PositionalEncodingConfig,
     SplitEncoderConfig,
 )
+from core.models.nds.models.joint import JointNDSModel
+from core.models.nds.models.split import SplitNDSModel
 from core.models.nds.policy_loss import BestRolloutLossConfig, PolicyLossConfig
 from core.models.nds.pretrained.config import (
     OriginalPretrainedConfig,
@@ -34,6 +37,9 @@ from core.models.optimizer import OptimizerConfig
 from core.models.runtime import AmpConfig, CompileConfig
 from core.problems import CVRPConfig, ProblemConfig
 from core.problems.names import ProblemName
+
+if TYPE_CHECKING:
+    from core.models.nds.components import NDSComponents
 
 
 class _ModelConfigBase(BaseModel):
@@ -60,6 +66,17 @@ class _ModelConfigBase(BaseModel):
         title="Checkpoint path",
         description="Path to a checkpoint to load model weights from.",
     )
+
+    def build(self, components: NDSComponents) -> JointNDSModel | SplitNDSModel:
+        if components.problem.name != self.problem_name:
+            raise ValueError(
+                f"Components for '{components.problem.name}' cannot build a model for "
+                f"'{self.problem_name}'."
+            )
+        return self._build(components)
+
+    @abstractmethod
+    def _build(self, components: NDSComponents) -> JointNDSModel | SplitNDSModel: ...
 
 
 class JointModelConfig(_ModelConfigBase):
@@ -90,6 +107,17 @@ class JointModelConfig(_ModelConfigBase):
             validate_encoder_matches_original_nds(self.encoder)
         return self
 
+    def _build(self, components: NDSComponents) -> JointNDSModel:
+        return JointNDSModel(
+            components=components,
+            hidden_dim=self.hidden_dim,
+            num_heads=self.num_heads,
+            ff_dim=self.ff_dim,
+            encoder_config=self.encoder,
+            positional=self.positional_encoding,
+            decoder=self.decoder,
+        )
+
 
 class SplitModelConfig(_ModelConfigBase):
     """LNS-native split encoder: the instance is encoded once and the solution enters
@@ -111,6 +139,21 @@ class SplitModelConfig(_ModelConfigBase):
         "embeddings across all improvement steps (exact, with bounded memory). "
         "False recomputes the encoder every step (current behavior).",
     )
+
+    def _build(self, components: NDSComponents) -> SplitNDSModel:
+        return SplitNDSModel(
+            components=components,
+            hidden_dim=self.hidden_dim,
+            num_heads=self.num_heads,
+            ff_dim=self.ff_dim,
+            encoder_config=self.encoder,
+            positional=self.positional_encoding,
+            decoder=self.decoder.build(
+                hidden_dim=self.hidden_dim,
+                num_heads=self.num_heads,
+                num_context_nodes=components.num_context_nodes,
+            ),
+        )
 
 
 ModelConfig = Annotated[JointModelConfig | SplitModelConfig, Field(discriminator="encoder_mode")]

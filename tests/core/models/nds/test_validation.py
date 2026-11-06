@@ -16,13 +16,14 @@ from core.models.nds.validation import EpochValidationAccumulator, NDSValidation
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.instance import CVRPInstance
 from core.problems.cvrp.lns.operators.repair.reconnect import CVRPGreedyReconnectRepair
+from core.problems.cvrp.nds.components import NDS as CVRP_NDS
 
 B, N, R, DECONSTRUCTION_SIZE, STEPS = 2, 8, 4, 3, 3
 
 
 @pytest.fixture(scope="module")
 def model() -> JointNDSModel:
-    return JointNDSModel(problem_name="cvrp")
+    return JointNDSModel(components=CVRP_NDS)
 
 
 def _make_instance() -> CVRPInstance:

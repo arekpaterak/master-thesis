@@ -16,13 +16,12 @@ from core.lns.apply_and_repair import ApplyAndRepair
 from core.lns.improvement_step import ImprovementStep
 from core.lns.operators.destroy.selection import NodeSelection
 from core.models.nds.baseline import Baseline
-from core.models.nds.factory import NDSModel
 from core.models.nds.metrics import EncoderMetricsRecorder, diversity_overlap, unique_rollouts
+from core.models.nds.models import NDSModel
 from core.models.nds.policy_loss import PolicyLoss
 from core.models.nds.reward import Reward
 from core.models.nds.training.logs import BatchTrainSummary
 from core.models.nds.training.passes import EncodeOncePass, ModelPass, RecomputePass
-from core.problems import depot_offset
 from core.problems.instance import BaseProblemInstance
 from core.problems.solution import BaseSolution
 
@@ -120,7 +119,7 @@ class NDSTrainingStep:
             )
 
         with EncoderMetricsRecorder.attach(
-            model.encoder, offset=depot_offset(model.problem_name)
+            model.encoder, offset=model.components.num_context_nodes
         ) as encoder_recorder:
             for _step in self._improvement_step_progress(range(self._num_main_improvement_steps)):
                 with torch.autocast(

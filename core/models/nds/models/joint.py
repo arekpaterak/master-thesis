@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 import torch.nn as nn
 
@@ -13,22 +14,11 @@ from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
-from core.problems import depot_offset
-from core.problems.cmstp.features import (
-    CMSTPInstanceFeatureExtractor,
-    CMSTPSolutionFeatureExtractor,
-)
-from core.problems.cvrp.features import (
-    CVRPInstanceFeatureExtractor,
-    CVRPSolutionFeatureExtractor,
-)
 from core.problems.instance import BaseProblemInstance
-from core.problems.names import ProblemName
 from core.problems.solution import BaseSolution
-from core.problems.tsp.features import (
-    TSPInstanceFeatureExtractor,
-    TSPSolutionFeatureExtractor,
-)
+
+if TYPE_CHECKING:
+    from core.models.nds.components import NDSComponents
 
 
 class JointNDSModel(nn.Module):
@@ -43,7 +33,7 @@ class JointNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: ProblemName,
+        components: NDSComponents,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -53,31 +43,13 @@ class JointNDSModel(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.problem_name = problem_name
-
-        with_positional = positional is not None
-
-        match problem_name:
-            case "cvrp":
-                self.instance_feature_extractor = CVRPInstanceFeatureExtractor(
-                    with_positional=with_positional
-                )
-                self.solution_feature_extractor = CVRPSolutionFeatureExtractor(
-                    with_positional=with_positional
-                )
-            case "tsp":
-                self.instance_feature_extractor = TSPInstanceFeatureExtractor()
-                self.solution_feature_extractor = TSPSolutionFeatureExtractor(
-                    with_positional=with_positional
-                )
-            case "cmstp":
-                self.instance_feature_extractor = CMSTPInstanceFeatureExtractor()
-                self.solution_feature_extractor = CMSTPSolutionFeatureExtractor()
-            case _:
-                raise ValueError(f"Unsupported problem_name: {problem_name}")
+        self.components = components
+        self.instance_feature_extractor, self.solution_feature_extractor = (
+            components.feature_extractors(positional is not None)
+        )
 
         self.encoder = JointEncoder(
-            problem_name=problem_name,
+            components=components,
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,
@@ -87,7 +59,7 @@ class JointNDSModel(nn.Module):
         self.decoder = (decoder or AutoregressiveDecoderConfig()).build(
             hidden_dim=hidden_dim,
             num_heads=num_heads,
-            num_context_nodes=depot_offset(problem_name),
+            num_context_nodes=components.num_context_nodes,
         )
 
     def rollout(

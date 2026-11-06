@@ -7,8 +7,8 @@ import torch
 
 from core.lns.operators.destroy.base import DestroyOperator
 from core.lns.operators.destroy.selection import NodeSelection
-from core.models.nds.factory import NDSModel
 from core.models.nds.metrics import RolloutMetricsRecorder
+from core.models.nds.models import NDSModel
 from core.models.rollout import Rollout
 from core.problems.solution import BaseSolution
 

@@ -25,6 +25,7 @@ def _():
     from core.lns import GreedyAcceptance, search
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
     from core.models.nds.models.joint import JointNDSModel
+    from core.problems import registry
     from core.problems.cvrp import CVRPDistribution, CVRPSampler
     from core.problems.cvrp.lns.operators.repair.insert import (
         CVRPGreedyInsertRepair,
@@ -56,6 +57,7 @@ def _():
         plt,
         random_permutation,
         random_permutation_graph,
+        registry,
         search,
         time,
         torch,
@@ -515,6 +517,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(
     JointNDSModel,
+    registry,
     CVRPDistribution,
     CVRPGreedyInsertRepair,
     CVRPGreedyReconnectRepair,
@@ -629,7 +632,7 @@ def _(
 
         results = {}
         for device in devices:
-            model = JointNDSModel(problem_name=problem_name).to(device).eval()
+            model = JointNDSModel(components=registry.nds(problem_name)).to(device).eval()
             for destroy_name, repair_name in combos:
                 step_ms = []
                 candidates_per_s = []

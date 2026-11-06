@@ -29,10 +29,10 @@ def _():
     from core.lns.improvement_step import ImprovementStep
     from core.models.nds.config import TrainConfig
     from core.models.nds.destroy import ModelNodeDestroy
-    from core.models.nds.factory import build_model
     from core.problems.cvrp.instance import CVRPInstance
     from core.problems.cvrp.lns.operators.repair.insert import CVRPGreedyInsertRepair
     from core.problems.cvrp.solve import one_customer_per_route
+    from core.problems.registry import build_nds_model
     from core.problems.tsp.instance import TSPInstance
     from core.problems.tsp.lns.operators.repair.reconnect import TSPGreedyReconnectRepair
     from core.problems.tsp.solve import random_permutation_graph
@@ -45,7 +45,7 @@ def _():
         TSPGreedyReconnectRepair,
         TSPInstance,
         TrainConfig,
-        build_model,
+        build_nds_model,
         GreedyAcceptance,
         ImprovementStep,
         ModelNodeDestroy,
@@ -96,7 +96,7 @@ def _(config_path, mo):
 
 @app.cell
 def _(
-    build_model,
+    build_nds_model,
     checkpoint_paths,
     config,
     epoch_selector,
@@ -106,7 +106,7 @@ def _(
 ):
     mo.stop(not load_button.value)
     mo.stop(epoch_selector.value is None)
-    model = build_model(config.model)
+    model = build_nds_model(config.model)
     _ckpt = torch.load(
         checkpoint_paths[epoch_selector.value],
         map_location="cpu",

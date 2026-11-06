@@ -8,16 +8,18 @@ from core.models.nds.decoders.config import (
 )
 from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.encoders.config import PositionalEncodingConfig, SplitEncoderConfig
-from core.models.nds.factory import build_model
 from core.models.nds.models.split import SplitNDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.registry import build_nds_model
 from core.problems.tsp import TSPDistribution, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
 
 
 def _cvrp_model() -> SplitNDSModel:
-    return build_model(SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig()))
+    return build_nds_model(
+        SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig())
+    )
 
 
 def _count_encode(model: SplitNDSModel) -> Callable[[], int]:
@@ -68,7 +70,7 @@ def test_cvrp_rollout_shape_and_distinctness() -> None:
 
 def test_tsp_rollout_shape() -> None:
     R, M = 4, 5
-    model = build_model(
+    model = build_nds_model(
         SplitModelConfig(problem_name="tsp", decoder=SimpleOnePassDecoderConfig())
     ).eval()
     solution = _tsp_solution(B=3, N=20)
@@ -80,8 +82,12 @@ def test_tsp_rollout_shape() -> None:
 
 def test_route_encoding_defaults_to_problem() -> None:
     # None resolves to a problem-specific default: on for CVRP, off for TSP.
-    cvrp = build_model(SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig()))
-    tsp = build_model(SplitModelConfig(problem_name="tsp", decoder=SimpleOnePassDecoderConfig()))
+    cvrp = build_nds_model(
+        SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig())
+    )
+    tsp = build_nds_model(
+        SplitModelConfig(problem_name="tsp", decoder=SimpleOnePassDecoderConfig())
+    )
 
     assert cvrp.encoder.fusion.route is not None
     assert tsp.encoder.fusion.route is None
@@ -90,7 +96,7 @@ def test_route_encoding_defaults_to_problem() -> None:
 def test_positional_encoding_can_be_disabled_with_structural_layers_on() -> None:
     # No positional encoding, but neighbours/route encoding still active: the solution
     # must reach the model purely through the structural fusion layers.
-    model = build_model(
+    model = build_nds_model(
         SplitModelConfig(
             problem_name="cvrp",
             decoder=SimpleOnePassDecoderConfig(),
@@ -111,7 +117,7 @@ def test_positional_encoding_can_be_disabled_with_structural_layers_on() -> None
 
 
 def test_positional_encoding_enabled_widens_fusion_projection() -> None:
-    model = build_model(
+    model = build_nds_model(
         SplitModelConfig(
             problem_name="cvrp",
             decoder=SimpleOnePassDecoderConfig(),

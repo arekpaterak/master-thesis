@@ -1,67 +1,36 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import torch
 import torch.nn as nn
 
-from core.models.embeddings.cmstp import CMSTPInitialEmbedding
-from core.models.embeddings.cvrp import CVRPInitialEmbedding
-from core.models.embeddings.tsp import TSPInitialEmbedding
 from core.models.nds.encoders.config import JointEncoderConfig, PositionalEncodingConfig
-from core.models.nds.encoders.layers import (
-    AttentionLayer,
-    NeighboursEncodingLayer,
-    RouteEncodingLayer,
-    TreeNeighboursEncodingLayer,
-    build_norm,
-)
+from core.models.nds.encoders.layers import AttentionLayer, RouteEncodingLayer, build_norm
+
+if TYPE_CHECKING:
+    from core.models.nds.components import NDSComponents
 
 
 class JointEncoder(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: str,
+        components: NDSComponents,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
         encoder_config: JointEncoderConfig | None = None,
         positional: PositionalEncodingConfig | None = None,
-        initial_embedding: nn.Module | None = None,
     ) -> None:
         super().__init__()
 
-        self.problem_name = problem_name
-        if initial_embedding is not None:
-            if problem_name == "cvrp" and not isinstance(initial_embedding, CVRPInitialEmbedding):
-                raise TypeError(
-                    f"Expected CVRPInitialEmbedding for problem_name='cvrp', got {type(initial_embedding).__name__}"
-                )
-            if problem_name == "tsp" and not isinstance(initial_embedding, TSPInitialEmbedding):
-                raise TypeError(
-                    f"Expected TSPInitialEmbedding for problem_name='tsp', got {type(initial_embedding).__name__}"
-                )
-            if problem_name == "cmstp" and not isinstance(initial_embedding, CMSTPInitialEmbedding):
-                raise TypeError(
-                    f"Expected CMSTPInitialEmbedding for problem_name='cmstp', got {type(initial_embedding).__name__}"
-                )
-            self.initial_embedding = initial_embedding
-        elif problem_name == "cvrp":
-            self.initial_embedding = CVRPInitialEmbedding(
-                hidden_dim=hidden_dim, positional=positional
-            )
-        elif problem_name == "tsp":
-            self.initial_embedding = TSPInitialEmbedding(
-                hidden_dim=hidden_dim, positional=positional
-            )
-        elif problem_name == "cmstp":
-            self.initial_embedding = CMSTPInitialEmbedding(
-                hidden_dim=hidden_dim, positional=positional
-            )
-        else:
-            raise ValueError(f"Unknown problem_name: {problem_name}")
+        self.initial_embedding = components.initial_embedding(
+            hidden_dim=hidden_dim, positional=positional
+        )
 
         encoder_config = encoder_config or JointEncoderConfig()
-        with_route_encoding = encoder_config.with_route_encoding
-        if with_route_encoding is None:
-            with_route_encoding = problem_name in ("cvrp", "cmstp")
+        with_route_encoding = resolve_route_encoding(encoder_config.with_route_encoding, components)
 
         attention_layer = lambda: AttentionLayer(
             hidden_dim=hidden_dim,
@@ -76,11 +45,8 @@ class JointEncoder(nn.Module):
             *(attention_layer() for _ in range(encoder_config.num_pre_attention_layers))
         )
         self.encoding_order = encoder_config.encoding_order
-        neighbours_layer_cls = (
-            TreeNeighboursEncodingLayer if problem_name == "cmstp" else NeighboursEncodingLayer
-        )
         self.neighbours_encoding = (
-            neighbours_layer_cls(
+            components.neighbours_layer(
                 hidden_dim=hidden_dim,
                 norm_type=encoder_config.norm_type,
                 pre_norm=encoder_config.pre_norm,
@@ -122,9 +88,7 @@ class JointEncoder(nn.Module):
         def apply_neighbours(h: torch.Tensor) -> torch.Tensor:
             if self.neighbours_encoding is None:
                 return h
-            if self.problem_name == "cmstp":
-                return self.neighbours_encoding(h, parent_index=solution.parent_index)
-            return self.neighbours_encoding(h, neighbours_index=solution.neighbours_index)
+            return self.neighbours_encoding.encode(h, solution)
 
         def apply_route(h: torch.Tensor) -> torch.Tensor:
             if self.route_encoding is None:
@@ -143,3 +107,11 @@ class JointEncoder(nn.Module):
         if self.final_norm is not None:
             h = self.final_norm(h)
         return h
+
+
+def resolve_route_encoding(requested: bool | None, components: NDSComponents) -> bool:
+    if requested is None:
+        return components.route_encoding
+    if requested and not components.route_encoding:
+        raise ValueError(f"Route encoding is not supported for {components.problem.name}.")
+    return requested

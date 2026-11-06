@@ -21,6 +21,10 @@ class CVRPInstanceFeatures(TensorClass):
     """(..., N) raw depot-anchored polar angle (XPE). None when PE is disabled."""
 
     @property
+    def cross_route_phase(self) -> torch.Tensor | None:
+        return self.depot_angle
+
+    @property
     def customer_features(self) -> torch.Tensor:
         """(..., N, 3) content features [x, y, demand]."""
         return torch.cat([self.customer_locations, self.customer_demand], dim=-1)
@@ -43,6 +47,10 @@ class CVRPSolutionFeatures(TensorClass):
     """(..., N) route assignment per customer."""
     route_phase: torch.Tensor | None = None
     """(..., N) raw in-route phase (IPE) in [0, 2*pi]. None when PE is disabled."""
+
+    @property
+    def in_route_phase(self) -> torch.Tensor | None:
+        return self.route_phase
 
 
 class CVRPSolutionLike(Protocol):

@@ -9,7 +9,7 @@ with app.setup:
     import yaml
 
     from core.models.nds.config import TrainConfig
-    from core.models.nds.factory import build_model
+    from core.problems.registry import build_nds_model
     from figures.utils import (
         figsize,
         project_root,
@@ -134,7 +134,7 @@ def _(CONFIGS: dict[str, dict[str, dict[int, str]]], problem_ui, size_ui):
         config = TrainConfig.model_validate(
             yaml.safe_load((project_root() / config_path).read_text())
         )
-        model = build_model(config.model)
+        model = build_nds_model(config.model)
         return count_parameters(model.encoder), count_parameters(model.decoder)
 
     size = size_ui.value

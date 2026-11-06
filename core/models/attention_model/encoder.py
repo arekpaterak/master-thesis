@@ -3,8 +3,8 @@ from typing import NamedTuple
 import torch
 import torch.nn as nn
 
-from core.models.embeddings.cvrp import CVRPInitialEmbedding
-from core.models.embeddings.tsp import TSPInitialEmbedding
+from core.problems.cvrp.embedding import CVRPInitialEmbedding
+from core.problems.tsp.embedding import TSPInitialEmbedding
 
 
 class EncoderOutput(NamedTuple):

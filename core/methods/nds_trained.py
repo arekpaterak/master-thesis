@@ -10,10 +10,10 @@ from pydantic import Field
 from core.lns.config import SearchParams
 from core.methods.base import Method, MethodConfigBase
 from core.models.nds.config import TrainConfig
-from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.utils import checkpoint_epoch, find_checkpoint, list_checkpoints
 from core.problems import ProblemConfig, registry
+from core.problems.registry import build_nds_model
 
 
 class NDSTrainedConfig(MethodConfigBase):
@@ -46,7 +46,7 @@ class NDSTrainedConfig(MethodConfigBase):
                 f"nds-trained model.problem_name '{train_config.model.problem_name}' does not "
                 f"match the evaluation problem '{problem.name}'."
             )
-        model = build_model(train_config.model).to(device)
+        model = build_nds_model(train_config.model).to(device)
         model.load_state_dict(ckpt["model"])
         model.eval()
 
