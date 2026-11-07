@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 
+from core.envs.destroy import DestroyEnv, DestroyState
 from core.models.rollout import Rollout
 
 
@@ -29,22 +30,22 @@ class DestroyDecoder(nn.Module, ABC):
         *,
         h_nodes: torch.Tensor,
         seed: torch.Tensor,
-        action_mask: torch.Tensor | None,
-        deconstruction_size: int,
+        env: DestroyEnv,
+        state: DestroyState,
         greedy: bool,
+        generator: torch.Generator,
         **kwargs,
     ) -> Rollout:
-        """Select ``deconstruction_size`` nodes and return the resulting Rollout.
+        """Select ``env.horizon`` nodes starting from ``state`` and return the Rollout.
 
         Args:
             h_nodes: Encoded node embeddings. Shape: (B, N, D).
             seed: Random seed vector for stochastic conditioning. Shape: (B, R, seed_dim).
                 Ignored by decoders built without PolyNet (``with_poly=False``).
-            action_mask: Boolean mask where True marks forbidden nodes, shape (B, N).
-                Autoregressive decoders rebuild the (problem-specific, transitionable)
-                initial state internally and may ignore this argument.
-            deconstruction_size: Number of nodes to select (M).
+            env: The destroy MDP; its ``horizon`` is the number of nodes to select (M).
+            state: The initial state from ``env.reset``.
             greedy: If True, select deterministically; otherwise sample stochastically.
+            generator: Source of randomness for sampling, on the device of ``h_nodes``.
             **kwargs: Decoder-specific additional inputs.
 
         Returns:

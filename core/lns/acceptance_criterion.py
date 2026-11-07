@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from core.constants import EPS
 from core.problems.solution import BaseSolution
+from core.random import SeededGenerator
 
 
 class AcceptanceCriterion(ABC):
@@ -52,13 +53,21 @@ class SimulatedAnnealingAcceptance(AcceptanceCriterion):
     exp(-delta / temperature).
     """
 
-    def __init__(self, *, temperature: float, decay: float) -> None:
+    def __init__(self, *, temperature: float, decay: float, seed: int | None = None) -> None:
         self._temperature_start = temperature
         self._decay = decay
         self._temperature = temperature
+        self._rng = SeededGenerator(seed)
 
     @classmethod
-    def from_range(cls, *, temperature_start: float, temperature_min: float, n_steps: int) -> Self:
+    def from_range(
+        cls,
+        *,
+        temperature_start: float,
+        temperature_min: float,
+        n_steps: int,
+        seed: int | None = None,
+    ) -> Self:
         """Construct with exponential decay from temperature_start to temperature_min.
 
         Args:
@@ -71,7 +80,7 @@ class SimulatedAnnealingAcceptance(AcceptanceCriterion):
         """
         assert n_steps > 0, "Expected n_steps > 0"
         decay = (temperature_min / temperature_start) ** (1 / n_steps)
-        return cls(temperature=temperature_start, decay=decay)
+        return cls(temperature=temperature_start, decay=decay, seed=seed)
 
     @property
     def temperature(self) -> float:
@@ -91,7 +100,13 @@ class SimulatedAnnealingAcceptance(AcceptanceCriterion):
     ) -> torch.Tensor:
         delta = candidate.objective() - current.objective()
         prob = torch.exp(-delta.clamp(min=0) / self._temperature)
-        return (delta < EPS) | (torch.rand_like(delta) < prob)
+        uniform = torch.rand(
+            delta.shape,
+            generator=self._rng.on(delta.device),
+            dtype=delta.dtype,
+            device=delta.device,
+        )
+        return (delta < EPS) | (uniform < prob)
 
 
 class GreedyAcceptanceConfig(BaseModel):
@@ -140,7 +155,9 @@ AcceptanceCriterionConfig = Annotated[
 ]
 
 
-def build_criterion(config: AcceptanceCriterionConfig, *, n_steps: int = 1) -> AcceptanceCriterion:
+def build_criterion(
+    config: AcceptanceCriterionConfig, *, n_steps: int = 1, seed: int | None = None
+) -> AcceptanceCriterion:
     match config:
         case GreedyAcceptanceConfig():
             return GreedyAcceptance()
@@ -151,4 +168,5 @@ def build_criterion(config: AcceptanceCriterionConfig, *, n_steps: int = 1) -> A
                 temperature_start=config.temperature_start,
                 temperature_min=config.temperature_min,
                 n_steps=n_steps,
+                seed=seed,
             )

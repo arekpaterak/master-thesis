@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import torch
 import torch.nn as nn
 
+from core.envs.destroy import DestroyEnv, DestroyState
 from core.models.entropy import entropy
 from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.compatibility_scorer import CompatibilityScorer
@@ -13,12 +14,16 @@ from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 from core.models.layers.poly_net import PolyNet
 from core.models.rollout import Rollout
+from core.random import sample_categorical
 
 from .base import OnePassDestroyDecoder
 
+if TYPE_CHECKING:
+    from core.models.nds.decoders.config import SlotDecoderConfig
+
 
 class SlotDecoder(OnePassDestroyDecoder):
-    """Destroy decoder using M learned slot queries conditioned on the seed.
+    """Destroy decoder using learned slot queries conditioned on the seed.
 
     Each slot has a dedicated learned query vector (nn.Parameter) that specialises
     during training. The seed is incorporated via poly_net as a residual after MHA,
@@ -29,10 +34,11 @@ class SlotDecoder(OnePassDestroyDecoder):
     cross-attention, grounding the otherwise instance-blind learned queries in the
     current graph.
 
-    The M slots score all nodes in one pass, then ``rollout`` samples them sequentially:
-    each slot draws from its own softmax over the still-available nodes, and the chosen
-    node is masked out for the later slots. This yields M distinct nodes with an
-    autoregressive joint log-probability.
+    The slots score all nodes in one pass, then ``rollout`` samples the first M of them
+    sequentially: each slot draws from its own softmax over the still-available nodes, and
+    the chosen node is masked out for the later slots. This yields M distinct nodes with an
+    autoregressive joint log-probability. A model with more slots than M leaves the rest
+    unused, so it can remove fewer nodes than it was trained for.
     """
 
     def __init__(
@@ -94,6 +100,28 @@ class SlotDecoder(OnePassDestroyDecoder):
             hidden_dim=hidden_dim, C=C, use_projections=False, attention_scaling=attention_scaling
         )
 
+    @classmethod
+    def from_config(
+        cls,
+        config: SlotDecoderConfig,
+        *,
+        hidden_dim: int,
+        num_heads: int,
+        num_context_nodes: int,
+    ) -> SlotDecoder:
+        return cls(
+            hidden_dim=hidden_dim,
+            seed_dim=config.seed_dim,
+            poly_dim=config.poly_dim,
+            num_heads=num_heads,
+            with_poly=config.with_poly,
+            num_slots=config.num_slots,
+            slot_self_attention=config.slot_self_attention,
+            cross_attention=config.cross_attention,
+            query=config.query,
+            num_context_nodes=num_context_nodes,
+        )
+
     @property
     def seed_dim(self) -> int:
         return self._seed_dim
@@ -149,31 +177,35 @@ class SlotDecoder(OnePassDestroyDecoder):
         *,
         h_nodes: torch.Tensor,
         seed: torch.Tensor,
-        action_mask: torch.Tensor,
-        deconstruction_size: int,
+        env: DestroyEnv,
+        state: DestroyState,
         greedy: bool,
+        generator: torch.Generator,
         **kwargs,
     ) -> Rollout:
-        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
-        assert deconstruction_size == self.num_slots
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), state.action_mask: (B, 1, N)
+        if env.horizon > self.num_slots:
+            raise ValueError(
+                f"Cannot select {env.horizon} nodes with {self.num_slots} slots; "
+                "num_slots must be at least the deconstruction size."
+            )
 
         scores = self.forward(
-            h_nodes=h_nodes, seed=seed, action_mask=action_mask
-        )  # (B, R, M, N) raw, forbidden nodes at -inf
-        B, R, M, N = scores.shape
+            h_nodes=h_nodes, seed=seed, action_mask=state.action_mask.squeeze(1)
+        )  # (B, R, num_slots, N) raw, forbidden nodes at -inf
+        B, R, _, N = scores.shape
 
         # Sample slots sequentially, masking each chosen node out of the later slots so the
         # selected nodes are distinct. The joint log-prob is the autoregressive sum.
         already_selected = torch.zeros(B, R, N, dtype=torch.bool, device=scores.device)
         selected, log_probs, entropies, entropies_norm = [], [], [], []
-        for slot in range(M):
+        for slot in range(env.horizon):
             log_p = torch.log_softmax(
                 scores[:, :, slot, :].masked_fill(already_selected, float("-inf")), dim=-1
             )  # (B, R, N)
-            if greedy:
-                idx = log_p.argmax(dim=-1)  # (B, R)
-            else:
-                idx = torch.distributions.Categorical(logits=log_p).sample()  # (B, R)
+            idx = (
+                log_p.argmax(dim=-1) if greedy else sample_categorical(log_p, generator=generator)
+            )  # (B, R)
 
             selected.append(idx)
             log_probs.append(log_p.gather(-1, idx.unsqueeze(-1)).squeeze(-1))  # (B, R)

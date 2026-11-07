@@ -14,9 +14,9 @@ from core.models.module import Module
 from core.models.nds.config import TrainConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.encoders.split import SplitNDSEncoder
-from core.models.nds.factory import NDSModel
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.metrics import RolloutMetricsRecorder
+from core.models.nds.models import NDSModel
 from core.models.nds.policy_loss import build_policy_loss
 from core.models.nds.training import (
     BatchTrainSummary,
@@ -80,7 +80,9 @@ class NDSModule(Module):
         generate_validation_start_solution = with_warmup(
             lns.problem.initial_solution, lns=lns, search=config.validation.search
         )
-        training_improvement_step = build_nds_improvement_step(config.search, model=model, lns=lns)
+        training_improvement_step = build_nds_improvement_step(
+            config.search, model=model, lns=lns, seed=config.seed
+        )
 
         self._training_step = NDSTrainingStep(
             num_main_improvement_steps=config.trainer.num_main_improvement_steps,
@@ -104,7 +106,9 @@ class NDSModule(Module):
             acceptance=build_criterion(
                 config.trainer.training_acceptance,
                 n_steps=config.trainer.num_main_improvement_steps,
+                seed=config.seed,
             ),
+            seed=config.seed,
         )
 
         validation_rollout_recorder = RolloutMetricsRecorder()
@@ -112,6 +116,7 @@ class NDSModule(Module):
             config.validation.search,
             model=model,
             lns=lns,
+            seed=config.validation.seed,
             recorder=validation_rollout_recorder,
         )
 

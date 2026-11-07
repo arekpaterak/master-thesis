@@ -15,9 +15,9 @@ with app.setup:
     from core.lns.acceptance_criterion import build_criterion
     from core.lns.improvement_step import build_random_node_destroy_step
     from core.models.nds.config import TrainConfig
-    from core.models.nds.factory import build_model
     from core.models.nds.improvement_step import build_nds_improvement_step
     from core.problems import registry
+    from core.problems.registry import build_nds_model
     from figures.utils import (
         figsize,
         project_root,
@@ -294,7 +294,7 @@ def _(
         config = load_config(config_path)
         sampler = registry.build_sampler(config.problem)
         initial_solution = registry.problem(config.problem.name).initial_solution
-        model = build_model(config.model).to(DEVICE).eval() if with_model else None
+        model = build_nds_model(config.model).to(DEVICE).eval() if with_model else None
         step = build_step(config, rollout_size, model=model)
 
         run_search(

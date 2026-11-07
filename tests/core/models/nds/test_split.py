@@ -8,16 +8,19 @@ from core.models.nds.decoders.config import (
 )
 from core.models.nds.destroy import ModelNodeDestroy
 from core.models.nds.encoders.config import PositionalEncodingConfig, SplitEncoderConfig
-from core.models.nds.factory import build_model
 from core.models.nds.models.split import SplitNDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.registry import build_nds_model
 from core.problems.tsp import TSPDistribution, TSPSampler
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.random import SeededGenerator
 
 
 def _cvrp_model() -> SplitNDSModel:
-    return build_model(SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig()))
+    return build_nds_model(
+        SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig())
+    )
 
 
 def _count_encode(model: SplitNDSModel) -> Callable[[], int]:
@@ -58,7 +61,9 @@ def test_cvrp_rollout_shape_and_distinctness() -> None:
     model = _cvrp_model().eval()
     solution = _cvrp_solution(B=4, N=20)
 
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
+    rollout = model.rollout(
+        solution, rollouts_per_solution=R, deconstruction_size=M, rng=SeededGenerator(0)
+    )
 
     assert rollout.actions.shape == (4, R, M)
     assert rollout.log_p.shape == (4, R)
@@ -68,20 +73,26 @@ def test_cvrp_rollout_shape_and_distinctness() -> None:
 
 def test_tsp_rollout_shape() -> None:
     R, M = 4, 5
-    model = build_model(
+    model = build_nds_model(
         SplitModelConfig(problem_name="tsp", decoder=SimpleOnePassDecoderConfig())
     ).eval()
     solution = _tsp_solution(B=3, N=20)
 
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
+    rollout = model.rollout(
+        solution, rollouts_per_solution=R, deconstruction_size=M, rng=SeededGenerator(0)
+    )
 
     assert rollout.actions.shape == (3, R, M)
 
 
 def test_route_encoding_defaults_to_problem() -> None:
     # None resolves to a problem-specific default: on for CVRP, off for TSP.
-    cvrp = build_model(SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig()))
-    tsp = build_model(SplitModelConfig(problem_name="tsp", decoder=SimpleOnePassDecoderConfig()))
+    cvrp = build_nds_model(
+        SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig())
+    )
+    tsp = build_nds_model(
+        SplitModelConfig(problem_name="tsp", decoder=SimpleOnePassDecoderConfig())
+    )
 
     assert cvrp.encoder.fusion.route is not None
     assert tsp.encoder.fusion.route is None
@@ -90,7 +101,7 @@ def test_route_encoding_defaults_to_problem() -> None:
 def test_positional_encoding_can_be_disabled_with_structural_layers_on() -> None:
     # No positional encoding, but neighbours/route encoding still active: the solution
     # must reach the model purely through the structural fusion layers.
-    model = build_model(
+    model = build_nds_model(
         SplitModelConfig(
             problem_name="cvrp",
             decoder=SimpleOnePassDecoderConfig(),
@@ -106,12 +117,14 @@ def test_positional_encoding_can_be_disabled_with_structural_layers_on() -> None
     assert model.encoder.fusion.route is not None
 
     solution = _cvrp_solution(B=2, N=20)
-    rollout = model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
+    rollout = model.rollout(
+        solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0)
+    )
     assert rollout.actions.shape == (2, 3, 5)
 
 
 def test_positional_encoding_enabled_widens_fusion_projection() -> None:
-    model = build_model(
+    model = build_nds_model(
         SplitModelConfig(
             problem_name="cvrp",
             decoder=SimpleOnePassDecoderConfig(),
@@ -130,14 +143,14 @@ def test_search_session_binds_cache_and_encodes_once() -> None:
     encode_count = _count_encode(model)
 
     with model.search_session(solution.instance) as step:
-        step(solution, rollouts_per_solution=2, deconstruction_size=5)
-        step(solution, rollouts_per_solution=2, deconstruction_size=5)
+        step(solution, rollouts_per_solution=2, deconstruction_size=5, rng=SeededGenerator(0))
+        step(solution, rollouts_per_solution=2, deconstruction_size=5, rng=SeededGenerator(0))
 
     # Encoded once on session enter and reused for both rollouts via the bound callable.
     assert encode_count() == 1
 
     # The model holds no ambient cache: a bare rollout after the session recomputes.
-    model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5)
+    model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5, rng=SeededGenerator(0))
     assert encode_count() == 2
 
 
@@ -147,8 +160,8 @@ def test_rollout_recomputes_without_session() -> None:
     encode_count = _count_encode(model)
 
     # No active session and no explicit cache: pure rollout recomputes each call.
-    model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5)
-    model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5)
+    model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5, rng=SeededGenerator(0))
+    model.rollout(solution, rollouts_per_solution=2, deconstruction_size=5, rng=SeededGenerator(0))
     assert encode_count() == 2
 
 

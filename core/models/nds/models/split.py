@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 import torch.nn as nn
 
+from core.envs.destroy import DestroyEnv
 from core.models.nds.decoders.base import DestroyDecoder
 from core.models.nds.encoders.config import PositionalEncodingConfig, SplitEncoderConfig
 from core.models.nds.encoders.split import InstanceCache, SplitNDSEncoder
@@ -13,9 +15,11 @@ from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
 from core.problems.instance import BaseProblemInstance
-from core.problems.names import ProblemName
 from core.problems.solution import BaseSolution
-from core.states.destroy import initial_action_mask
+from core.random import SeededGenerator
+
+if TYPE_CHECKING:
+    from core.models.nds.components import NDSComponents
 
 
 class SplitNDSModel(nn.Module):
@@ -28,7 +32,7 @@ class SplitNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: ProblemName,
+        components: NDSComponents,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -38,9 +42,9 @@ class SplitNDSModel(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.problem_name = problem_name
+        self.components = components
         self.encoder = SplitNDSEncoder(
-            problem_name=problem_name,
+            components=components,
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,
@@ -56,6 +60,7 @@ class SplitNDSModel(nn.Module):
         cache: InstanceCache | None = None,
         rollouts_per_solution: int,
         deconstruction_size: int,
+        rng: SeededGenerator,
         greedy: bool = False,
     ) -> Rollout:
         """Rollout from the instance encoding.
@@ -74,6 +79,7 @@ class SplitNDSModel(nn.Module):
             cache,
             rollouts_per_solution=rollouts_per_solution,
             deconstruction_size=deconstruction_size,
+            rng=rng,
             greedy=greedy,
         )
 
@@ -97,6 +103,7 @@ class SplitNDSModel(nn.Module):
         *,
         rollouts_per_solution: int,
         deconstruction_size: int,
+        rng: SeededGenerator,
         greedy: bool,
     ) -> Rollout:
         instance = solution.instance
@@ -105,22 +112,24 @@ class SplitNDSModel(nn.Module):
         R = rollouts_per_solution
         device = get_model_device(self)
 
+        generator = rng.on(device)
         seed = sample_seed(
-            batch_size=B, rollout_size=R, seed_dim=self.decoder.seed_dim, device=device
+            batch_size=B,
+            rollout_size=R,
+            seed_dim=self.decoder.seed_dim,
+            generator=generator,
+            device=device,
         )
 
         h_nodes = self.encoder(cache, solution)
 
-        N = h_nodes.shape[1]
-        action_mask = initial_action_mask(
-            self.problem_name, batch_size=B, num_nodes=N, device=device
-        )  # (B, N)
-
+        env = DestroyEnv(horizon=deconstruction_size)
         rollout = self.decoder.rollout(
             h_nodes=h_nodes,
             seed=seed,
-            action_mask=action_mask,
-            deconstruction_size=deconstruction_size,
+            env=env,
+            state=env.reset(instance, device=device),
             greedy=greedy,
+            generator=generator,
         )
         return unflatten_rollout(rollout, batch_dims)

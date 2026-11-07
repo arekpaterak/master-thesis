@@ -4,6 +4,7 @@ import torch
 
 from core.lns.operators.repair.base import RepairOperator
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.random import SeededGenerator
 
 
 class CVRPGreedyInsertRepair(RepairOperator[CVRPGraphSolution]):
@@ -31,14 +32,13 @@ class CVRPGreedyInsertRepair(RepairOperator[CVRPGraphSolution]):
         seed: int | None = None,
         deconstruction_size: int | None = None,
     ) -> None:
-        self._seed = seed
+        self._rng = SeededGenerator(seed)
         self._deconstruction_size = deconstruction_size
-        self._generator: torch.Generator | None = None
 
     def __call__(self, deconstructed_solution: CVRPGraphSolution) -> CVRPGraphSolution:
         solution = deconstructed_solution.clone()
         device = solution.instance.locations.device
-        generator = self._device_generator(device)
+        generator = self._rng.on(device)
 
         distances = solution.instance.distances()  # constant across iterations
         for _ in range(self._loop_bound(solution)):
@@ -60,14 +60,6 @@ class CVRPGreedyInsertRepair(RepairOperator[CVRPGraphSolution]):
             solution.insert_(customer, chosen_u, chosen_v, mask=is_active)
 
         return solution
-
-    def _device_generator(self, device: torch.device) -> torch.Generator:
-        if self._generator is None or self._generator.device != device:
-            gen = torch.Generator(device=device)
-            if self._seed is not None:
-                gen.manual_seed(self._seed)
-            self._generator = gen
-        return self._generator
 
     def _loop_bound(self, solution: CVRPGraphSolution) -> int:
         if self._deconstruction_size is None:

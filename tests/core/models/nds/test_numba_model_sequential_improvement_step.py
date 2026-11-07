@@ -8,13 +8,14 @@ from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
 from core.problems.cvrp.lns.apply_repair import CVRPGreedyInsertApplyRepair
+from core.problems.cvrp.nds.components import NDS as CVRP_NDS
 from core.problems.cvrp.solve import one_customer_per_route_graph
 
 
 @pytest.fixture
 def model() -> JointNDSModel:
     torch.manual_seed(0)
-    return JointNDSModel(problem_name="cvrp")
+    return JointNDSModel(components=CVRP_NDS)
 
 
 @pytest.fixture(params=[1, 4])

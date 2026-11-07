@@ -28,6 +28,10 @@ class Reward(ABC):
 class AbsoluteReward(Reward):
     """Raw objective reduction in problem units (original NDS behaviour)."""
 
+    @classmethod
+    def from_config(cls, config: AbsoluteRewardConfig) -> AbsoluteReward:
+        return cls()
+
     def __call__(
         self,
         *,
@@ -44,6 +48,10 @@ class RelativeReward(Reward):
     Scale-invariant across instance sizes and across the search trajectory, which
     keeps the gradient magnitude stable as the solution improves.
     """
+
+    @classmethod
+    def from_config(cls, config: RelativeRewardConfig) -> RelativeReward:
+        return cls()
 
     def __call__(
         self,
@@ -65,14 +73,14 @@ class AbsoluteRewardConfig(_RewardConfigBase):
     type: Literal["absolute"] = "absolute"
 
     def build(self) -> AbsoluteReward:
-        return AbsoluteReward()
+        return AbsoluteReward.from_config(self)
 
 
 class RelativeRewardConfig(_RewardConfigBase):
     type: Literal["relative"] = "relative"
 
     def build(self) -> RelativeReward:
-        return RelativeReward()
+        return RelativeReward.from_config(self)
 
 
 RewardConfig = Annotated[

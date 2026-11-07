@@ -6,6 +6,7 @@ from core.lns.operators.repair.base import RepairOperator
 from core.problems.solution import BaseSolution
 from core.problems.tsp import TSPSolution
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.random import SeededGenerator
 
 
 class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
@@ -17,9 +18,8 @@ class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
         seed: int | None = None,
         deconstruction_size: int | None = None,
     ) -> None:
-        self._seed = seed
+        self._rng = SeededGenerator(seed)
         self._deconstruction_size = deconstruction_size
-        self._generator: torch.Generator | None = None
 
     def __call__(self, deconstructed_solution: S) -> S:
         match deconstructed_solution:
@@ -31,14 +31,6 @@ class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
                 raise NotImplementedError(
                     f"Operator not implemented for {type(deconstructed_solution)}"
                 )
-
-    def _device_generator(self, device: torch.device) -> torch.Generator:
-        if self._generator is None or self._generator.device != device:
-            gen = torch.Generator(device=device)
-            if self._seed is not None:
-                gen.manual_seed(self._seed)
-            self._generator = gen
-        return self._generator
 
     def _loop_bound(self, solution: TSPGraphSolution) -> int:
         if self._deconstruction_size is None:
@@ -58,7 +50,7 @@ class TSPGreedyInsertRepair[S: BaseSolution](RepairOperator[S]):
     def _call_graph(self, deconstructed_solution: TSPGraphSolution) -> TSPGraphSolution:
         solution = deconstructed_solution.clone()
         device = solution.instance.locations.device
-        generator = self._device_generator(device)
+        generator = self._rng.on(device)
 
         distances = solution.instance.distances()  # constant across iterations
         for _ in range(self._loop_bound(solution)):

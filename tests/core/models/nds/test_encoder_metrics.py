@@ -1,15 +1,15 @@
 import math
 
-import pytest
 import torch
 
 from core.models.nds.config import JointModelConfig, SplitModelConfig
 from core.models.nds.decoders.config import SimpleOnePassDecoderConfig
-from core.models.nds.factory import NDSModel, build_model
 from core.models.nds.metrics import EncoderMetricsRecorder, mean_pairwise_cosine_similarity
-from core.problems import depot_offset
+from core.models.nds.models import NDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.registry import build_nds_model
+from core.random import SeededGenerator
 
 
 def test_orthogonal_embeddings_have_zero_cosine() -> None:
@@ -117,15 +117,19 @@ def _cvrp_solution(B: int = 4, N: int = 20) -> CVRPGraphSolution:
 
 
 def _split_model():
-    return build_model(SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig()))
+    return build_nds_model(
+        SplitModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig())
+    )
 
 
 def _joint_model():
-    return build_model(JointModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig()))
+    return build_nds_model(
+        JointModelConfig(problem_name="cvrp", decoder=SimpleOnePassDecoderConfig())
+    )
 
 
 def _attach(model: NDSModel):
-    return EncoderMetricsRecorder.attach(model.encoder, offset=depot_offset(model.problem_name))
+    return EncoderMetricsRecorder.attach(model.encoder, offset=model.components.num_context_nodes)
 
 
 def test_attach_records_once_per_rollout_for_both_models() -> None:
@@ -134,8 +138,12 @@ def test_attach_records_once_per_rollout_for_both_models() -> None:
     solution = _cvrp_solution()
     for model in (_split_model().eval(), _joint_model().eval()):
         with _attach(model) as recorder:
-            model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
-            model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
+            model.rollout(
+                solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0)
+            )
+            model.rollout(
+                solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0)
+            )
 
         assert recorder._embeddings_cos_sim._total_weight == 2
         assert -1.0 <= recorder.embeddings_cos_sim <= 1.0
@@ -146,10 +154,12 @@ def test_attach_detaches_after_the_block() -> None:
     solution = _cvrp_solution()
 
     with _attach(model) as recorder:
-        model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
+        model.rollout(
+            solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0)
+        )
     count_after_block = recorder._embeddings_cos_sim._total_weight
 
-    model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5)
+    model.rollout(solution, rollouts_per_solution=3, deconstruction_size=5, rng=SeededGenerator(0))
     assert recorder._embeddings_cos_sim._total_weight == count_after_block == 1
 
 
@@ -157,11 +167,4 @@ def test_attach_excludes_the_depot() -> None:
     # The recorder built for a CVRP model must slice off the depot (offset 1).
     model = _split_model()
     with _attach(model) as recorder:
-        assert recorder._offset == depot_offset(model.problem_name) == 1
-
-
-def test_depot_offset_dispatches_on_problem_name() -> None:
-    assert depot_offset("cvrp") == 1
-    assert depot_offset("tsp") == 0
-    with pytest.raises(ValueError):
-        depot_offset("unknown")
+        assert recorder._offset == model.components.num_context_nodes == 1

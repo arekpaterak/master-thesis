@@ -12,7 +12,6 @@ from core.models.nds.config import JointModelConfig, ModelConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig
 from core.models.nds.encoders.config import JointEncoderConfig
-from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.models.nds.pretrained.config import (
     ORIGINAL_NDS_ENCODING_ORDER,
@@ -20,6 +19,7 @@ from core.models.nds.pretrained.config import (
     validate_encoder_matches_original_nds,
 )
 from core.problems import ProblemConfig, registry
+from core.problems.registry import build_nds_model
 
 
 def _original_nds_model() -> JointModelConfig:
@@ -61,7 +61,7 @@ class NDSPretrainedConfig(MethodConfigBase):
                 f"nds-pretrained model.problem_name '{self.model.problem_name}' does not match "
                 f"the evaluation problem '{problem.name}'."
             )
-        model = build_model(self.model).to(device)
+        model = build_nds_model(self.model).to(device)
         if not isinstance(getattr(model, "decoder", None), AutoregressiveNDSDecoder):
             raise ValueError(
                 "Expected the original NDS checkpoint to be used with an autoregressive decoder."

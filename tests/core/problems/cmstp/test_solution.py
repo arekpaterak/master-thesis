@@ -4,7 +4,6 @@ from core.problems.cmstp import CMSTPInstance, CMSTPSolution
 from core.problems.cmstp.config import CMSTPDistribution
 from core.problems.cmstp.construction import star
 from core.problems.cmstp.sampler import CMSTPSampler
-from core.states.destroy import initial_action_mask
 
 
 def test_compute_subtree_ids_matches_branches():
@@ -47,9 +46,3 @@ def test_numpy_roundtrip_reproduces_subtree_ids():
         device=instance.locations.device,
     )
     assert bool((rebuilt.subtree_ids == solution.subtree_ids).all())
-
-
-def test_initial_action_mask_forbids_only_root():
-    mask = initial_action_mask("cmstp", batch_size=3, num_nodes=6, device=torch.device("cpu"))
-    assert bool(mask[:, 0].all())
-    assert bool((~mask[:, 1:]).all())

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import torch
 import torch.nn as nn
 
+from core.envs.destroy import DestroyEnv, DestroyState
 from core.models.entropy import entropy
 from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.batched_gru_cell import BatchedGRUCell
@@ -13,7 +14,10 @@ from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.poly_net import PolyNet
 from core.models.nds.decoders.base import DestroyDecoder
 from core.models.rollout import Rollout
-from core.states.destroy import DestroyState
+from core.random import sample_categorical
+
+if TYPE_CHECKING:
+    from core.models.nds.decoders.config import AutoregressiveDecoderConfig
 
 
 class DecoderCache(NamedTuple):
@@ -121,6 +125,19 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
             hidden_dim=hidden_dim, C=C, use_projections=False, attention_scaling=attention_scaling
         )
 
+    @classmethod
+    def from_config(
+        cls, config: AutoregressiveDecoderConfig, *, hidden_dim: int, num_heads: int
+    ) -> AutoregressiveNDSDecoder:
+        return cls(
+            hidden_dim=hidden_dim,
+            seed_dim=config.seed_dim,
+            poly_dim=config.poly_dim,
+            num_heads=num_heads,
+            with_poly=config.with_poly,
+            use_hidden_decoding_state=config.use_hidden_decoding_state,
+        )
+
     @property
     def seed_dim(self) -> int:
         return self._seed_dim
@@ -130,24 +147,17 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         *,
         h_nodes: torch.Tensor,
         seed: torch.Tensor,
-        action_mask: torch.Tensor | None,
-        deconstruction_size: int,
+        env: DestroyEnv,
+        state: DestroyState,
         greedy: bool,
+        generator: torch.Generator,
         **kwargs,
     ) -> Rollout:
-        """Autoregressively select ``deconstruction_size`` nodes from ``h_nodes``.
-
-        ``action_mask`` (B, N) is the initial forbidden-node mask (e.g. the CVRP depot);
-        it seeds the transitionable problem state stepped through the decoding loop.
-        """
-        if action_mask is None:
-            raise ValueError("AutoregressiveNDSDecoder.rollout requires an action_mask.")
-
-        B, N, _ = h_nodes.shape
+        """Autoregressively select ``env.horizon`` nodes from ``h_nodes``."""
+        B = h_nodes.shape[0]
         R = seed.shape[1]
 
         cache = self.build_cache(h_nodes=h_nodes, seed=seed)
-        problem_state = DestroyState.from_mask(action_mask.unsqueeze(1).expand(B, R, N))
         decoder_state = self.build_initial_state(
             batch_size=B, rollout_size=R, device=h_nodes.device
         )
@@ -157,13 +167,15 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         entropies = []
         entropies_norm = []
 
-        for _ in range(deconstruction_size):
+        while not env.all_done(state):
             logits, gru_hidden = self.forward(
-                problem_state=problem_state, decoder_state=decoder_state, cache=cache
+                problem_state=state, decoder_state=decoder_state, cache=cache
             )
 
             distribution = torch.distributions.Categorical(logits=logits)
-            idx = logits.argmax(dim=-1) if greedy else distribution.sample()
+            idx = (
+                logits.argmax(dim=-1) if greedy else sample_categorical(logits, generator=generator)
+            )
             selected.append(idx)
             log_prob_of_selected.append(distribution.log_prob(idx))
 
@@ -171,7 +183,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
             entropies.append(step_entropy.entropy.detach())
             entropies_norm.append(step_entropy.entropy_norm.detach())
 
-            problem_state = problem_state.transition(action=idx.unsqueeze(-1))
+            state = env.step(state, idx)
             decoder_state = decoder_state.transition(gru_hidden)
 
         return Rollout.create(
@@ -268,7 +280,8 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         else:
             context = h_last_node
 
-        attention_mask = ~problem_state.action_mask
+        action_mask = problem_state.action_mask.expand(B, R, -1)
+        attention_mask = ~action_mask
         mha_out = self.MHA(
             q=context, k_cached=cache.k, v_cached=cache.v, attention_mask=attention_mask
         ).reshape(B, R, self.hidden_dim)
@@ -280,7 +293,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         logits = self.final_scorer(
             context=context,
             node_embeddings=cache.h_nodes,
-            mask=problem_state.action_mask,
+            mask=action_mask,
         )
 
         return DecoderOutput(

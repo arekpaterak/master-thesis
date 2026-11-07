@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 
 from core.models.layers.compatibility_scorer import CompatibilityScorer
-from core.states.constructive import ConstructiveState, CVRPConstructiveState, TSPConstructiveState
+from core.problems.cvrp.constructive.env import CVRPConstructiveState
+from core.problems.tsp.constructive.env import TSPConstructiveState
 
 
 class Decoder(nn.Module):
@@ -49,7 +50,8 @@ class Decoder(nn.Module):
         *,
         node_embeddings: torch.Tensor,
         graph_embedding: torch.Tensor,
-        state: ConstructiveState,
+        state: TSPConstructiveState | CVRPConstructiveState,
+        action_mask: torch.Tensor,
     ) -> torch.Tensor:
         batch_size, n, _ = node_embeddings.shape
 
@@ -88,8 +90,6 @@ class Decoder(nn.Module):
             context_embedding = self.context_projection(context_embedding)
         else:
             raise TypeError(f"Unsupported constructive state: {type(state)}")
-
-        action_mask = state.action_mask
 
         # MHA: context node attends over all unmasked nodes
         context_embedding, _ = self.MHA(

@@ -52,6 +52,11 @@ class _DecoderConfigBase(BaseModel):
             attention_scaling=self.attention_scaling,
         )
 
+    @property
+    def max_deconstruction_size(self) -> int | None:
+        """Most nodes one rollout can select; None when unbounded."""
+        return None
+
 
 class AutoregressiveDecoderConfig(_DecoderConfigBase):
     type: Literal["ar"] = "ar"
@@ -64,9 +69,8 @@ class AutoregressiveDecoderConfig(_DecoderConfigBase):
     def build(
         self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0
     ) -> AutoregressiveNDSDecoder:
-        return AutoregressiveNDSDecoder(
-            **self._shared(hidden_dim=hidden_dim, num_heads=num_heads),
-            use_hidden_decoding_state=self.use_hidden_decoding_state,
+        return AutoregressiveNDSDecoder.from_config(
+            self, hidden_dim=hidden_dim, num_heads=num_heads
         )
 
 
@@ -94,11 +98,8 @@ class SimpleOnePassDecoderConfig(_DecoderConfigBase):
     def build(
         self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0
     ) -> SimpleOnePassDecoder:
-        return SimpleOnePassDecoder(
-            **self._shared(hidden_dim=hidden_dim, num_heads=num_heads),
-            query=self.query,
-            cross_attention=self.cross_attention,
-            num_context_nodes=num_context_nodes,
+        return SimpleOnePassDecoder.from_config(
+            self, hidden_dim=hidden_dim, num_heads=num_heads, num_context_nodes=num_context_nodes
         )
 
 
@@ -107,7 +108,8 @@ class SlotDecoderConfig(_DecoderConfigBase):
     num_slots: int = Field(
         default=15,
         title="Slot queries",
-        description="Number of slot queries (should match deconstruction_size).",
+        description="Number of slot queries; at least deconstruction_size. A rollout uses the "
+        "first deconstruction_size slots.",
     )
     slot_self_attention: Literal["none", "pre", "post"] = Field(
         default="post",
@@ -133,6 +135,10 @@ class SlotDecoderConfig(_DecoderConfigBase):
         ),
     )
 
+    @property
+    def max_deconstruction_size(self) -> int:
+        return self.num_slots
+
     @model_validator(mode="after")
     def _check_query(self) -> SlotDecoderConfig:
         if self.query.learned:
@@ -140,13 +146,8 @@ class SlotDecoderConfig(_DecoderConfigBase):
         return self
 
     def build(self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0) -> SlotDecoder:
-        return SlotDecoder(
-            **self._shared(hidden_dim=hidden_dim, num_heads=num_heads),
-            num_slots=self.num_slots,
-            slot_self_attention=self.slot_self_attention,
-            cross_attention=self.cross_attention,
-            query=self.query,
-            num_context_nodes=num_context_nodes,
+        return SlotDecoder.from_config(
+            self, hidden_dim=hidden_dim, num_heads=num_heads, num_context_nodes=num_context_nodes
         )
 
 

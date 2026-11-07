@@ -143,6 +143,9 @@ class NeighboursEncodingLayer(nn.Module):
 
         return torch.cat([h[:, :offset], updated], dim=1)
 
+    def encode(self, h: torch.Tensor, solution_features) -> torch.Tensor:
+        return self(h, neighbours_index=solution_features.neighbours_index)
+
     def _gather(self, embeddings: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -168,6 +171,9 @@ class TreeNeighboursEncodingLayer(nn.Module):
         self.neighbour_combiner = nn.Linear(2 * hidden_dim, hidden_dim)
         self.feedforward_layer = nn.Linear(hidden_dim, hidden_dim)
         self.norm = build_norm(norm_type, hidden_dim)
+
+    def encode(self, h: torch.Tensor, solution_features) -> torch.Tensor:
+        return self(h, parent_index=solution_features.parent_index)
 
     def forward(
         self,

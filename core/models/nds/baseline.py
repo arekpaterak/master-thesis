@@ -21,6 +21,10 @@ class Baseline(ABC):
 class NoBaseline(Baseline):
     """No variance reduction; advantage equals the raw reward."""
 
+    @classmethod
+    def from_config(cls, config: NoBaselineConfig) -> NoBaseline:
+        return cls()
+
     def __call__(self, reward: torch.Tensor) -> torch.Tensor:
         return torch.zeros_like(reward)
 
@@ -28,12 +32,20 @@ class NoBaseline(Baseline):
 class SharedBaseline(Baseline):
     """Shared mean over the rollouts (POMO); the original NDS/all-rollouts baseline."""
 
+    @classmethod
+    def from_config(cls, config: SharedBaselineConfig) -> SharedBaseline:
+        return cls()
+
     def __call__(self, reward: torch.Tensor) -> torch.Tensor:
         return reward.mean(dim=1, keepdim=True)
 
 
 class LeaveOneOutBaseline(Baseline):
     """Per-rollout baseline is the mean of the other rollouts."""
+
+    @classmethod
+    def from_config(cls, config: LeaveOneOutBaselineConfig) -> LeaveOneOutBaseline:
+        return cls()
 
     def __call__(self, reward: torch.Tensor) -> torch.Tensor:
         num_rollouts = reward.shape[1]
@@ -54,7 +66,7 @@ class NoBaselineConfig(_BaselineConfigBase):
     type: Literal["none"] = "none"
 
     def build(self) -> NoBaseline:
-        return NoBaseline()
+        return NoBaseline.from_config(self)
 
 
 class SharedBaselineConfig(_BaselineConfigBase):
@@ -62,7 +74,7 @@ class SharedBaselineConfig(_BaselineConfigBase):
     min_rollouts = 2
 
     def build(self) -> SharedBaseline:
-        return SharedBaseline()
+        return SharedBaseline.from_config(self)
 
 
 class LeaveOneOutBaselineConfig(_BaselineConfigBase):
@@ -70,7 +82,7 @@ class LeaveOneOutBaselineConfig(_BaselineConfigBase):
     min_rollouts = 2
 
     def build(self) -> LeaveOneOutBaseline:
-        return LeaveOneOutBaseline()
+        return LeaveOneOutBaseline.from_config(self)
 
 
 BaselineConfig = Annotated[

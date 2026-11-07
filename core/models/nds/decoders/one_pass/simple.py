@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
 
+from core.envs.destroy import DestroyEnv, DestroyState
 from core.models.entropy import entropy
 from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.compatibility_scorer import CompatibilityScorer
@@ -9,9 +12,13 @@ from core.models.layers.cross_attention import CrossAttention, CrossAttentionCon
 from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
 from core.models.layers.poly_net import PolyNet
 from core.models.rollout import Rollout
+from core.random import sample_gumbel
 
 from .base import OnePassDestroyDecoder
 from .utils import log_prob_of_sequence_without_replacement
+
+if TYPE_CHECKING:
+    from core.models.nds.decoders.config import SimpleOnePassDecoderConfig
 
 
 class SimpleOnePassDecoder(OnePassDestroyDecoder):
@@ -54,6 +61,26 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
             hidden_dim=hidden_dim, C=C, use_projections=False, attention_scaling=attention_scaling
         )
 
+    @classmethod
+    def from_config(
+        cls,
+        config: SimpleOnePassDecoderConfig,
+        *,
+        hidden_dim: int,
+        num_heads: int,
+        num_context_nodes: int,
+    ) -> SimpleOnePassDecoder:
+        return cls(
+            hidden_dim=hidden_dim,
+            seed_dim=config.seed_dim,
+            poly_dim=config.poly_dim,
+            num_heads=num_heads,
+            with_poly=config.with_poly,
+            query=config.query,
+            cross_attention=config.cross_attention,
+            num_context_nodes=num_context_nodes,
+        )
+
     @property
     def seed_dim(self) -> int:
         return self._seed_dim
@@ -86,21 +113,23 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         *,
         h_nodes: torch.Tensor,
         seed: torch.Tensor,
-        action_mask: torch.Tensor,
-        deconstruction_size: int,
+        env: DestroyEnv,
+        state: DestroyState,
         greedy: bool,
+        generator: torch.Generator,
         **kwargs,
     ) -> Rollout:
-        # h_nodes: (B, N, D), seed: (B, R, seed_dim), action_mask: (B, N)
-        logits = self.forward(h_nodes=h_nodes, seed=seed, action_mask=action_mask)  # (B, R, N)
+        # h_nodes: (B, N, D), seed: (B, R, seed_dim), state.action_mask: (B, 1, N)
+        deconstruction_size = env.horizon
+        logits = self.forward(
+            h_nodes=h_nodes, seed=seed, action_mask=state.action_mask.squeeze(1)
+        )  # (B, R, N)
 
         log_p_detached = logits.detach()
         if greedy:
             selected = log_p_detached.topk(deconstruction_size, dim=-1).indices  # (B, R, M)
         else:
-            gumbel = torch.distributions.Gumbel(
-                torch.zeros_like(log_p_detached), torch.ones_like(log_p_detached)
-            ).sample()
+            gumbel = sample_gumbel(log_p_detached, generator=generator)
             selected = (
                 (log_p_detached + gumbel).topk(deconstruction_size, dim=-1).indices
             )  # (B, R, M)

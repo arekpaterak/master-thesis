@@ -3,19 +3,20 @@ import torch
 from core.lns.config import SearchParams, StartSolutionParams
 from core.models.nds.config import SplitModelConfig, TrainConfig, TrainerParams
 from core.models.nds.decoders.config import SimpleOnePassDecoderConfig
-from core.models.nds.factory import build_model
 from core.models.nds.models.joint import JointNDSModel
 from core.models.nds.module import NDSModule
 from core.models.runtime import AmpConfig
 from core.models.trainer import Trainer
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.lns.components import LNS
+from core.problems.cvrp.nds.components import NDS as CVRP_NDS
+from core.problems.registry import build_nds_model
 
 
 def test_train():
     B, R, N = 4, 10, 20
     sampler = CVRPSampler(CVRPDistribution.for_n(N))
-    model = JointNDSModel(problem_name="cvrp")
+    model = JointNDSModel(components=CVRP_NDS)
 
     nds_module = NDSModule(
         lns=LNS,
@@ -50,7 +51,7 @@ def test_train_with_numba_apply_and_repair_backend():
     """End-to-end training step with the numba apply-and-repair backend."""
     B, R, N = 4, 10, 20
     sampler = CVRPSampler(CVRPDistribution.for_n(N))
-    model = JointNDSModel(problem_name="cvrp")
+    model = JointNDSModel(components=CVRP_NDS)
 
     nds_module = NDSModule(
         lns=LNS,
@@ -80,7 +81,7 @@ def test_train_with_numba_apply_and_repair_backend():
 def test_train_with_amp_enabled():
     B, R, N = 4, 10, 20
     sampler = CVRPSampler(CVRPDistribution.for_n(N))
-    model = JointNDSModel(problem_name="cvrp")
+    model = JointNDSModel(components=CVRP_NDS)
 
     nds_module = NDSModule(
         lns=LNS,
@@ -130,8 +131,8 @@ def test_encode_once_matches_recompute():
             ),
         )
 
-    model_baseline = build_model(build_config(False).model)
-    model_once = build_model(build_config(True).model)
+    model_baseline = build_nds_model(build_config(False).model)
+    model_once = build_nds_model(build_config(True).model)
     model_once.load_state_dict(model_baseline.state_dict())
 
     module_baseline = NDSModule(config=build_config(False), model=model_baseline, lns=LNS)

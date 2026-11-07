@@ -1,21 +1,23 @@
 import torch
 
-from core.models.embeddings.cvrp import CVRPInitialEmbedding
-from core.models.embeddings.tsp import TSPInitialEmbedding
 from core.models.nds.config import PositionalEncodingConfig
 from core.models.nds.models.joint import JointNDSModel
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
+from core.problems.cvrp.embedding import CVRPInitialEmbedding
 from core.problems.cvrp.features import (
     CVRPInstanceFeatureExtractor,
     CVRPSolutionFeatureExtractor,
 )
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.cvrp.nds.components import NDS as CVRP_NDS
 from core.problems.tsp import TSPDistribution, TSPSampler
+from core.problems.tsp.embedding import TSPInitialEmbedding
 from core.problems.tsp.features import (
     TSPInstanceFeatureExtractor,
     TSPSolutionFeatureExtractor,
 )
 from core.problems.tsp.graph_solution import TSPGraphSolution
+from core.random import SeededGenerator
 
 
 def test_cvrp_embedding_concat_grows_projection_and_shape():
@@ -57,9 +59,11 @@ def test_cvrp_model_rollout_with_positional_encoding():
     solution = CVRPGraphSolution.one_customer_per_route(instance)
 
     model = JointNDSModel(
-        problem_name="cvrp",
+        components=CVRP_NDS,
         positional=PositionalEncodingConfig(dim=8),
     )
     model.eval()
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
+    rollout = model.rollout(
+        solution, rollouts_per_solution=R, deconstruction_size=M, rng=SeededGenerator(0)
+    )
     assert rollout.actions.shape == (B, R, M)

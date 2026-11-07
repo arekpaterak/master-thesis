@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from core.models.nds.factory import NDSModel
+from core.models.nds.models import NDSModel
 from core.models.nds.models.split import SplitNDSModel
 from core.models.rollout import Rollout
 from core.problems.instance import BaseProblemInstance

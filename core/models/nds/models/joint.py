@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 import torch.nn as nn
 
+from core.envs.destroy import DestroyEnv
 from core.models.nds.decoders.config import AutoregressiveDecoderConfig, DecoderConfig
 from core.models.nds.encoders.config import JointEncoderConfig, PositionalEncodingConfig
 from core.models.nds.encoders.joint import JointEncoder
@@ -12,23 +14,12 @@ from core.models.nds.seed_sampler import sample_seed
 from core.models.nds.utils import flatten_instance_batch, unflatten_rollout
 from core.models.rollout import Rollout
 from core.models.utils import get_model_device
-from core.problems import depot_offset
-from core.problems.cmstp.features import (
-    CMSTPInstanceFeatureExtractor,
-    CMSTPSolutionFeatureExtractor,
-)
-from core.problems.cvrp.features import (
-    CVRPInstanceFeatureExtractor,
-    CVRPSolutionFeatureExtractor,
-)
 from core.problems.instance import BaseProblemInstance
-from core.problems.names import ProblemName
 from core.problems.solution import BaseSolution
-from core.problems.tsp.features import (
-    TSPInstanceFeatureExtractor,
-    TSPSolutionFeatureExtractor,
-)
-from core.states.destroy import initial_action_mask
+from core.random import SeededGenerator
+
+if TYPE_CHECKING:
+    from core.models.nds.components import NDSComponents
 
 
 class JointNDSModel(nn.Module):
@@ -43,7 +34,7 @@ class JointNDSModel(nn.Module):
     def __init__(
         self,
         *,
-        problem_name: ProblemName,
+        components: NDSComponents,
         hidden_dim: int = 128,
         num_heads: int = 8,
         ff_dim: int = 512,
@@ -53,31 +44,13 @@ class JointNDSModel(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.problem_name = problem_name
-
-        with_positional = positional is not None
-
-        match problem_name:
-            case "cvrp":
-                self.instance_feature_extractor = CVRPInstanceFeatureExtractor(
-                    with_positional=with_positional
-                )
-                self.solution_feature_extractor = CVRPSolutionFeatureExtractor(
-                    with_positional=with_positional
-                )
-            case "tsp":
-                self.instance_feature_extractor = TSPInstanceFeatureExtractor()
-                self.solution_feature_extractor = TSPSolutionFeatureExtractor(
-                    with_positional=with_positional
-                )
-            case "cmstp":
-                self.instance_feature_extractor = CMSTPInstanceFeatureExtractor()
-                self.solution_feature_extractor = CMSTPSolutionFeatureExtractor()
-            case _:
-                raise ValueError(f"Unsupported problem_name: {problem_name}")
+        self.components = components
+        self.instance_feature_extractor, self.solution_feature_extractor = (
+            components.feature_extractors(positional is not None)
+        )
 
         self.encoder = JointEncoder(
-            problem_name=problem_name,
+            components=components,
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             ff_dim=ff_dim,
@@ -87,7 +60,7 @@ class JointNDSModel(nn.Module):
         self.decoder = (decoder or AutoregressiveDecoderConfig()).build(
             hidden_dim=hidden_dim,
             num_heads=num_heads,
-            num_context_nodes=depot_offset(problem_name),
+            num_context_nodes=components.num_context_nodes,
         )
 
     def rollout(
@@ -96,6 +69,7 @@ class JointNDSModel(nn.Module):
         *,
         rollouts_per_solution: int,
         deconstruction_size: int,
+        rng: SeededGenerator,
         greedy: bool = False,
     ) -> Rollout:
         solution, batch_dims = flatten_instance_batch(solution)
@@ -105,24 +79,27 @@ class JointNDSModel(nn.Module):
         R = rollouts_per_solution
         device = get_model_device(self)
 
+        generator = rng.on(device)
         seed = sample_seed(
-            batch_size=B, rollout_size=R, seed_dim=self.decoder.seed_dim, device=device
+            batch_size=B,
+            rollout_size=R,
+            seed_dim=self.decoder.seed_dim,
+            generator=generator,
+            device=device,
         )
 
         instance_features = self.instance_feature_extractor(instance).to(device)
         solution_features = self.solution_feature_extractor(solution).to(device)
 
         h_nodes = self.encoder(instance_features, solution_features)  # (B, N, D)
-        action_mask = initial_action_mask(
-            self.problem_name, batch_size=B, num_nodes=h_nodes.shape[1], device=device
-        )  # (B, N)
-
+        env = DestroyEnv(horizon=deconstruction_size)
         rollout = self.decoder.rollout(
             h_nodes=h_nodes,
             seed=seed,
-            action_mask=action_mask,
-            deconstruction_size=deconstruction_size,
+            env=env,
+            state=env.reset(instance, device=device),
             greedy=greedy,
+            generator=generator,
         )
         return unflatten_rollout(rollout, batch_dims)
 

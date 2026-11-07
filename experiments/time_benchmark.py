@@ -46,10 +46,10 @@ from core.models.nds.decoders.config import (
     SimpleOnePassDecoderConfig,
     SlotDecoderConfig,
 )
-from core.models.nds.factory import build_model
 from core.models.nds.improvement_step import build_nds_improvement_step
 from core.problems import make_problem_config, registry
 from core.problems.instance import BaseProblemInstance
+from core.problems.registry import build_nds_model
 from core.problems.solution import BaseSolution
 
 OUTPUT_DEFAULT = Path(__file__).parent / "results" / "tables" / "time_benchmark.csv"
@@ -152,7 +152,7 @@ def _build_step(
     if spec.model_params is None:
         return build_random_node_destroy_step(search, lns=registry.lns(problem_name), seed=seed)
 
-    model = build_model(spec.model_params).to(device)
+    model = build_nds_model(spec.model_params).to(device)
     model.eval()
     return build_nds_improvement_step(
         search, model=model, lns=registry.lns(problem_name), seed=seed
@@ -162,7 +162,7 @@ def _build_step(
 def _count_parameters(spec: MethodSpec) -> int:
     if spec.model_params is None:
         return 0
-    return sum(p.numel() for p in build_model(spec.model_params).parameters())
+    return sum(p.numel() for p in build_nds_model(spec.model_params).parameters())
 
 
 def _make_search(

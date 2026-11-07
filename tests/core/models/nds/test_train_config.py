@@ -35,3 +35,25 @@ def test_leave_one_out_baseline_requires_at_least_two_rollouts():
         TrainConfig.model_validate(
             {"baseline": {"type": "leave_one_out"}, "search": {"num_rollouts": 1}}
         )
+
+
+def test_slot_decoder_needs_a_slot_per_removed_node():
+    with pytest.raises(ValueError, match="selects at most 5 nodes, but the search removes 10"):
+        TrainConfig.model_validate(
+            {
+                "model": {"decoder": {"type": "slot", "num_slots": 5}},
+                "search": {"deconstruction_size": 10},
+                "validation": {"search": {"deconstruction_size": 5}},
+            }
+        )
+
+
+def test_slot_decoder_may_have_more_slots_than_removed_nodes():
+    config = TrainConfig.model_validate(
+        {
+            "model": {"decoder": {"type": "slot", "num_slots": 15}},
+            "search": {"deconstruction_size": 10},
+            "validation": {"search": {"deconstruction_size": 10}},
+        }
+    )
+    assert config.model.decoder.max_deconstruction_size == 15

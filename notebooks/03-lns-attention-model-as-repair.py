@@ -22,6 +22,7 @@ with app.setup:
     from core.problems.solution import BaseSolution
     from core.problems.tsp import TSPDistribution, TSPSampler
     from core.problems.tsp.solve import random_permutation
+    from core.random import SeededGenerator
 
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     NOTEBOOK_PATH = Path(__file__).parent if "__file__" in dir() else Path(".")
@@ -116,12 +117,13 @@ def _(train_button):
 
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
         baseline = prepare_baseline(model)
+        rng = SeededGenerator(0)
 
         for epoch in range(1, n_epochs + 1):
             for _ in range(steps_per_epoch):
                 instance = tsp_sampler(batch_size).to(DEVICE)
                 training_step(
-                    model=model, baseline=baseline, optimizer=optimizer, instance=instance
+                    model=model, baseline=baseline, optimizer=optimizer, instance=instance, rng=rng
                 )
 
             test = one_sided_paired_ttest(

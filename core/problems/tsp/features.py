@@ -34,6 +34,10 @@ class TSPSolutionFeatures(TensorClass):
     tour_phase: torch.Tensor | None = None
     """(..., N) raw in-tour phase (IPE) in [0, 2*pi]. None when PE is disabled."""
 
+    @property
+    def in_route_phase(self) -> torch.Tensor | None:
+        return self.tour_phase
+
 
 class TSPSolutionLike(Protocol):
     """Structural contract the TSP solution extractor relies on.

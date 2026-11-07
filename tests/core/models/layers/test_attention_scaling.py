@@ -19,9 +19,10 @@ from core.models.nds.decoders.config import (
 )
 from core.models.nds.encoders.config import JointEncoderConfig, SplitEncoderConfig
 from core.models.nds.encoders.layers import AttentionLayer
-from core.models.nds.factory import build_model
 from core.problems.cvrp import CVRPDistribution, CVRPSampler
 from core.problems.cvrp.graph_solution import CVRPGraphSolution
+from core.problems.registry import build_nds_model
+from core.random import SeededGenerator
 
 D, H = 16, 4
 
@@ -172,9 +173,11 @@ def test_models_roll_out_with_scaling(model_config) -> None:
     B, R, M = 3, 4, 5
     instance = CVRPSampler(CVRPDistribution.for_n(20))(B)
     solution = CVRPGraphSolution.one_customer_per_route(instance)
-    model = build_model(model_config).eval()
+    model = build_nds_model(model_config).eval()
 
-    rollout = model.rollout(solution, rollouts_per_solution=R, deconstruction_size=M)
+    rollout = model.rollout(
+        solution, rollouts_per_solution=R, deconstruction_size=M, rng=SeededGenerator(0)
+    )
 
     assert rollout.actions.shape == (B, R, M)
     assert torch.isfinite(rollout.log_p).all()
@@ -182,7 +185,7 @@ def test_models_roll_out_with_scaling(model_config) -> None:
 
 def test_split_encoder_scales_every_attention_layer() -> None:
     config = AttentionScalingConfig(reference_size=101)
-    model = build_model(
+    model = build_nds_model(
         SplitModelConfig(
             problem_name="cvrp",
             encoder=SplitEncoderConfig(num_solution_attention_layers=1, attention_scaling=config),

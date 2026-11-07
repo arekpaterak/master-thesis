@@ -3,13 +3,15 @@ import torch
 from core.lns.operators.repair.base import RepairOperator
 from core.models.attention_model import AttentionModel
 from core.problems.tsp.solution import TSPSolution
+from core.random import SeededGenerator
 
 
 # Legacy
 class AttentionModelRepair(RepairOperator[TSPSolution]):
-    def __init__(self, model: AttentionModel, greedy: bool = True):
+    def __init__(self, model: AttentionModel, greedy: bool = True, seed: int | None = None):
         self.model = model
         self.greedy = greedy
+        self._rng = SeededGenerator(seed)
 
     def __call__(self, deconstructed_solution: TSPSolution) -> TSPSolution:
         partial_tour = self._extract_valid_tour(deconstructed_solution.tour)
@@ -18,6 +20,7 @@ class AttentionModelRepair(RepairOperator[TSPSolution]):
             deconstructed_solution.instance,
             greedy=self.greedy,
             previous_actions=partial_tour,
+            rng=self._rng,
         )
 
         return TSPSolution.create(

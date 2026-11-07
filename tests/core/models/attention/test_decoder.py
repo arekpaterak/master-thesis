@@ -2,7 +2,10 @@ import pytest
 import torch
 
 from core.models.attention_model.decoder import Decoder
-from core.states.constructive import CVRPConstructiveState, TSPConstructiveState
+from core.problems.cvrp import CVRPInstance
+from core.problems.cvrp.constructive.env import CVRPConstructiveEnv
+from core.problems.tsp import TSPInstance
+from core.problems.tsp.constructive.env import TSPConstructiveEnv
 
 
 @pytest.mark.parametrize("problem", ["tsp", "cvrp"])
@@ -18,26 +21,34 @@ def test_decoder_output_shape(problem: str):
     h_graph = torch.rand((batch_size, hidden_dim))
 
     if problem == "tsp":
-        state = TSPConstructiveState.initial(
-            batch_size=batch_size,
-            num_nodes=n,
-            device=h_nodes.device,
-        )
+        env = TSPConstructiveEnv()
+        instance = TSPInstance.create(locations=torch.rand(batch_size, n, 2))
     else:
-        demand = torch.tensor(
-            [[0.0, 0.2, 0.2, 0.2, 0.2, 0.2], [0.0, 0.1, 0.3, 0.2, 0.2, 0.2]],
-            dtype=torch.float,
+        env = CVRPConstructiveEnv()
+        instance = CVRPInstance.create(
+            locations=torch.rand(batch_size, n, 2),
+            demand=torch.tensor([[0.0, 2, 2, 2, 2, 2], [0.0, 1, 3, 2, 2, 2]]),
+            capacity=torch.full((batch_size, 1), 10.0),
         )
-        capacity = torch.ones(batch_size, 1)
-        state = CVRPConstructiveState.initial(demand=demand, capacity=capacity)
+    state = env.reset(instance)
 
-    log_p = decoder.forward(node_embeddings=h_nodes, graph_embedding=h_graph, state=state)
+    log_p = decoder.forward(
+        node_embeddings=h_nodes,
+        graph_embedding=h_graph,
+        state=state,
+        action_mask=env.action_mask(state),
+    )
     assert log_p.shape == (batch_size, n), f"Expected log_p shape {(batch_size, n)}"
 
     if problem == "tsp":
         partial_tour = torch.tensor([[0, 2], [0, 2]], dtype=torch.long)
-        state = TSPConstructiveState.from_partial(partial_tour=partial_tour, num_nodes=n)
-        log_p = decoder.forward(node_embeddings=h_nodes, graph_embedding=h_graph, state=state)
+        state = env.replay(instance, partial_tour)
+        log_p = decoder.forward(
+            node_embeddings=h_nodes,
+            graph_embedding=h_graph,
+            state=state,
+            action_mask=env.action_mask(state),
+        )
         assert log_p.shape == (batch_size, n), f"Expected log_p shape {(batch_size, n)}"
 
         for t in [0, 2]:

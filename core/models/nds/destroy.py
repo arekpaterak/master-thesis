@@ -7,10 +7,11 @@ import torch
 
 from core.lns.operators.destroy.base import DestroyOperator
 from core.lns.operators.destroy.selection import NodeSelection
-from core.models.nds.factory import NDSModel
 from core.models.nds.metrics import RolloutMetricsRecorder
+from core.models.nds.models import NDSModel
 from core.models.rollout import Rollout
 from core.problems.solution import BaseSolution
+from core.random import SeededGenerator
 
 
 class ModelNodeDestroy[S: BaseSolution](DestroyOperator[S, NodeSelection]):
@@ -28,9 +29,11 @@ class ModelNodeDestroy[S: BaseSolution](DestroyOperator[S, NodeSelection]):
         model: NDSModel,
         deconstruction_size: int,
         recorder: RolloutMetricsRecorder | None = None,
+        seed: int | None = None,
     ) -> None:
         self._model = model
         self._deconstruction_size = deconstruction_size
+        self._rng = SeededGenerator(seed)
         self._recorder = recorder
         self._rollout: Callable[..., Rollout] | None = None
 
@@ -53,6 +56,7 @@ class ModelNodeDestroy[S: BaseSolution](DestroyOperator[S, NodeSelection]):
             solution,
             rollouts_per_solution=num_rollouts,
             deconstruction_size=self._deconstruction_size,
+            rng=self._rng,
             greedy=False,
         )
         if self._recorder is not None:

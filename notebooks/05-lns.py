@@ -25,6 +25,7 @@ def _():
     from core.lns import GreedyAcceptance, search
     from core.lns.operators.destroy.random_node import RandomNodeDestroy
     from core.models.nds.models.joint import JointNDSModel
+    from core.problems import registry
     from core.problems.cvrp import CVRPDistribution, CVRPSampler
     from core.problems.cvrp.lns.operators.repair.insert import (
         CVRPGreedyInsertRepair,
@@ -37,6 +38,7 @@ def _():
     from core.problems.tsp.lns.operators.repair.insert import TSPGreedyInsertRepair
     from core.problems.tsp.lns.operators.repair.reconnect import TSPGreedyReconnectRepair
     from core.problems.tsp.solve import random_permutation, random_permutation_graph
+    from core.random import SeededGenerator
 
     return (
         JointNDSModel,
@@ -56,8 +58,10 @@ def _():
         plt,
         random_permutation,
         random_permutation_graph,
+        registry,
         search,
         time,
+        SeededGenerator,
         torch,
     )
 
@@ -515,6 +519,8 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(
     JointNDSModel,
+    registry,
+    SeededGenerator,
     CVRPDistribution,
     CVRPGreedyInsertRepair,
     CVRPGreedyReconnectRepair,
@@ -614,6 +620,8 @@ def _(
 
                 return destroy
 
+            rng = SeededGenerator(0)
+
             @torch.no_grad()
             def destroy(start):
                 rollout = model.rollout(
@@ -621,6 +629,7 @@ def _(
                     rollouts_per_solution=rollout_size,
                     deconstruction_size=destruction_size,
                     greedy=False,
+                    rng=rng,
                 )
                 # actions: (B, R, k); broadcasts the (B,) solution to (B, R).
                 return start.remove_nodes(rollout.nodes)
@@ -629,7 +638,7 @@ def _(
 
         results = {}
         for device in devices:
-            model = JointNDSModel(problem_name=problem_name).to(device).eval()
+            model = JointNDSModel(components=registry.nds(problem_name)).to(device).eval()
             for destroy_name, repair_name in combos:
                 step_ms = []
                 candidates_per_s = []
