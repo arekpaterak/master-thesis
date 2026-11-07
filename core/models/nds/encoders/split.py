@@ -246,6 +246,7 @@ class SolutionEncoder(nn.Module):
                     norm_type=_config.norm_type,
                     pre_norm=_config.pre_norm,
                     ff_activation=_config.ff_activation,
+                    attention_scaling=_config.attention_scaling,
                 )
                 for _ in range(_config.num_solution_attention_layers)
             ]

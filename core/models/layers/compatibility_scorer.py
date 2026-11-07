@@ -2,6 +2,8 @@ import torch
 from torch import nn as nn
 from torch.nn import functional as F
 
+from core.models.layers.attention_scaling import AttentionScalingConfig
+
 
 class CompatibilityScorer(nn.Module):
     """
@@ -11,6 +13,7 @@ class CompatibilityScorer(nn.Module):
         hidden_dim (int): The hidden dimension of the input embeddings. Defaults to 128.
         C (float): Logit clipping coefficient. Defaults to 10.0.
         use_projections (bool, optional): Whether to use projections for query and keys. Defaults to False.
+        attention_scaling: Size-aware scaling of the clipped logits; None disables it.
     """
 
     def __init__(
@@ -19,8 +22,10 @@ class CompatibilityScorer(nn.Module):
         hidden_dim: int = 128,
         C: float = 10.0,
         use_projections: bool = True,
+        attention_scaling: AttentionScalingConfig | None = None,
     ) -> None:
         super().__init__()
+        self.attention_scaling = attention_scaling
         self.scale = hidden_dim**0.5
         self.C = C
         self.use_projections = use_projections
@@ -89,6 +94,9 @@ class CompatibilityScorer(nn.Module):
         u = scores.reshape(batch_size, *query_dims, num_nodes)  # (B, *q, num_nodes)
 
         u = self.C * torch.tanh(u)  # (B, *q, num_nodes)
+        if self.attention_scaling is not None:
+            # After clipping, so the bounded logits are what gets sharpened.
+            u = u * self.attention_scaling.factor(num_nodes)
         u = u / temperature
         u = u.masked_fill(mask, float("-inf"))  # broadcast mask, fill forbidden keys
         if not log_softmax:

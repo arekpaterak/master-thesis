@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 
 from core.models.entropy import entropy
+from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.cross_attention import CrossAttention, CrossAttentionConfig
 from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
@@ -48,6 +49,7 @@ class SlotDecoder(OnePassDestroyDecoder):
         with_poly: bool = True,
         num_context_nodes: int = 0,
         C: float = 10.0,
+        attention_scaling: AttentionScalingConfig | None = None,
     ):
         super().__init__()
         if slot_self_attention not in {"none", "pre", "post"}:
@@ -81,13 +83,16 @@ class SlotDecoder(OnePassDestroyDecoder):
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             num_context_nodes=num_context_nodes,
+            attention_scaling=attention_scaling,
         )
         self.poly_net = (
             PolyNet(hidden_dim=hidden_dim, seed_dim=seed_dim, poly_dim=poly_dim)
             if with_poly
             else None
         )
-        self.scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
+        self.scorer = CompatibilityScorer(
+            hidden_dim=hidden_dim, C=C, use_projections=False, attention_scaling=attention_scaling
+        )
 
     @property
     def seed_dim(self) -> int:

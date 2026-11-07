@@ -1,6 +1,10 @@
+import math
+
 import torch
 import torch.nn.functional as F
 from torch import nn
+
+from core.models.layers.attention_scaling import AttentionScalingConfig
 
 
 class CachedMultiheadAttention(nn.Module):
@@ -10,8 +14,10 @@ class CachedMultiheadAttention(nn.Module):
         num_heads: int,
         bias: bool = True,
         add_bias_kv: bool = False,
+        attention_scaling: AttentionScalingConfig | None = None,
     ):
         super().__init__()
+        self.attention_scaling = attention_scaling
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
@@ -83,12 +89,17 @@ class CachedMultiheadAttention(nn.Module):
                 attention_mask[:, :, None, :].expand(B, R, L_q, L_k).reshape(B, 1, R * L_q, L_k)
             )
 
+        scale = None
+        if self.attention_scaling is not None:
+            scale = self.attention_scaling.factor(L_k) / math.sqrt(head_dim)
+
         attn_out = F.scaled_dot_product_attention(
             q_heads,
             k_heads,
             v_heads,
             attn_mask=attention_mask,
             is_causal=False,
+            scale=scale,
         )  # (B, num_heads, R*L_q, head_dim)
 
         # Merge heads and unfold the rollouts: (B, R, L_q, embed_dim)

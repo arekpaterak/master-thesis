@@ -4,6 +4,7 @@ import torch
 from pydantic import BaseModel, Field
 from torch import nn
 
+from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.multihead_attention import MultiheadAttentionWrapper
 
 
@@ -49,6 +50,7 @@ class CrossAttention(nn.Module):
             which ``action_mask`` otherwise excludes.
         residual: Add the query back around the attention.
         num_context_nodes: Number of leading non-selectable context nodes.
+        attention_scaling: Size-aware logit scaling; None disables it.
     """
 
     def __init__(
@@ -60,13 +62,18 @@ class CrossAttention(nn.Module):
         attend_to_context: bool = False,
         residual: bool = False,
         num_context_nodes: int = 0,
+        attention_scaling: AttentionScalingConfig | None = None,
     ):
         super().__init__()
         self.attend_to_context = attend_to_context
         self.residual = residual
         self.num_context_nodes = num_context_nodes
         self.mha = (
-            None if skip else MultiheadAttentionWrapper(embed_dim=hidden_dim, num_heads=num_heads)
+            None
+            if skip
+            else MultiheadAttentionWrapper(
+                embed_dim=hidden_dim, num_heads=num_heads, attention_scaling=attention_scaling
+            )
         )
 
     @classmethod
@@ -77,6 +84,7 @@ class CrossAttention(nn.Module):
         hidden_dim: int,
         num_heads: int,
         num_context_nodes: int,
+        attention_scaling: AttentionScalingConfig | None = None,
     ) -> CrossAttention:
         return cls(
             hidden_dim=hidden_dim,
@@ -85,6 +93,7 @@ class CrossAttention(nn.Module):
             attend_to_context=config.attend_to_context,
             residual=config.residual,
             num_context_nodes=num_context_nodes,
+            attention_scaling=attention_scaling,
         )
 
     def forward(
