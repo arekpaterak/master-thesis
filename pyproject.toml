@@ -45,6 +45,7 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.15.4",
     "scipy-stubs>=1.17.1.0",
+    "ty>=0.0.95",
 ]
 # marimo editor extras (AI assistant, SQL cells, formatting, package installs):
 # `uv sync --group notebooks`. The code only needs plain marimo.
@@ -111,3 +112,231 @@ addopts = "-m 'not experiment'"
 markers = [
     "experiment: tests that check if experiment scripts are runnable",
 ]
+
+# ty type checker (https://docs.astral.sh/ty/). Run with `uv run ty check`.
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.src]
+include = ["core", "tests", "experiments", "figures"]
+
+[tool.ty.terminal]
+# Warnings are reported but do not fail the check; only errors do.
+error-on-warning = false
+
+[tool.ty.analysis]
+# numba ships no usable type information (e.g. `prange` is not seen as iterable).
+replace-imports-with-any = ["numba", "numba.**"]
+
+# Every rule keeps its default severity (errors stay errors) except in the
+# overrides below.
+
+# torch declares `nn.Module.forward` as a writable `Callable[..., Any]`
+# attribute, so every `def forward` in a subclass is flagged.
+[[tool.ty.overrides]]
+include = ["core/models/**"]
+rules = { invalid-mutable-override = "warn" }
+
+# Pre-existing violations at the time ty was introduced, downgraded to
+# warnings only in the files where they occur. Any other file (including new
+# ones) gets these rules as errors. Remove a file from a list once it is clean.
+
+[[tool.ty.overrides]]
+include = [
+    "core/evaluation.py",
+    "core/lns/improvement_step.py",
+    "core/methods/nds_pretrained.py",
+    "core/models/attention_model/model.py",
+    "core/models/nds/decoders/factory.py",
+    "core/models/nds/encoders/split.py",
+    "core/models/nds/factory.py",
+    "core/models/nds/models/joint.py",
+    "core/models/nds/models/split.py",
+    "core/models/nds/training/step.py",
+    "core/problems/archive/op.py",
+    "core/problems/cmstp/config.py",
+    "core/problems/cvrp/config.py",
+    "core/problems/cvrp/render.py",
+    "core/results/cvrplib/rows.py",
+    "core/results/row.py",
+    "core/ui/forms.py",
+    "experiments/eval.py",
+    "experiments/time_benchmark.py",
+    "experiments/time_random.py",
+    "experiments/train.py",
+    "experiments/warmup_flags_ablation.py",
+    "figures/rollouts_vs_steps.py",
+    "figures/utils.py",
+    "tests/core/lns/test_improvement_step.py",
+    "tests/core/lns/test_start_solution.py",
+    "tests/core/models/attention/test_graph.py",
+    "tests/core/models/nds/test_pretrained.py",
+    "tests/core/models/nds/test_validation.py",
+    "tests/core/models/test_trainer.py",
+    "tests/core/problems/cmstp/lns/test_apply_repair.py",
+    "tests/core/problems/cmstp/test_esau_williams.py",
+    "tests/core/problems/cvrp/lns/test_apply_repair.py",
+    "tests/core/problems/cvrp/test_solution.py",
+    "tests/core/problems/tsp/lns/test_apply_repair.py",
+    "tests/core/test_solve.py",
+    "tests/core/ui/test_forms.py",
+]
+rules = { invalid-argument-type = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/lns/apply_and_repair.py",
+    "core/lns/operators/destroy/random_node.py",
+    "core/models/attention_model/model.py",
+    "core/models/embeddings/cvrp.py",
+    "core/models/embeddings/tsp.py",
+    "core/models/nds/encoders/split.py",
+    "core/problems/archive/op.py",
+    "core/problems/cvrp/render.py",
+    "core/problems/palette.py",
+    "core/problems/solution.py",
+    "core/solve.py",
+    "experiments/eval.py",
+    "experiments/train.py",
+    "experiments/warmup_flags_ablation.py",
+    "figures/rollouts_vs_steps.py",
+    "figures/train_time.py",
+    "tests/core/lns/operators/repair/apply_repair_templates.py",
+    "tests/core/lns/test_improvement_step.py",
+    "tests/core/lns/test_search.py",
+    "tests/core/models/attention/test_graph.py",
+    "tests/core/models/nds/test_encoder.py",
+    "tests/core/models/nds/test_numba_model_sequential_improvement_step.py",
+    "tests/core/models/nds/test_pretrained.py",
+    "tests/core/models/nds/test_split.py",
+    "tests/core/models/nds/test_validation.py",
+    "tests/core/models/test_trainer.py",
+    "tests/core/problems/cmstp/test_esau_williams.py",
+    "tests/core/problems/cvrp/lns/operators/repair/test_insert.py",
+    "tests/core/problems/cvrp/lns/operators/repair/test_reconnect.py",
+    "tests/core/problems/cvrp/test_instance.py",
+    "tests/core/problems/cvrp/test_sampler.py",
+    "tests/core/problems/cvrp/test_solution.py",
+    "tests/core/problems/test_dataset.py",
+    "tests/core/ui/test_forms.py",
+]
+rules = { unresolved-attribute = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/models/attention_model/module.py",
+    "core/models/layers/batched_gru_cell.py",
+    "core/models/nds/decoders/one_pass/simple.py",
+    "core/models/nds/decoders/one_pass/slot.py",
+    "core/models/nds/training/logs.py",
+    "core/models/nds/validation.py",
+    "core/problems/cmstp/config.py",
+    "core/problems/cmstp/instance.py",
+    "core/problems/cmstp/lns/apply_repair.py",
+    "core/problems/cmstp/solution.py",
+    "core/problems/cvrp/graph_solution.py",
+    "core/problems/cvrp/instance.py",
+    "core/problems/cvrp/lns/apply_repair.py",
+    "core/problems/cvrp/solution.py",
+    "core/problems/solution.py",
+    "core/problems/tsp/graph_solution.py",
+    "core/problems/tsp/instance.py",
+    "core/problems/tsp/lns/apply_repair.py",
+    "core/problems/tsp/solution.py",
+    "tests/core/problems/cmstp/lns/test_apply_repair.py",
+    "tests/core/problems/cvrp/lns/test_apply_repair.py",
+    "tests/core/problems/tsp/lns/test_apply_repair.py",
+]
+rules = { invalid-method-override = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/models/nds/module.py",
+    "core/problems/cvrp/solution.py",
+    "core/problems/dataset.py",
+    "core/results/cvrplib/rows.py",
+    "figures/rollouts_vs_steps.py",
+    "tests/core/models/nds/test_pretrained.py",
+    "tests/core/models/nds/test_validation.py",
+    "tests/core/problems/cvrp/test_solution.py",
+]
+rules = { no-matching-overload = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/lns/search.py",
+    "core/models/attention_model/module.py",
+    "core/problems/tsp/lns/operators/repair/insert.py",
+    "core/results/row.py",
+    "tests/core/lns/test_start_solution.py",
+    "tests/core/models/nds/test_split.py",
+    "tests/core/models/test_trainer.py",
+]
+rules = { invalid-assignment = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/lns/apply_and_repair.py",
+    "core/lns/operators/destroy/random_node.py",
+    "core/problems/dataset.py",
+    "core/problems/tsp/lns/operators/repair/insert.py",
+    "core/solve.py",
+    "tests/core/models/nds/test_split.py",
+]
+rules = { invalid-return-type = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/problems/cmstp/config.py",
+    "core/problems/cvrp/config.py",
+    "core/problems/tsp/config.py",
+]
+rules = { invalid-mutable-override = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/lns/operators/repair/base.py",
+    "core/problems/sampler.py",
+    "figures/train_dynamics.py",
+]
+rules = { unknown-argument = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/models/nds/training/passes.py",
+    "experiments/eval.py",
+    "figures/utils.py",
+]
+rules = { unsupported-operator = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/models/attention_model/encoder.py",
+    "tests/core/models/nds/test_pretrained.py",
+]
+rules = { call-non-callable = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/problems/cvrp/render.py",
+    "figures/start_solutions.py",
+]
+rules = { not-subscriptable = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/problems/solution.py",
+]
+rules = { invalid-property-type-override = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/problems/tsp/rl4co_sampler.py",
+]
+rules = { invalid-type-arguments = "warn" }
+
+[[tool.ty.overrides]]
+include = [
+    "core/problems/sampler.py",
+]
+rules = { too-many-positional-arguments = "warn" }
