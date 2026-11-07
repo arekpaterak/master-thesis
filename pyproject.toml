@@ -13,7 +13,7 @@ dependencies = [
     "ipykernel>=7.2.0",
     "ipython>=9.10.0",
     "ipywidgets>=8.1.8",
-    "marimo[recommended]>=0.20.4",
+    "marimo>=0.20.4",
     "matplotlib>=3.10.8",
     "notebook>=7.5.4",
     "numba>=0.65.1",
@@ -46,6 +46,9 @@ dev = [
     "ruff>=0.15.4",
     "scipy-stubs>=1.17.1.0",
 ]
+# marimo editor extras (AI assistant, SQL cells, formatting, package installs):
+# `uv sync --group notebooks`. The code only needs plain marimo.
+notebooks = ["marimo[recommended]>=0.20.4"]
 # PyTorch build: CUDA by default; CPU via `uv sync --no-group cu130 --group cpu`.
 cpu = ["torch>=2.9.0"]
 cu130 = ["torch>=2.9.0"]
