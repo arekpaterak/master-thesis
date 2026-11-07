@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from core.models.layers.attention_scaling import AttentionScalingConfig
+
 
 class EncoderConfig(BaseModel):
     """Architecture choices for the transformer encoder layers."""
@@ -40,6 +42,11 @@ class EncoderConfig(BaseModel):
         title="Route aggregation",
         description="Pooling used to aggregate customer embeddings into a per-route "
         "embedding in the route encoding layer.",
+    )
+    attention_scaling: AttentionScalingConfig | None = Field(
+        default=None,
+        title="Attention scaling",
+        description="Size-aware scaling of the self-attention logits. None disables it.",
     )
 
     @model_validator(mode="after")

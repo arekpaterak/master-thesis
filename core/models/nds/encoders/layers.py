@@ -4,6 +4,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from core.models.layers.attention_scaling import (
+    AttentionScalingConfig,
+    scaled_multihead_attention,
+)
 from core.models.nds.encoders.norm import build_norm
 
 
@@ -55,9 +59,11 @@ class AttentionLayer(nn.Module):
         norm_type: str = "instance",
         pre_norm: bool = False,
         ff_activation: str = "relu",
+        attention_scaling: AttentionScalingConfig | None = None,
     ) -> None:
         super().__init__()
         self.pre_norm = pre_norm
+        self.attention_scaling = attention_scaling
         self.MHA = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
         self.norm1 = build_norm(norm_type, hidden_dim)
         self.norm2 = build_norm(norm_type, hidden_dim)
@@ -79,6 +85,9 @@ class AttentionLayer(nn.Module):
         return norm(x + sublayer(x))
 
     def _self_attention(self, x: torch.Tensor) -> torch.Tensor:
+        if self.attention_scaling is not None:
+            scale = self.attention_scaling.factor(x.shape[-2])
+            return scaled_multihead_attention(self.MHA, x, x, x, logit_scale=scale)
         # need_weights=False routes through the fused scaled_dot_product_attention kernel
         # (the averaged attention weights are unused).
         out, _ = self.MHA(x, x, x, need_weights=False)
