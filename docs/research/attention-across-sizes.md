@@ -144,6 +144,5 @@ Caveats:
 - The factor doesn't touch the other size-dependent shift: as N grows in the unit square, typical distances
   shrink, so coordinate-based features change too.
 
-In this repo the scaling is the optional `attention_scaling` field on the encoder and decoder configs
-(`core/models/layers/attention_scaling.py`), off by default. The cheapest experiment: evaluate a CVRP100
-checkpoint on larger instances with `reference_size: 101`, encoder-only versus encoder plus decoder.
+The cheapest experiment: evaluate a CVRP100 checkpoint on larger instances with ESF (reference size 101,
+counting the depot), encoder-only versus encoder plus decoder.
