@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from core.models.entropy import entropy
+from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.compatibility_scorer import CompatibilityScorer
 from core.models.layers.cross_attention import CrossAttention, CrossAttentionConfig
 from core.models.layers.decoder_query import DecoderQuery, DecoderQueryConfig
@@ -26,6 +27,7 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
         cross_attention: CrossAttentionConfig | None = None,
         num_context_nodes: int = 0,
         C: float = 10.0,
+        attention_scaling: AttentionScalingConfig | None = None,
     ):
         super().__init__()
         self._seed_dim = seed_dim
@@ -41,13 +43,16 @@ class SimpleOnePassDecoder(OnePassDestroyDecoder):
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             num_context_nodes=num_context_nodes,
+            attention_scaling=attention_scaling,
         )
         self.poly_net = (
             PolyNet(hidden_dim=hidden_dim, seed_dim=seed_dim, poly_dim=poly_dim)
             if with_poly
             else None
         )
-        self.final_scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
+        self.final_scorer = CompatibilityScorer(
+            hidden_dim=hidden_dim, C=C, use_projections=False, attention_scaling=attention_scaling
+        )
 
     @property
     def seed_dim(self) -> int:

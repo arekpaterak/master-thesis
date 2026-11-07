@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 
 from core.models.entropy import entropy
+from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.batched_gru_cell import BatchedGRUCell
 from core.models.layers.cached_multihead_attention import CachedMultiheadAttention
 from core.models.layers.compatibility_scorer import CompatibilityScorer
@@ -77,6 +78,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         poly_dim: Hidden dimension of the polynomial conditioning network.
         num_heads: Number of attention heads.
         C: Tanh clipping constant for final scorer logits.
+        attention_scaling: Size-aware logit scaling of the attention and the scorer.
     """
 
     def __init__(
@@ -89,6 +91,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         with_poly: bool = True,
         C: float = 10.0,
         use_hidden_decoding_state: bool = True,
+        attention_scaling: AttentionScalingConfig | None = None,
     ) -> None:
         super().__init__()
         assert hidden_dim % num_heads == 0
@@ -103,6 +106,7 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
         self.MHA = CachedMultiheadAttention(
             embed_dim=hidden_dim,
             num_heads=num_heads,
+            attention_scaling=attention_scaling,
         )
 
         self.GRU = BatchedGRUCell(hidden_dim, hidden_dim) if use_hidden_decoding_state else None
@@ -113,7 +117,9 @@ class AutoregressiveNDSDecoder(DestroyDecoder):
             else None
         )
 
-        self.final_scorer = CompatibilityScorer(hidden_dim=hidden_dim, C=C, use_projections=False)
+        self.final_scorer = CompatibilityScorer(
+            hidden_dim=hidden_dim, C=C, use_projections=False, attention_scaling=attention_scaling
+        )
 
     @property
     def seed_dim(self) -> int:

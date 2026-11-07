@@ -1,6 +1,11 @@
 import torch
 from torch import nn
 
+from core.models.layers.attention_scaling import (
+    AttentionScalingConfig,
+    scaled_multihead_attention,
+)
+
 
 class MultiheadAttentionWrapper(nn.Module):
     """Thin wrapper around nn.MultiheadAttention that handles arbitrary leading batch dimensions.
@@ -12,8 +17,15 @@ class MultiheadAttentionWrapper(nn.Module):
     For self-attention pass the same tensor as q, k, and v.
     """
 
-    def __init__(self, embed_dim: int, num_heads: int, **kwargs):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        attention_scaling: AttentionScalingConfig | None = None,
+        **kwargs,
+    ):
         super().__init__()
+        self.attention_scaling = attention_scaling
         self.mha = nn.MultiheadAttention(
             embed_dim=embed_dim, num_heads=num_heads, batch_first=True, **kwargs
         )
@@ -41,6 +53,19 @@ class MultiheadAttentionWrapper(nn.Module):
         q_flat = q.reshape(-1, L_q, q.size(-1))
         k_flat = k.reshape(-1, k.size(-2), k.size(-1))
         v_flat = v.reshape(-1, v.size(-2), v.size(-1))
+
+        if self.attention_scaling is not None:
+            out_flat = scaled_multihead_attention(
+                self.mha,
+                q_flat,
+                k_flat,
+                v_flat,
+                logit_scale=self.attention_scaling.factor(k.size(-2)),
+                attend_mask=None
+                if attention_mask is None
+                else attention_mask.reshape(-1, attention_mask.size(-1)),
+            )
+            return out_flat.view(*batch_shape, L_q, q.size(-1))
 
         if attention_mask is not None:
             # nn.MultiheadAttention uses True = ignore, so invert

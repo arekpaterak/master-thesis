@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from core.models.layers.attention_scaling import AttentionScalingConfig
 from core.models.layers.cross_attention import CrossAttentionConfig
 from core.models.layers.decoder_query import DecoderQueryConfig
 from core.models.nds.decoders.ar import AutoregressiveNDSDecoder
@@ -25,6 +26,14 @@ class _DecoderConfigBase(BaseModel):
             "greedy rollout baseline)."
         ),
     )
+    attention_scaling: AttentionScalingConfig | None = Field(
+        default=None,
+        title="Attention scaling",
+        description=(
+            "Size-aware scaling of the logits over the nodes: node attention and the "
+            "selection scorer. None disables it."
+        ),
+    )
 
     @abstractmethod
     def build(
@@ -40,6 +49,7 @@ class _DecoderConfigBase(BaseModel):
             poly_dim=self.poly_dim,
             num_heads=num_heads,
             with_poly=self.with_poly,
+            attention_scaling=self.attention_scaling,
         )
 
 

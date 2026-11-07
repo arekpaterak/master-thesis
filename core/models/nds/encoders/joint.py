@@ -70,6 +70,7 @@ class JointEncoder(nn.Module):
             norm_type=encoder_config.norm_type,
             pre_norm=encoder_config.pre_norm,
             ff_activation=encoder_config.ff_activation,
+            attention_scaling=encoder_config.attention_scaling,
         )
         self.pre_attention = nn.Sequential(
             *(attention_layer() for _ in range(encoder_config.num_pre_attention_layers))
