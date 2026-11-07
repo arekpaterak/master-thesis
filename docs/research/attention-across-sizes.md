@@ -143,6 +143,3 @@ Caveats:
   which matches the "attend to a constant number of nodes" behaviour the scaling restores.
 - The factor doesn't touch the other size-dependent shift: as N grows in the unit square, typical distances
   shrink, so coordinate-based features change too.
-
-The cheapest experiment: evaluate a CVRP100 checkpoint on larger instances with ESF (reference size 101,
-counting the depot), encoder-only versus encoder plus decoder.
