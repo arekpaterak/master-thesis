@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -56,13 +56,6 @@ class _DecoderConfigBase(BaseModel):
     def max_deconstruction_size(self) -> int | None:
         """Most nodes one rollout can select; None when unbounded."""
         return None
-
-    @abstractmethod
-    def build(
-        self, *, hidden_dim: int, num_heads: int, num_context_nodes: int = 0
-    ) -> DestroyDecoder:
-        """``num_context_nodes`` is the number of leading non-selectable nodes (e.g. the depot)."""
-        ...
 
 
 class AutoregressiveDecoderConfig(_DecoderConfigBase):

@@ -77,7 +77,6 @@ class AttentionModel(nn.Module):
         if not greedy and rng is None:
             raise ValueError("Sampling a rollout needs an rng; pass rng= or greedy=True.")
         batch_size = instance.batch_size[0]
-        n = instance.num_nodes
 
         features = self.feature_extractor(instance)
         h_nodes, h_graph = self.encoder(features)
