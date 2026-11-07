@@ -17,9 +17,6 @@ representation.
 | Towards Omni-generalizable Neural Methods for Vehicle Routing Problems (Zhou et al., 2023) | POMO on sizes [50, 200], uniform and Gaussian-mixture distributions (341 tasks) | A task is defined as instances "with the same size n". They use one task per meta-iteration, batch size 64 (32 above size 150), so each batch has one size. | Their plain baseline is POMO retrained on instances "randomly sampled from our training task set", a published comparison between plain multi-size training and meta-learning. |
 | Enhancing the Cross-Size Generalization for Solving Vehicle Routing Problems via Continual Learning (Li et al., 2025, preprint) | POMO/ELG on sizes 60, 70, …, 150 | Sizes go in ascending order, 200 epochs each, with experience replay of earlier sizes. Batch size 64 (32 above 100). | Their baselines are POMO and ELG retrained per size, plus AMDKD-POMO and Omni-POMO. |
 
-Cited by Li et al. (2025) but not read: a curriculum learning plus knowledge distillation approach for TSP
-(Zhang et al., 2023).
-
 ## What this means for NDS
 
 - **NDS itself is trained per size.** Neural Deconstruction Search for Vehicle Routing Problems
